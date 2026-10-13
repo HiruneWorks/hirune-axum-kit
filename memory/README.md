@@ -11,3 +11,6 @@ This index is updated when a milestone is complete.
 - [2026-10-13 — Concurrent session cleanup](2026-10-13-session-cleanup.md):
   expiry rechecks, a synchronized PostgreSQL regression, and preserved dependency
   updates from main.
+- [2026-10-13 — Integrated template verification](2026-10-13-integration-verification.md):
+  combined local suites, extended k6, successful implementation CI, copied-template
+  validation, and Linux release-image build evidence.
