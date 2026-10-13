@@ -94,7 +94,7 @@ dependencies = [
  "anyhow",
  "auth-core",
  "aws-sdk-s3",
- "base64 0.22.1",
+ "base64 0.23.1",
  "blake3",
  "bytes",
  "cedar-policy",
@@ -403,7 +403,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "argon2",
- "base64 0.22.1",
+ "base64 0.23.1",
  "blake3",
  "rand 0.10.3",
  "subtle",
@@ -3433,7 +3433,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
  "http 1.5.0",
@@ -5394,7 +5394,7 @@ dependencies = [
  "anyhow",
  "application",
  "auth-core",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "jobs",
  "migration",
@@ -6350,7 +6350,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "auth-core",
- "base64 0.22.1",
+ "base64 0.23.1",
  "dotenvy",
  "serde_json",
  "tempfile",
