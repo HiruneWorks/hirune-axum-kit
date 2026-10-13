@@ -8,3 +8,6 @@ This index is updated when a milestone is complete.
 - [2026-10-13 — Original files and derived search](2026-10-13-files-and-search.md):
   private storage, scoped access, bounded streaming, quotas, cleanup, search
   consistency, optional integrations, and local verification.
+- [2026-10-13 — Concurrent session cleanup](2026-10-13-session-cleanup.md):
+  expiry rechecks, a synchronized PostgreSQL regression, and preserved dependency
+  updates from main.

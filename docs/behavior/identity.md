@@ -19,6 +19,9 @@ absolute deadline. Rotation replaces the credential; the old token stops working
 across instances. Lists and revocation are owner-scoped. Account deactivation,
 password reset/change, and MFA configuration changes invalidate existing sessions
 and outstanding challenges. Deactivation is not physical data erasure.
+Authentication maintenance deletes expired rows in bounded batches. Session
+deletion rechecks both deadlines after a concurrent activity update releases its
+row lock, so an accepted idle extension cannot be removed from an old snapshot.
 
 Password reset is available for verified active accounts with a password. It is
 single use, changes the password, and invalidates sessions in one transaction.

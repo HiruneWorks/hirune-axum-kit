@@ -6,8 +6,9 @@ test. There is no claim that excluded product features were ported. Test executi
 and limitations are recorded in [milestones](../memory/README.md).
 
 Current suites: [identity](../tests/identity.rs), [API](../tests/api.rs),
-[OIDC](../tests/oidc.rs), [jobs](../tests/jobs.rs), and
-[process/SMTP/load](../tests/process.rs). Core policy, encryption, mail rendering,
+[OIDC](../tests/oidc.rs), [jobs](../tests/jobs.rs),
+[files/search](../tests/files.rs), and [process/SMTP/load](../tests/process.rs).
+Core policy, encryption, mail rendering,
 pagination, proxy trust, and Sentry controls also have workspace unit tests.
 
 | Reviewed test | Disposition |
@@ -55,14 +56,14 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 | `rbac.rs::membership_expiry_ends_the_grant` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
 | `rbac.rs::unknown_permission_codename_is_rejected` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
 | `rbac.rs::system_groups_are_immutable_via_the_generic_api` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
-| `search.rs::user_search_indexes_new_signups` | Excluded: search indexing is a product integration; no search dependency or index writer is included. |
-| `search.rs::profile_update_reindexes_user_search` | Excluded: search indexing is a product integration; no search dependency or index writer is included. |
-| `search.rs::account_deletion_removes_user_from_search` | Excluded: search indexing is a product integration; no search dependency or index writer is included. |
+| `search.rs::user_search_indexes_new_signups` | Excluded: public profile search is a product feature. Optional filename search is covered by the attachment contract and files suite. |
+| `search.rs::profile_update_reindexes_user_search` | Excluded: public profile search is a product feature. Optional filename search is covered by the attachment contract and files suite. |
+| `search.rs::account_deletion_removes_user_from_search` | Excluded: public profile search is a product feature. Optional filename search is covered by the attachment contract and files suite. |
 | `smoke.rs::health_check_returns_no_content` | `storage_failure_is_not_treated_as_anonymous` and process readiness probes. |
 | `smoke.rs::signup_verify_login_flow` | `signup_mail_login_cross_process_revocation_and_worker_restart`: actual SMTP and two API processes. |
 | `smoke.rs::duplicate_handle_is_rejected` | Changed: no handles; normalized email uniqueness and generic duplicate acceptance in `registration_persists_encrypted_mail_and_durable_job`. |
 | `smoke.rs::login_with_wrong_password_is_unauthorized` | `failed_authentication_attempts_survive_rollback_across_instances` and `session_ownership_password_change_and_deactivation_recheck_authority`. |
-| `smoke.rs::profile_image_upload_is_processed_to_webp` | Excluded: media processing and object storage belong to a consuming product. |
+| `smoke.rs::profile_image_upload_is_processed_to_webp` | Excluded by owner decision: media processing is not in the baseline. Original attachments use private S3 storage without content conversion. |
 | `totp.rs::login_with_totp_requires_second_factor` | `totp_and_recovery_codes_are_single_use_across_challenges`; OIDC gate in `explicit_linking_does_not_merge_email_and_oidc_cannot_bypass_mfa`. |
 | `totp.rs::sec_002_backup_code_is_single_use_under_concurrency` | `totp_and_recovery_codes_are_single_use_across_challenges` races the same recovery code through different challenges. |
 | `totp.rs::status_backup_code_rotation_and_disable_flow` | Enrollment, recovery consumption, status, and removal are exercised by `totp_and_recovery_codes_are_single_use_across_challenges`; code regeneration is intentionally excluded. |
@@ -78,6 +79,8 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 
 - Atomic caller transaction rollback includes domain rows and durable jobs.
 - Rotation/reset/recovery races cannot reuse credentials or challenges.
+- Authentication cleanup preserves an idle extension committed while deletion
+  waits on its row lock, while still deleting sessions past absolute expiry.
 - Client and identity limits survive failures and are shared across instances.
 - OIDC checks browser binding, state replay, nonce, signed key rotation, provider outages, explicit linking, and the common MFA gate.
 - Worker crash recovery preserves attempt history, honors retry delay, and fences stale completion; a hung heartbeat/handler cannot hold a lease forever.

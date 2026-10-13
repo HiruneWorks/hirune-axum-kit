@@ -102,6 +102,112 @@ async fn caller_transaction_rolls_back_domain_and_job_together() -> anyhow::Resu
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL; run just test-db"]
+async fn authentication_cleanup_preserves_a_concurrent_idle_extension() -> anyhow::Result<()> {
+    use sea_orm::{
+        ColumnTrait, ConnectionTrait, ExprTrait, QueryFilter, QuerySelect,
+        sea_query::{Alias, Expr, Func, Query},
+    };
+
+    async fn database_time(
+        connection: &impl ConnectionTrait,
+    ) -> Result<chrono::DateTime<chrono::Utc>, sea_orm::DbErr> {
+        connection
+            .query_one(
+                &Query::select()
+                    .expr_as(Func::cust("clock_timestamp"), "database_time")
+                    .to_owned(),
+            )
+            .await?
+            .expect("database clock query must return one row")
+            .try_get("", "database_time")
+    }
+
+    let database = TestDatabase::create().await?;
+    let identity = database.identity_service().await?;
+    let (actor, credentials) = database.verified_account(&identity).await?;
+    let (expired_actor, _) = database.verified_account(&identity).await?;
+    let now = database_time(&database.connection).await?;
+    let previous_idle_deadline = now + chrono::Duration::seconds(2);
+    session::Entity::update_many()
+        .col_expr(
+            session::Column::IdleExpiresAt,
+            Expr::value(previous_idle_deadline),
+        )
+        .filter(session::Column::Id.eq(actor.session_id()))
+        .exec(&database.connection)
+        .await?;
+    session::Entity::update_many()
+        .col_expr(
+            session::Column::ExpiresAt,
+            Expr::value(now - chrono::Duration::seconds(1)),
+        )
+        .filter(session::Column::Id.eq(expired_actor.session_id()))
+        .exec(&database.connection)
+        .await?;
+
+    let extension = database.connection.begin().await?;
+    account::Entity::find_by_id(actor.account_id())
+        .lock_exclusive()
+        .one(&extension)
+        .await?;
+    session::Entity::update_many()
+        .col_expr(
+            session::Column::IdleExpiresAt,
+            Expr::value(now + chrono::Duration::hours(1)),
+        )
+        .filter(session::Column::Id.eq(actor.session_id()))
+        .exec(&extension)
+        .await?;
+    anyhow::ensure!(
+        database_time(&extension).await? < previous_idle_deadline,
+        "fixture must extend the session before its previous deadline"
+    );
+    while database_time(&database.connection).await? <= previous_idle_deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    let cleanup_identity = identity.clone();
+    let cleanup =
+        tokio::spawn(async move { cleanup_identity.cleanup_expired_authentication().await });
+    // This isolated database has one blocked writer: cleanup waiting on the idle extension.
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let waiting = database
+                .connection
+                .query_one(
+                    &Query::select()
+                        .expr_as(Func::count(Expr::col(Alias::new("pid"))), "waiting")
+                        .from(Alias::new("pg_stat_activity"))
+                        .and_where(
+                            Expr::col(Alias::new("datname")).eq(Func::cust("current_database")),
+                        )
+                        .and_where(Expr::col(Alias::new("wait_event_type")).eq("Lock"))
+                        .to_owned(),
+                )
+                .await?
+                .unwrap()
+                .try_get::<i64>("", "waiting")?;
+            if waiting > 0 {
+                return anyhow::Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await??;
+    extension.commit().await?;
+    assert_eq!(cleanup.await??, 1);
+    identity.authenticate_session(&credentials.token).await?;
+    assert!(
+        session::Entity::find_by_id(expired_actor.session_id())
+            .one(&database.connection)
+            .await?
+            .is_none()
+    );
+    database.finish().await
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; run just test-db"]
 async fn session_rotation_is_single_use_and_revocation_is_shared() -> anyhow::Result<()> {
     let database = TestDatabase::create().await?;
     let first = database.identity_service().await?;

@@ -24,6 +24,15 @@ impl IdentityService {
             .into_query();
         let mut deleted = session::Entity::delete_many()
             .filter(session::Column::Id.in_subquery(sessions))
+            // Recheck after waiting for a concurrent session activity update.
+            .filter(
+                sea_orm::Condition::any()
+                    .add(Expr::col(session::Column::ExpiresAt).lte(Func::cust("clock_timestamp")))
+                    .add(
+                        Expr::col(session::Column::IdleExpiresAt)
+                            .lte(Func::cust("clock_timestamp")),
+                    ),
+            )
             .exec(&transaction)
             .await?
             .rows_affected;
