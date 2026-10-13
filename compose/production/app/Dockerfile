@@ -1,4 +1,4 @@
-FROM rust:1.98.1-bookworm AS build
+FROM rust:1.99.0-bookworm AS build
 WORKDIR /source
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
