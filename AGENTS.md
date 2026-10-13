@@ -1,0 +1,40 @@
+# Agent Instructions
+
+- Work autonomously within the user's requested scope. Ask only when requirements are genuinely ambiguous or a decision would materially change behavior, architecture, or scope.
+- Read [project conventions](docs/conventions.md) and [confirmed requirements](docs/requirements.md), then inspect the relevant architecture and code before making changes.
+- Organize code by responsibility. Use explicit names that describe purpose, even when longer; every function, type, module, and file should have a clear role.
+- Prefer direct implementations over unnecessary abstractions, compatibility layers, configuration, or cleverness. Fix root causes.
+- Do not modify, revert, reformat, or clean up unrelated user changes.
+- Validate changes with relevant tests, checks, formatting, and builds. Never claim validation that was not performed.
+- Commit completed changes in coherent logical units with concise English messages. Do not rewrite commits or use destructive Git operations unless explicitly requested.
+- Use descriptive branch names without `codex/` or another tool or agent prefix.
+
+## Code Quality
+
+- Follow existing conventions where appropriate, but do not assume the existing design is correct. Explain materially different designs and their tradeoffs before implementing changes outside the agreed direction.
+- Treat clarity, maintainability, and file organization as completion requirements. Add concise English comments only for invariants or non-obvious decisions.
+
+## Backend Essentials
+
+- Read [architecture](docs/architecture.md) and the relevant [behavior contract](docs/behavior/README.md). Keep Axum handlers thin; services own business rules and authorization, repositories own queries, and HTTP adapters translate domain errors.
+- Use Axum, SeaORM, and Tokio. Prefer SeaORM and SeaQuery for queries and migrations; raw SQL needs a specific unsupported operation and an explained reason. Application services must not depend on HTTP types or executable configuration. Reuse canonical service and policy functions across API, workers, and commands.
+- Services own transactions and lock order. Recheck authority under the relevant locks; repository writes use the caller's transaction. Commit important follow-up work durably with the business change. See [transaction boundaries](docs/transaction-boundaries.md).
+- Use concrete input/output types, the shared error format, and the documented [API and pagination conventions](docs/api.md). Do not expose persistence models or hide errors with broad fallbacks.
+- Use application-generated UUIDv7 primary keys and UUID foreign keys. Keep natural uniqueness in explicit constraints; integers are for counts and versions, not entity identities.
+- Give each migration one clear schema responsibility. Keep its table, indexes, and constraints together; preserve applied migrations and add subsequent changes as new migrations.
+- Pass settings explicitly. Keep API and worker processes replaceable; shared storage owns sessions, authentication flows, rate limits, and jobs. See [runtime](docs/runtime.md).
+- Keep environment examples under `.envs/.example/`, actual secrets under ignored `.envs/.<environment>/`, container build/local files under `compose/`, and deployment wiring under `deploy/`. Runtime processes must not receive migration-role credentials.
+- Use structured `tracing` spans across requests, services, and jobs. Never record credentials, cookies, tokens, secret URLs, or mail bodies. Use the existing MJML mail templates and transport.
+- Review authentication changes against [security](docs/security.md), including the OWASP references and regression tests. PostgreSQL is authoritative; cached data must never bypass revocation or final authorization.
+- Password and OIDC login must share the same account and MFA gates. New-device email verification is excluded from the baseline; do not add it without a new product decision.
+- Use `just` and the locked Cargo workspace. Run the relevant unit, PostgreSQL, API, process, k6, and OpenAPI checks; [development](docs/development.md) and `.github/workflows/ci.yml` define the commands.
+- Use version tags or maintained channels for GitHub Actions. Manage dependency updates through `.github/dependabot.yml`; do not pin action references to commit hashes.
+- Keep behavior, schema, OpenAPI, configuration, and tests aligned. Distinguish local validation from remote CI, publication, deployment, and provider acceptance.
+
+## Memory Workflow
+
+Record completed milestones that change architecture, APIs, schemas, configuration, tooling, or major behavior in `memory/YYYY-MM-DD-<scope>.md`. Update [the index](memory/README.md) and use [the template](memory/TEMPLATE.md).
+
+- Record durable decisions, constraints, changes, and actual validation results, including skipped or failed checks.
+- Never store secrets, credentials, or irrelevant conversation history.
+- Add a correction or superseding entry when old facts change; do not rewrite unrelated entries.

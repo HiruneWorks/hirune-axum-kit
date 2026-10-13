@@ -1,0 +1,9 @@
+.git
+.idea
+target
+.env
+.env.*
+.envs
+deploy/*.env
+logs
+memory

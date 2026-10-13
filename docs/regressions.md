@@ -1,0 +1,86 @@
+# Regression inventory
+
+Every reviewed reference E2E test is listed below. A replacement preserves the stated
+invariant in the current domain; an exclusion is a scope decision, not a passing
+test. There is no claim that excluded product features were ported. Test execution
+and limitations are recorded in [milestones](../memory/README.md).
+
+Current suites: [identity](../tests/identity.rs), [API](../tests/api.rs),
+[OIDC](../tests/oidc.rs), [jobs](../tests/jobs.rs), and
+[process/SMTP/load](../tests/process.rs). Core policy, encryption, mail rendering,
+pagination, proxy trust, and Sentry controls also have workspace unit tests.
+
+| Reviewed test | Disposition |
+| --- | --- |
+| `account.rs::email_change_requires_password_and_confirmation` | Excluded: changing account email is outside the baseline; a future implementation must require reauthentication and confirmation. |
+| `account.rs::account_deletion_kills_login_and_masks_profile` | Session/login invalidation: `session_ownership_password_change_and_deactivation_recheck_authority`; public profiles are excluded. |
+| `account.rs::deletion_confirm_rejects_garbage_token` | Changed: deactivation is a recent-authenticated service operation; no deletion email challenge or public profile. |
+| `auth.rs::password_reset_invalidates_sessions_and_old_password` | `password_reset_consumes_once_and_revokes_every_session`; separate-process reset also invalidates credentials on both APIs. |
+| `auth.rs::app_login_enforces_new_device_verification` | Explicitly excluded by owner decision: use the common MFA gate; no default new-device email challenge. |
+| `auth.rs::session_listing_and_revocation_are_per_user` | `session_ownership_password_change_and_deactivation_recheck_authority` and `session_rotation_is_single_use_and_revocation_is_shared`. |
+| `auth.rs::change_password_requires_the_current_password` | `session_ownership_password_change_and_deactivation_recheck_authority`. |
+| `auth.rs::logout_invalidates_the_current_session` | `two_applications_share_sessions_but_keep_http_configuration_separate` revokes the current session and checks the other instance. |
+| `auth.rs::resend_verification_email_is_pending_only_and_enumeration_safe` | `verification_resend_is_pending_only_and_replaces_the_previous_challenge`; HTTP uses the same accepted response. |
+| `board.rs::seeded_boards_are_publicly_listed` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::board_management_is_admin_only` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::posting_requires_login` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::post_update_and_delete_respect_ownership_and_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::post_requires_title` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::comment_create_and_list` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::comments_paginate_oldest_first_regardless_of_direction` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::reply_depth_is_capped_at_two` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::comment_list_focus_anchor_returns_containing_window` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::comment_count_tracks_creates_and_deletes` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::comment_update_and_delete_respect_ownership_and_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::moderators_cannot_edit_others_content` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::locked_post_blocks_new_comments` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::pinned_posts_ride_along_on_every_page` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::pinned_posts_reorder_to_the_order_sent` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::pin_reorder_requires_board_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::pin_reorder_rejects_a_stale_pin_set` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `moderation.rs::banned_user_loses_board_write_access_until_unbanned` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
+| `moderation.rs::admins_cannot_ban_themselves_or_other_admins` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
+| `moderation.rs::role_management_rejects_self_and_admin_targets` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
+| `moderation.rs::moderation_logs_require_moderator_role` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
+| `notification.rs::inbox_requires_login` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `notification.rs::comment_notifies_post_author_and_inbox_lifecycle_works` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `notification.rs::mentions_in_posts_and_comments_notify_mentioned_users` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `notification.rs::sec_007_notifications_are_scoped_per_user` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `notification.rs::action_preference_opt_out_suppresses_new_notifications` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `notification.rs::notification_preferences_require_login_and_are_per_user` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `rbac.rs::permissions_catalog_is_mod_readable_and_lists_board_codenames` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `rbac.rs::group_management_is_admin_gated` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `rbac.rs::group_permission_grant_gates_post_pinning` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `rbac.rs::membership_removal_revokes_the_grant` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `rbac.rs::membership_expiry_ends_the_grant` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `rbac.rs::unknown_permission_codename_is_rejected` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `rbac.rs::system_groups_are_immutable_via_the_generic_api` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
+| `search.rs::user_search_indexes_new_signups` | Excluded: search indexing is a product integration; no search dependency or index writer is included. |
+| `search.rs::profile_update_reindexes_user_search` | Excluded: search indexing is a product integration; no search dependency or index writer is included. |
+| `search.rs::account_deletion_removes_user_from_search` | Excluded: search indexing is a product integration; no search dependency or index writer is included. |
+| `smoke.rs::health_check_returns_no_content` | `storage_failure_is_not_treated_as_anonymous` and process readiness probes. |
+| `smoke.rs::signup_verify_login_flow` | `signup_mail_login_cross_process_revocation_and_worker_restart`: actual SMTP and two API processes. |
+| `smoke.rs::duplicate_handle_is_rejected` | Changed: no handles; normalized email uniqueness and generic duplicate acceptance in `registration_persists_encrypted_mail_and_durable_job`. |
+| `smoke.rs::login_with_wrong_password_is_unauthorized` | `failed_authentication_attempts_survive_rollback_across_instances` and `session_ownership_password_change_and_deactivation_recheck_authority`. |
+| `smoke.rs::profile_image_upload_is_processed_to_webp` | Excluded: media processing and object storage belong to a consuming product. |
+| `totp.rs::login_with_totp_requires_second_factor` | `totp_and_recovery_codes_are_single_use_across_challenges`; OIDC gate in `explicit_linking_does_not_merge_email_and_oidc_cannot_bypass_mfa`. |
+| `totp.rs::sec_002_backup_code_is_single_use_under_concurrency` | `totp_and_recovery_codes_are_single_use_across_challenges` races the same recovery code through different challenges. |
+| `totp.rs::status_backup_code_rotation_and_disable_flow` | Enrollment, recovery consumption, status, and removal are exercised by `totp_and_recovery_codes_are_single_use_across_challenges`; code regeneration is intentionally excluded. |
+| `user_public.rs::handle_availability_reflects_signups` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
+| `user_public.rs::public_profile_never_exposes_the_email` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
+| `user_public.rs::public_profile_by_id_matches_handle_lookup` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
+| `user_public.rs::banned_user_profile_reports_ban_status` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
+| `user_public.rs::deactivated_profile_masks_private_fields_but_keeps_identity` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
+| `worker_consumer.rs::slow_successful_handler_runs_exactly_once` | `heartbeat_keeps_a_slow_successful_handler_exclusive`; proves claim exclusivity under the tested lease, not exactly-once external effects. |
+| `worker_consumer.rs::failed_handler_is_redelivered_then_succeeds` | `retry_delay_and_success_retention_preserve_failed_jobs` and `final_attempt_crash_becomes_retained_failure_and_can_be_retried`. |
+
+## Additional baseline regressions
+
+- Atomic caller transaction rollback includes domain rows and durable jobs.
+- Rotation/reset/recovery races cannot reuse credentials or challenges.
+- Client and identity limits survive failures and are shared across instances.
+- OIDC checks browser binding, state replay, nonce, signed key rotation, provider outages, explicit linking, and the common MFA gate.
+- Worker crash recovery preserves attempt history, honors retry delay, and fences stale completion; a hung heartbeat/handler cannot hold a lease forever.
+- Database outages return unavailable; HTTP configuration is isolated across application instances.
+- Real Mailpit delivery checks HTML/text content, worker replacement, cross-process revocation, and absence of secrets in captured process logs.
+- k6 checks readiness, authenticated reads, and scoped pagination with explicit failure and latency thresholds.

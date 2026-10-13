@@ -1,0 +1,107 @@
+[package]
+name = "hirune-axum-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "kit"
+
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+authors = ["Levi Laine"]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.98"
+
+[workspace.dependencies]
+# Internal crates
+application = { path = "crates/application" }
+auth-core = { path = "crates/auth-core" }
+jobs = { path = "crates/jobs" }
+mail = { path = "crates/mail" }
+migration = { path = "crates/migration" }
+test-support = { path = "crates/test-support" }
+
+# External dependencies
+anyhow = "1.0.104"
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "process"] }
+tokio-util = { version = "0.7.19", features = ["rt"] }
+axum = { version = "0.8.9", features = ["macros"] }
+axum-test = "21.1.0"
+tower = { version = "0.5.3", features = ["limit", "timeout", "util"] }
+tower-http = { version = "0.7.1", features = ["cors", "request-id", "limit"] }
+sea-orm = { version = "2.0.4", default-features = false, features = ["macros", "sqlx-postgres", "runtime-tokio-rustls", "with-chrono", "with-uuid", "with-json"] }
+sea-orm-migration = { version = "2.0.4", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+uuid = { version = "1.26.1", features = ["v7", "v4", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+url = "2.5.8"
+base64 = "0.22.1"
+rand = "0.10.3"
+blake3 = "1.8.7"
+aes-gcm = "0.11.1"
+subtle = "2.6.1"
+argon2 = "0.5.3"
+totp-rs = { version = "5.7.2", features = ["otpauth"] }
+openidconnect = "4.0.1"
+cedar-policy = "4.13.0"
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "pool", "hostname", "tokio1-rustls-tls"] }
+mrml = "6.0.1"
+minijinja = { version = "2.23.0", features = ["loader"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+sentry = { version = "0.49.3", default-features = false, features = ["reqwest", "rustls", "tracing", "tower-http", "tower-axum-matched-path"] }
+utoipa = { version = "5.5.0", features = ["axum_extras", "chrono", "uuid"] }
+cookie = "0.18.2"
+reqwest = { version = "0.13.5", features = ["json", "query"] }
+tempfile = "3.27.0"
+
+[dependencies]
+application.workspace = true
+jobs.workspace = true
+mail.workspace = true
+migration.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+sea-orm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+url.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+sentry.workspace = true
+utoipa.workspace = true
+cookie.workspace = true
+
+[dev-dependencies]
+sentry = { workspace = true, features = ["test"] }
+test-support.workspace = true
+axum-test.workspace = true
+auth-core.workspace = true
+reqwest.workspace = true
+totp-rs.workspace = true
+tempfile.workspace = true
+openidconnect.workspace = true
+
+[profile.dev]
+debug = 1
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

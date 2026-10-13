@@ -1,0 +1,28 @@
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+
+default:
+    @just --list
+
+# Validate without printing expanded secret values.
+check environment="production":
+    docker compose --env-file {{environment}}.env -f compose.yml config --quiet
+
+pull environment="production":
+    docker compose --env-file {{environment}}.env -f compose.yml pull
+
+# Migration must succeed before replacing API or worker processes.
+up environment="production":
+    docker compose --env-file {{environment}}.env -f compose.yml run --rm migration
+    docker compose --env-file {{environment}}.env -f compose.yml up -d api worker
+
+down environment="production":
+    docker compose --env-file {{environment}}.env -f compose.yml down
+
+status environment="production":
+    docker compose --env-file {{environment}}.env -f compose.yml ps
+
+logs environment="production" *services:
+    docker compose --env-file {{environment}}.env -f compose.yml logs -f {{services}}
+
+manage environment +arguments:
+    docker compose --env-file {{environment}}.env -f compose.yml run --rm manage {{arguments}}

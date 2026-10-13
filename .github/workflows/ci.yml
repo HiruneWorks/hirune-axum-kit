@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      load_profile:
+        description: k6 profile
+        type: choice
+        options: [smoke, extended]
+        default: smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: 1.52.0
+      - run: just check
+      - run: just test-db
+      - run: just test-api
+      - run: just test-process
+      - run: just test-deployment
+      - run: just load-test
+        env:
+          K6_PROFILE: ${{ inputs.load_profile || 'smoke' }}
+      - run: just template-check
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build --file compose/production/app/Dockerfile --tag hirune-kit:ci .
