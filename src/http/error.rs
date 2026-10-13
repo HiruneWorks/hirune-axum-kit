@@ -77,6 +77,26 @@ impl From<ApplicationError> for ApiError {
                     "The identity provider is temporarily unavailable. Start a new login flow.",
                 )
             }
+            ApplicationError::IntegrationUnavailable => Self::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "integration_unavailable",
+                "The integration is temporarily unavailable.",
+            ),
+            ApplicationError::FileTooLarge => Self::new(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "file_too_large",
+                "The file exceeds the upload limit.",
+            ),
+            ApplicationError::FileQuotaExceeded => Self::new(
+                StatusCode::CONFLICT,
+                "file_quota_exceeded",
+                "The organization file quota is exhausted.",
+            ),
+            ApplicationError::TransferTimeout => Self::new(
+                StatusCode::REQUEST_TIMEOUT,
+                "transfer_timeout",
+                "The file transfer timed out.",
+            ),
             ApplicationError::Storage(_) | ApplicationError::Job(_) => {
                 tracing::error!(error_code = "storage_unavailable", "request failed");
                 Self::new(

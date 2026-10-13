@@ -18,6 +18,7 @@ Migration and management commands are explicit one-off processes.
 | `src/bin/` | environment, process tracing, executable lifecycle | bootstrap and runtime |
 | `crates/application/src/identity/` | accounts, credentials, sessions, authentication flows | auth-core, jobs, mail, SeaORM |
 | `crates/application/src/organizations/` | minimal organizations and scoped memberships | authorization, SeaORM |
+| `crates/application/src/files/` | original attachment metadata, quota, lifecycle, S3 transport, derived filename search | organization service, AWS S3 SDK, Meilisearch REST, SeaORM, jobs |
 | `crates/application/src/authorization/` | validated Cedar policies and decisions | Cedar |
 | `crates/jobs/` | durable registration, leases, retries, attempt history | SeaORM, Tokio |
 | `crates/mail/` | MJML/Minijinja rendering and SMTP | lettre, mrml, minijinja |
@@ -59,8 +60,9 @@ adapter and transaction decision: a broker needs an outbox when a domain write
 must commit with publication. A common function signature cannot create a
 distributed transaction.
 
-Search, object storage, boards, comments, SSE, campaign mail, and workflow engines
-are outside the baseline. They can be added by the project that needs them.
+Optional SeaweedFS storage and Meilisearch filename search demonstrate scoped
+attachments. Boards, comments, SSE, campaign mail, and workflow engines are
+extensions for the consuming project.
 
 ## Design references
 

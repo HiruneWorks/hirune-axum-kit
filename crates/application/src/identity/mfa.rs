@@ -12,7 +12,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Duration;
 use jobs::TraceContext;
 use sea_orm::{DatabaseTransaction, TransactionTrait};
-use totp_rs::{Algorithm, TOTP};
+use totp_rs::{Algorithm, Builder, Totp};
 
 pub struct TotpEnrollment {
     pub challenge: String,
@@ -58,7 +58,7 @@ impl IdentityService {
         transaction.commit().await?;
         Ok(TotpEnrollment {
             challenge,
-            authenticator_url: totp.get_url(),
+            authenticator_url: totp.to_url().map_err(ApplicationError::internal)?,
         })
     }
 
@@ -226,17 +226,17 @@ impl IdentityService {
         Ok(codes)
     }
 
-    fn totp(&self, account: &account::Model, secret: Vec<u8>) -> ApplicationResult<TOTP> {
-        TOTP::new(
-            Algorithm::SHA1,
-            6,
-            1,
-            30,
-            secret,
-            Some(self.settings.application_name.replace(':', " ")),
-            account.email.clone(),
-        )
-        .map_err(ApplicationError::internal)
+    fn totp(&self, account: &account::Model, secret: Vec<u8>) -> ApplicationResult<Totp> {
+        Builder::new()
+            .with_algorithm(Algorithm::SHA1)
+            .with_digits(6)
+            .with_skew(1)
+            .with_step_duration(30)
+            .with_secret(secret)
+            .with_issuer(Some(self.settings.application_name.replace(':', " ")))
+            .with_account_name(account.email.clone())
+            .build()
+            .map_err(ApplicationError::internal)
     }
 }
 
@@ -245,7 +245,7 @@ fn totp_context(account_id: uuid::Uuid) -> String {
 }
 
 fn matching_totp_step(
-    totp: &TOTP,
+    totp: &Totp,
     code: &str,
     now_seconds: i64,
     last_step: i64,
@@ -257,7 +257,7 @@ fn matching_totp_step(
     for step in (current_step - 1..=current_step + 1).rev() {
         if step > last_step
             && step >= 0
-            && constant_time_str_eq(&totp.generate(step as u64 * 30), code)
+            && constant_time_str_eq(&totp.generate(step as u64 * 30).to_string(), code)
         {
             return Ok(step);
         }

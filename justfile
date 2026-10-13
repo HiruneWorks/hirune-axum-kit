@@ -13,7 +13,10 @@ infra-up:
     docker compose -f compose/compose.local.yml up -d --wait
 
 infra-down:
-    docker compose -f compose/compose.local.yml down
+    docker compose -f compose/compose.local.yml --profile files --profile search down
+
+infra-up-files:
+    docker compose -f compose/compose.local.yml --profile files --profile search up -d --wait
 
 migrate:
     cargo run --locked --package migration
@@ -41,6 +44,9 @@ test-api:
 
 test-process:
     cargo xtask test-process
+
+test-files:
+    cargo xtask test-files
 
 test-deployment:
     cargo xtask test-deployment

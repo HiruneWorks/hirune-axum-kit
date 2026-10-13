@@ -2,6 +2,7 @@ mod contracts;
 mod cookies;
 mod error;
 mod extract;
+mod files;
 mod identity;
 mod middleware;
 mod oidc;
@@ -39,13 +40,25 @@ pub fn build_router(app: Application, settings: HttpSettings) -> Router {
         .allow_credentials(true)
         .allow_methods([
             Method::GET,
+            Method::HEAD,
             Method::POST,
             Method::PUT,
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
-        .expose_headers([header::HeaderName::from_static("x-request-id")]);
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            header::RANGE,
+            header::IF_RANGE,
+        ])
+        .expose_headers([
+            header::HeaderName::from_static("x-request-id"),
+            header::CONTENT_RANGE,
+            header::ACCEPT_RANGES,
+            header::CONTENT_DISPOSITION,
+            header::ETAG,
+        ]);
     let state = HttpState {
         app,
         request_permits: Arc::new(Semaphore::new(settings.max_concurrent_requests)),
@@ -110,6 +123,24 @@ pub fn build_router(app: Application, settings: HttpSettings) -> Router {
         .route("/api/v1/auth/oidc/{provider}", post(oidc::begin_login))
         .route("/api/v1/auth/oidc/{provider}/callback", get(oidc::callback))
         .route("/api/v1/account/identities", get(oidc::list_identities))
+        .route(
+            "/api/v1/organizations/{organization_id}/files",
+            get(files::list_files).post(files::reserve_file),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/files/search",
+            get(files::search_files),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/files/{file_id}",
+            get(files::get_file).delete(files::delete_file),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/files/{file_id}/content",
+            get(files::download_original)
+                .head(files::head_original)
+                .put(files::upload_original),
+        )
         .route(
             "/api/v1/account/identities/providers/{provider}",
             post(oidc::begin_link),

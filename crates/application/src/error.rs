@@ -14,6 +14,14 @@ pub enum ApplicationError {
     RateLimited,
     #[error("external service unavailable")]
     ExternalUnavailable,
+    #[error("integration unavailable")]
+    IntegrationUnavailable,
+    #[error("file is too large")]
+    FileTooLarge,
+    #[error("file quota exceeded")]
+    FileQuotaExceeded,
+    #[error("transfer timed out")]
+    TransferTimeout,
     #[error("storage unavailable")]
     Storage(#[from] sea_orm::DbErr),
     #[error("job registration failed")]

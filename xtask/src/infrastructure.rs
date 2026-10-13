@@ -13,7 +13,10 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
     let requires_mail = targets.contains(&"process");
     let external_database = std::env::var("TEST_DATABASE_URL").ok();
     let infrastructure = if external_database.is_none() {
-        Some(Infrastructure::start(directory)?)
+        Some(Infrastructure::start(
+            directory,
+            targets.contains(&"files"),
+        )?)
     } else {
         None
     };
@@ -49,6 +52,17 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
                 "TEST_MAILPIT_URL",
                 format!("http://localhost:{}", infrastructure.mailpit_port),
             );
+        if infrastructure.files {
+            command
+                .env(
+                    "TEST_S3_ENDPOINT",
+                    format!("http://localhost:{}", infrastructure.s3_port),
+                )
+                .env(
+                    "TEST_MEILISEARCH_URL",
+                    format!("http://localhost:{}", infrastructure.meilisearch_port),
+                );
+        }
     } else if requires_mail {
         ensure!(
             std::env::var_os("TEST_SMTP_PORT").is_some()
@@ -56,7 +70,24 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
             "external process tests require TEST_SMTP_PORT and TEST_MAILPIT_URL"
         );
     }
-    run(&mut command)
+    let result = run(&mut command);
+    if result.is_err()
+        && let Some(infrastructure) = &infrastructure
+        && infrastructure.files
+    {
+        let _ = infrastructure
+            .command()
+            .args([
+                "logs",
+                "--no-color",
+                "--tail",
+                "100",
+                "seaweedfs",
+                "meilisearch",
+            ])
+            .status();
+    }
+    result
 }
 
 struct Infrastructure {
@@ -65,15 +96,21 @@ struct Infrastructure {
     postgres_port: u16,
     smtp_port: u16,
     mailpit_port: u16,
+    s3_port: u16,
+    meilisearch_port: u16,
+    files: bool,
 }
 impl Infrastructure {
-    fn start(directory: &Path) -> Result<Self> {
+    fn start(directory: &Path, files: bool) -> Result<Self> {
         let infrastructure = Self {
             directory: directory.to_path_buf(),
             project: format!("kit-check-{}", uuid::Uuid::now_v7().simple()),
             postgres_port: available_port()?,
             smtp_port: available_port()?,
             mailpit_port: available_port()?,
+            s3_port: available_port()?,
+            meilisearch_port: available_port()?,
+            files,
         };
         run(infrastructure
             .command()
@@ -94,6 +131,12 @@ impl Infrastructure {
             .env("POSTGRES_PORT", self.postgres_port.to_string())
             .env("SMTP_PORT", self.smtp_port.to_string())
             .env("MAILPIT_PORT", self.mailpit_port.to_string());
+        command
+            .env("S3_PORT", self.s3_port.to_string())
+            .env("MEILISEARCH_PORT", self.meilisearch_port.to_string());
+        if self.files {
+            command.args(["--profile", "files", "--profile", "search"]);
+        }
         command
     }
 }

@@ -1,6 +1,7 @@
 use crate::config::{DatabaseSettings, Settings};
 use application::{
     authorization::Authorization,
+    files::FileService,
     identity::{IdentityService, oidc::OidcService},
     organizations::OrganizationService,
 };
@@ -19,6 +20,7 @@ use std::{
 pub struct Application {
     pub identity: IdentityService,
     pub organizations: OrganizationService,
+    pub files: FileService,
     pub oidc: OidcService,
     pub queue: PostgresQueue,
     pub mailer: Mailer,
@@ -49,10 +51,16 @@ pub async fn bootstrap(settings: &Settings) -> anyhow::Result<Application> {
         IdentityService::new(database.clone(), settings.identity.clone(), authorization).await?;
     let oidc = OidcService::discover(identity.clone(), settings.oidc.clone()).await?;
     let organizations = OrganizationService::new(identity.clone());
+    let files = FileService::new(
+        identity.clone(),
+        organizations.clone(),
+        settings.files.clone(),
+    )?;
     let mailer = Mailer::new(&settings.smtp)?;
     Ok(Application {
         identity,
         organizations,
+        files,
         oidc,
         queue: PostgresQueue::new(database.clone()),
         mailer,

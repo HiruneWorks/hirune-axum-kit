@@ -1,4 +1,4 @@
-use super::{identity, oidc, organizations};
+use super::{files, identity, oidc, organizations};
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme},
@@ -11,7 +11,9 @@ use utoipa::{
     identity::list_sessions, identity::revoke_session, identity::revoke_all_sessions, identity::rotate_session,
     identity::begin_totp, identity::confirm_totp, identity::disable_totp,
     organizations::create_organization, organizations::get_organization, organizations::list_organizations, organizations::rename_organization,
-    oidc::begin_login, oidc::begin_link, oidc::callback, oidc::list_identities, oidc::unlink_identity
+    oidc::begin_login, oidc::begin_link, oidc::callback, oidc::list_identities, oidc::unlink_identity,
+    files::reserve_file, files::list_files, files::get_file, files::upload_original, files::delete_file,
+    files::search_files, files::download_original, files::head_original
 ), components(schemas(super::error::ErrorOutput)), modifiers(&SecuritySchemes))]
 struct ApiDocumentation;
 
@@ -43,6 +45,7 @@ pub fn document() -> utoipa::openapi::OpenApi {
             &mut path.put,
             &mut path.delete,
             &mut path.patch,
+            &mut path.head,
         ]
         .into_iter()
         .flatten()

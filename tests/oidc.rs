@@ -458,12 +458,12 @@ async fn explicit_linking_does_not_merge_email_and_oidc_cannot_bypass_mfa() -> R
         CallbackOutcome::Linked
     ));
     let enrollment = identity.begin_totp_enrollment(&actor).await?;
-    let totp = totp_rs::TOTP::from_url(&enrollment.authenticator_url)?;
+    let totp = totp_rs::Totp::from_url(&enrollment.authenticator_url)?;
     let recovery_codes = identity
         .confirm_totp_enrollment(
             &actor,
             &enrollment.challenge,
-            &totp.generate_current()?,
+            &totp.generate_current().to_string(),
             TraceContext::default(),
         )
         .await?;

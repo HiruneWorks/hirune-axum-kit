@@ -15,15 +15,19 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | --- | --- |
 | `just init` | Create `.envs/.local/app.env` with independent random local secrets; fail if it already exists. |
 | `just infra-up` / `just infra-down` | Start/stop development PostgreSQL and Mailpit; preserve development data. |
+| `just infra-up-files` | Start PostgreSQL, Mailpit, SeaweedFS, and Meilisearch with local-only credentials. |
 | `just migrate` | Apply SeaORM migrations under a PostgreSQL advisory transaction lock. |
 | `just api` / `just worker` | Start the actual API/worker executable. |
-| `just manage cleanup` | Remove bounded batches of expired authentication rows and old successful jobs. |
+| `just manage cleanup` | Remove bounded batches of expired authentication rows and old successful jobs, and reconcile file cleanup. |
 | `just manage retry-job <uuid>` | Retry a retained failed job without erasing its attempt history. |
+| `just manage initialize-integrations` | Explicitly create the configured private bucket and file search index/settings; safe to repeat. |
+| `just manage repair-search` | Queue a bounded batch of current file metadata for index reconciliation. |
 | `just fmt` | Format the workspace. |
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, OpenAPI drift. |
 | `just test-db` | Real PostgreSQL identity and queue tests, including transaction and concurrency failures. |
 | `just test-api` | Production-router API tests and local signed OIDC provider tests. |
 | `just test-process` | Separate API/worker processes, real HTTP, Mailpit SMTP, worker replacement, shared session revocation, and log secrecy. |
+| `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
 | `just test-deployment` | Validate local/deployment Compose and separation of runtime and migration credentials using temporary example files. |
 | `just load-test` | Docker k6 smoke thresholds against a real API process. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
@@ -41,6 +45,9 @@ For an existing local disposable PostgreSQL server, set `TEST_DATABASE_URL`.
 The role must be allowed to create and drop test databases. Non-loopback database
 hosts are rejected. Process/load tests additionally require `TEST_SMTP_PORT` and
 `TEST_MAILPIT_URL`. Do not point test administration at a production database.
+File tests additionally require loopback `TEST_S3_ENDPOINT` and
+`TEST_MEILISEARCH_URL` using the local Compose credentials. `just test-files`
+starts these services automatically in its disposable Compose project.
 Test databases from a panic may remain in external infrastructure; inspect their
 generated `kit_test_` names before explicit cleanup.
 

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, ensure};
 use application::{
     config::{IdentitySettings, SecretKeys, SecretString},
+    files::{FileSettings, S3Settings, SearchSettings},
     identity::oidc::ProviderSettings,
 };
 use jobs::WorkerSettings;
@@ -54,6 +55,7 @@ pub struct Settings {
     pub http: HttpSettings,
     pub smtp: SmtpSettings,
     pub worker: WorkerSettings,
+    pub files: FileSettings,
     pub oidc: Vec<ProviderSettings>,
     pub observability: ObservabilitySettings,
 }
@@ -172,6 +174,71 @@ impl Settings {
             poll_milliseconds: number(values, "WORKER_POLL_MILLISECONDS", 250)?,
         };
         worker.validate()?;
+        let supplied = |name: &str| values.get(name).is_some_and(|value| !value.is_empty());
+        let storage = if ["S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"]
+            .iter()
+            .any(|name| supplied(name))
+        {
+            Some(S3Settings {
+                endpoint: Url::parse(&required("S3_ENDPOINT")?).context("invalid S3_ENDPOINT")?,
+                bucket: required("S3_BUCKET")?,
+                region: get("S3_REGION", "us-east-1"),
+                access_key: SecretString::new(required("S3_ACCESS_KEY")?),
+                secret_key: SecretString::new(required("S3_SECRET_KEY")?),
+                allow_http: number(values, "S3_ALLOW_HTTP", false)?,
+            })
+        } else {
+            None
+        };
+        let search = if ["MEILISEARCH_URL", "MEILISEARCH_API_KEY"]
+            .iter()
+            .any(|name| supplied(name))
+        {
+            Some(SearchSettings {
+                endpoint: Url::parse(&required("MEILISEARCH_URL")?)
+                    .context("invalid MEILISEARCH_URL")?,
+                api_key: SecretString::new(required("MEILISEARCH_API_KEY")?),
+                index: get("MEILISEARCH_INDEX", "files"),
+                allow_http: number(values, "MEILISEARCH_ALLOW_HTTP", false)?,
+            })
+        } else {
+            None
+        };
+        let defaults = FileSettings::default();
+        let files = FileSettings {
+            storage,
+            search,
+            max_file_bytes: number(values, "FILE_MAX_BYTES", defaults.max_file_bytes)?,
+            organization_quota_bytes: number(
+                values,
+                "FILE_ORGANIZATION_QUOTA_BYTES",
+                defaults.organization_quota_bytes,
+            )?,
+            transfer_concurrency: number(
+                values,
+                "FILE_TRANSFER_CONCURRENCY",
+                defaults.transfer_concurrency,
+            )?,
+            transfer_seconds: number(values, "FILE_TRANSFER_SECONDS", defaults.transfer_seconds)?,
+            organization_file_limit: number(
+                values,
+                "FILE_ORGANIZATION_LIMIT",
+                defaults.organization_file_limit,
+            )?,
+            pending_file_limit: number(values, "FILE_PENDING_LIMIT", defaults.pending_file_limit)?,
+            reservations_per_minute: number(
+                values,
+                "FILE_RESERVATIONS_PER_MINUTE",
+                defaults.reservations_per_minute,
+            )?,
+            tombstone_days: number(values, "FILE_TOMBSTONE_DAYS", defaults.tombstone_days)?,
+            idle_seconds: number(values, "FILE_TRANSFER_IDLE_SECONDS", defaults.idle_seconds)?,
+            temporary_directory: values
+                .get("FILE_TEMPORARY_DIRECTORY")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(defaults.temporary_directory),
+        };
+        files.validate()?;
         let mut oidc = Vec::new();
         if let Some(issuer) = values.get("OIDC_ISSUER").filter(|value| !value.is_empty()) {
             let issuer = Url::parse(issuer).context("invalid OIDC_ISSUER")?;
@@ -209,6 +276,7 @@ impl Settings {
             http,
             smtp,
             worker,
+            files,
             oidc,
             observability,
         })

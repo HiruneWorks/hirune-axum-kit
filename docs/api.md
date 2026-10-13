@@ -10,6 +10,20 @@ database queries or business policy. Return DTOs rather than persistence models.
 Normal input objects reject unknown fields; the OIDC callback accepts protocol
 extensions. Malformed JSON, UUIDs, and query values use the same error envelope.
 
+## Typed input and validation
+
+`ApiJson<T>`, `ApiQuery<T>`, and `ApiPath<T>` deserialize concrete input types and
+translate extraction failures into the shared API error. Serde enforces field
+types and required fields; normal JSON DTOs use `deny_unknown_fields`. `ToSchema`
+describes OpenAPI and does not perform runtime validation. The extractors do not
+automatically call a DTO validation trait.
+
+Owning services validate values such as normalized email, password length,
+organization names, and file metadata. Authorization and rules that depend on
+current state remain in those services, with final checks under their locks.
+These checks also apply when a worker or management command calls the service
+without HTTP. Any future DTO validation must preserve this service boundary.
+
 ## Errors and headers
 
 Errors have this shape:

@@ -20,6 +20,8 @@ claim that every verification step has already passed.
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
 | Device policy | New-device email verification is excluded from the default template. Use MFA for the additional authentication factor. |
 | Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. |
+| Files | Original bytes in a separate private S3-compatible SeaweedFS store; PostgreSQL owns metadata, permissions, quota reservations, and lifecycle. No default content sanitization, antivirus, image reencoding, video processing, or media processor. |
+| Search | Meilisearch is a derived index behind the authenticated API; current PostgreSQL state and permissions decide which results may be returned. |
 | Dependency maintenance | Use version tags or maintained channels for GitHub Actions, with Dependabot updates; do not pin action references to commit hashes. |
 | Agent guidance | Concise mandatory instructions in AGENTS.md, detailed conventions and contracts in docs, milestone evidence in memory. |
 | Git | Coherent local commits with concise English messages; no `codex/` branch prefix; preserve unrelated work. |
@@ -46,8 +48,13 @@ account; matching email addresses alone do not merge accounts.
 
 The baseline demonstrates identity, a small organization domain, scoped
 authorization and pagination, durable background work, and transactional mail.
-Public profiles, social content, search, object storage, notification inboxes,
-campaign email, and application-specific permissions are project extensions.
+The file example demonstrates organization attachments and filename search.
+Conversation-specific attachment permissions belong to the owning conversation
+service in a consuming project. Arbitrary file contents are not parsed or executed;
+`ready` describes completed storage, not a malware or content-safety verdict.
+Storage and search are separately optional integrations. Public profiles, social
+content, notification inboxes, campaign email, and application-specific
+permissions are project extensions.
 The [regression inventory](regressions.md) records retained security behavior and
 intentional exclusions from the reference test coverage.
 

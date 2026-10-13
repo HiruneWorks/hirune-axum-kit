@@ -28,6 +28,7 @@ just check
 just test-db
 just test-api
 just test-process
+just test-files
 just test-deployment
 just load-test
 just template-check
@@ -37,6 +38,16 @@ Database and process commands create disposable, uniquely named Compose projects
 and isolated test databases. See [development](docs/development.md) for external
 local infrastructure, test prerequisites, and load-test profiles. CI uses the same
 commands; checked-in workflows are not evidence of a successful remote run.
+
+## Optional file storage and search
+
+Run `just infra-up-files`, enable the commented S3/Meilisearch settings in
+`.envs/.local/app.env`, and run `just manage initialize-integrations` after
+migrations. The API stores original bytes in the private S3 bucket. PostgreSQL
+controls attachment access; Meilisearch indexes filenames only. Run the worker
+for deletion and indexing, and schedule bounded `manage cleanup` and
+`manage repair-search` operations in deployment. See the
+[file contract](docs/behavior/files-and-search.md) for limits and lifecycle.
 
 ## Own the source
 

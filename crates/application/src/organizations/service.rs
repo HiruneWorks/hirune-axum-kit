@@ -72,14 +72,27 @@ impl OrganizationService {
         organization_id: Uuid,
     ) -> ApplicationResult<OrganizationSummary> {
         let transaction = self.identity.database.begin().await?;
+        let organization = self
+            .require_member_in_transaction(&transaction, actor, organization_id)
+            .await?;
+        transaction.commit().await?;
+        Ok(organization)
+    }
+
+    pub async fn require_member_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        actor: &AuthenticatedSession,
+        organization_id: Uuid,
+    ) -> ApplicationResult<OrganizationSummary> {
         let account = self
             .identity
-            .lock_authenticated_account(&transaction, actor, false)
+            .lock_authenticated_account(transaction, actor, false)
             .await?;
-        let organization = repository::lock_organization(&transaction, organization_id)
+        let organization = repository::lock_organization(transaction, organization_id)
             .await?
             .ok_or(ApplicationError::NotFound)?;
-        let member = repository::is_member(&transaction, organization.id, account.id).await?;
+        let member = repository::is_member(transaction, organization.id, account.id).await?;
         if !member {
             return Err(ApplicationError::NotFound);
         }
@@ -90,7 +103,6 @@ impl OrganizationService {
             organization.owner_id,
             member,
         )?;
-        transaction.commit().await?;
         Ok(organization.into())
     }
 

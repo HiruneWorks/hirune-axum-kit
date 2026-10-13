@@ -10,11 +10,23 @@ async fn main() -> anyhow::Result<()> {
         [command] if command == "cleanup" => {
             let authentication_records = app.identity.cleanup_expired_authentication().await?;
             let completed_jobs = app.queue.cleanup_succeeded().await?;
+            let file_records = app.files.reconcile_files().await?;
             tracing::info!(
                 authentication_records,
                 completed_jobs,
+                file_records,
                 "expired records removed"
             );
+            Ok(())
+        }
+        [command] if command == "initialize-integrations" => {
+            app.files.initialize_integrations().await?;
+            tracing::info!("configured file integrations initialized");
+            Ok(())
+        }
+        [command] if command == "repair-search" => {
+            let files = app.files.repair_search().await?;
+            tracing::info!(files, "search repair jobs registered");
             Ok(())
         }
         [command, job_id] if command == "retry-job" => {
@@ -27,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         _ => Err(anyhow::anyhow!(
-            "usage: manage cleanup | manage retry-job <uuid>"
+            "usage: manage cleanup | initialize-integrations | repair-search | retry-job <uuid>"
         )),
     };
     app.close().await?;

@@ -26,6 +26,7 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
             sender: "Test <noreply@example.test>".into(),
         },
         worker: jobs::WorkerSettings::default(),
+        files: application::files::FileSettings::default(),
         oidc: Vec::new(),
         observability: ObservabilitySettings {
             log_filter: "info,sqlx=off,sea_orm=off,reqwest=off,hyper=off".into(),

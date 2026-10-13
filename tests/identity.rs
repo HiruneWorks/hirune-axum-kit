@@ -214,8 +214,8 @@ async fn totp_and_recovery_codes_are_single_use_across_challenges() -> anyhow::R
     let identity = database.identity_service().await?;
     let (actor, original_session) = database.verified_account(&identity).await?;
     let enrollment = identity.begin_totp_enrollment(&actor).await?;
-    let authenticator = totp_rs::TOTP::from_url(&enrollment.authenticator_url)?;
-    let code = authenticator.generate_current()?;
+    let authenticator = totp_rs::Totp::from_url(&enrollment.authenticator_url)?;
+    let code = authenticator.generate_current().to_string();
     let recovery_codes = identity
         .confirm_totp_enrollment(
             &actor,
