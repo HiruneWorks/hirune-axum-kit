@@ -61,7 +61,7 @@ minijinja = { version = "2.23.0", features = ["loader"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 sentry = { version = "0.49.3", default-features = false, features = ["reqwest", "rustls", "tracing", "tower-http", "tower-axum-matched-path"] }
-utoipa = { version = "5.5.0", features = ["axum_extras", "chrono", "uuid"] }
+utoipa = { version = "6.0.0", features = ["axum_extras", "chrono", "uuid"] }
 cookie = "0.18.2"
 reqwest = { version = "0.13.5", features = ["json", "query"] }
 tempfile = "3.27.0"
