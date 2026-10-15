@@ -1,3 +1,4 @@
+mod administration;
 mod delivery;
 pub mod entities;
 mod maintenance;
@@ -10,6 +11,7 @@ pub(crate) mod repository;
 pub(crate) mod service;
 mod sessions;
 pub mod types;
+pub mod validation;
 
 pub use mfa::{MfaProof, TotpEnrollment};
 pub use service::IdentityService;

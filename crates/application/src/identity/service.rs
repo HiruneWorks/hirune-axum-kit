@@ -3,6 +3,7 @@ use super::{
     entities::account,
     password_operations::PasswordOperations,
     repository::{accounts, challenges, security, sessions},
+    validation::{normalize_email, validate_new_password},
 };
 use crate::{
     ApplicationError, ApplicationResult,
@@ -52,7 +53,7 @@ impl IdentityService {
     ) -> ApplicationResult<()> {
         let email = normalize_email(email)?;
         self.limit_authentication_attempts("signup", &email).await?;
-        validate_password(&password)?;
+        validate_new_password(&password)?;
         let password_hash = self.passwords.hash(password).await?;
         let transaction = self.database.begin().await?;
         if accounts::find_by_email(&transaction, &email)
@@ -136,9 +137,7 @@ impl IdentityService {
         account: &account::Model,
         trace: TraceContext,
     ) -> ApplicationResult<LoginOutcome> {
-        if !account.active || !account.verified {
-            return Err(ApplicationError::Unauthenticated);
-        }
+        require_authenticatable_account(account)?;
         if account.totp_secret.is_some() {
             let challenge = generate_secure_token();
             challenges::insert_challenge(
@@ -165,6 +164,7 @@ impl IdentityService {
         account: &account::Model,
         trace: TraceContext,
     ) -> ApplicationResult<SessionCredentials> {
+        require_authenticatable_account(account)?;
         let now = database_time(transaction).await?;
         let token = generate_secure_token();
         let expires_at = now + Duration::seconds(self.settings.session_absolute_seconds);
@@ -200,6 +200,7 @@ impl IdentityService {
         let account = accounts::lock_account(transaction, actor.account_id())
             .await?
             .ok_or(ApplicationError::Unauthenticated)?;
+        require_authenticatable_account(&account)?;
         let session = sessions::find_by_id(transaction, actor.session_id)
             .await?
             .ok_or(ApplicationError::Unauthenticated)?;
@@ -242,7 +243,7 @@ impl IdentityService {
         );
         let attempts = security::consume_rate_limit(&transaction, key, expires_at).await?;
         transaction.commit().await?;
-        if attempts > 10 {
+        if attempts > self.settings.authentication_identity_limit_per_minute {
             return Err(ApplicationError::RateLimited);
         }
         Ok(())
@@ -258,7 +259,7 @@ impl IdentityService {
         );
         let attempts = security::consume_rate_limit(&transaction, key, expires_at).await?;
         transaction.commit().await?;
-        if attempts > 60 {
+        if attempts > self.settings.authentication_client_limit_per_minute {
             return Err(ApplicationError::RateLimited);
         }
         Ok(())
@@ -273,7 +274,7 @@ impl IdentityService {
     ) -> ApplicationResult<()> {
         self.limit_authentication_attempts("change_password", &actor.account_id().to_string())
             .await?;
-        validate_password(&new_password)?;
+        validate_new_password(&new_password)?;
         let snapshot = accounts::find_by_id(&self.database, actor.account_id())
             .await?
             .ok_or(ApplicationError::Unauthenticated)?;
@@ -308,7 +309,7 @@ impl IdentityService {
     }
 
     pub(crate) async fn hash_new_password(&self, password: String) -> ApplicationResult<String> {
-        validate_password(&password)?;
+        validate_new_password(&password)?;
         self.passwords.hash(password).await
     }
 
@@ -332,19 +333,12 @@ pub(crate) fn principal(account: &account::Model) -> Principal {
     }
 }
 
-pub(crate) fn normalize_email(email: &str) -> ApplicationResult<String> {
-    let email = email.trim().to_ascii_lowercase();
-    if email.len() > 254 || !mail::valid_recipient(&email) {
-        return Err(ApplicationError::InvalidInput("invalid email address"));
-    }
-    Ok(email)
-}
-
-fn validate_password(password: &str) -> ApplicationResult<()> {
-    if password.chars().count() < 15 || password.len() > auth_core::password::MAX_PASSWORD_BYTES {
-        return Err(ApplicationError::InvalidInput(
-            "password must contain at least 15 characters and at most 1024 bytes",
-        ));
+pub(crate) fn require_authenticatable_account(account: &account::Model) -> ApplicationResult<()> {
+    if !account.active
+        || !account.verified
+        || (account.administrator && account.totp_secret.is_none())
+    {
+        return Err(ApplicationError::Unauthenticated);
     }
     Ok(())
 }

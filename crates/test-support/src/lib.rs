@@ -144,6 +144,8 @@ pub fn identity_settings() -> Result<IdentitySettings> {
         )?,
         rate_limit_key: SecretString::new("test-only-rate-limit-key-at-least-32-bytes"),
         password_concurrency: 2,
+        authentication_identity_limit_per_minute: 10,
+        authentication_client_limit_per_minute: 60,
         session_idle_seconds: 1800,
         session_absolute_seconds: 43_200,
     })

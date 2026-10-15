@@ -159,6 +159,9 @@ impl IdentityService {
         let account = self
             .lock_authenticated_account(&transaction, actor, true)
             .await?;
+        if account.administrator {
+            return Err(ApplicationError::Forbidden);
+        }
         self.consume_mfa_proof(&transaction, &account, proof)
             .await?;
         accounts::set_totp(&transaction, account, None, -1).await?;
@@ -174,6 +177,35 @@ impl IdentityService {
         .await?;
         transaction.commit().await?;
         Ok(())
+    }
+
+    pub async fn regenerate_recovery_codes(
+        &self,
+        actor: &AuthenticatedSession,
+        proof: MfaProof,
+        trace: TraceContext,
+    ) -> ApplicationResult<Vec<String>> {
+        self.limit_authentication_attempts("mfa", &actor.account_id().to_string())
+            .await?;
+        let transaction = self.database.begin().await?;
+        let account = self
+            .lock_authenticated_account(&transaction, actor, true)
+            .await?;
+        self.consume_mfa_proof(&transaction, &account, proof)
+            .await?;
+        let recovery_codes = self.create_recovery_codes(&transaction, account.id).await?;
+        accounts::advance_security_version(&transaction, account.id).await?;
+        self.revoke_account_credentials(&transaction, account.id)
+            .await?;
+        security::append_audit(
+            &transaction,
+            Some(account.id),
+            "recovery_codes_regenerated",
+            trace.request_id,
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(recovery_codes)
     }
 
     async fn consume_mfa_proof(

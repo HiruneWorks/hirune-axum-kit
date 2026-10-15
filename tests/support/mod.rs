@@ -21,11 +21,17 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
             host: "127.0.0.1".into(),
             port: 10259,
             starttls: false,
+            certificate_authority: None,
             username: None,
             password: None,
             sender: "Test <noreply@example.test>".into(),
         },
         worker: jobs::WorkerSettings::default(),
+        retention: kit::config::RetentionSettings {
+            succeeded_job_days: 30,
+            failed_job_days: 90,
+            audit_days: 180,
+        },
         files: application::files::FileSettings::default(),
         oidc: Vec::new(),
         observability: ObservabilitySettings {

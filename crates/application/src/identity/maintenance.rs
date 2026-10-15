@@ -1,14 +1,38 @@
 use super::{
     IdentityService,
-    entities::{challenge, mail_delivery, oauth_flow, rate_limit, session},
+    entities::{audit_event, challenge, mail_delivery, oauth_flow, rate_limit, session},
 };
-use crate::{ApplicationResult, database::database_time};
+use crate::{ApplicationError, ApplicationResult, database::database_time};
 use sea_orm::{
-    ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QuerySelect, TransactionTrait,
+    ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
     sea_query::{Expr, Func},
 };
 
 impl IdentityService {
+    pub async fn cleanup_audit_events(&self, retention_days: i64) -> ApplicationResult<u64> {
+        if !(1..=36500).contains(&retention_days) {
+            return Err(ApplicationError::InvalidInput("invalid audit retention"));
+        }
+        let transaction = self.database.begin().await?;
+        let cutoff = database_time(&transaction).await? - chrono::Duration::days(retention_days);
+        let expired = audit_event::Entity::find()
+            .select_only()
+            .column(audit_event::Column::Id)
+            .filter(audit_event::Column::CreatedAt.lt(cutoff))
+            .order_by_asc(audit_event::Column::CreatedAt)
+            .order_by_asc(audit_event::Column::Id)
+            .limit(1000)
+            .into_query();
+        let deleted = audit_event::Entity::delete_many()
+            .filter(audit_event::Column::Id.in_subquery(expired))
+            .filter(audit_event::Column::CreatedAt.lt(cutoff))
+            .exec(&transaction)
+            .await?
+            .rows_affected;
+        transaction.commit().await?;
+        Ok(deleted)
+    }
+
     pub async fn cleanup_expired_authentication(&self) -> ApplicationResult<u64> {
         let transaction = self.database.begin().await?;
         let now = database_time(&transaction).await?;

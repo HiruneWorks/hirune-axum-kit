@@ -1,11 +1,14 @@
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
     message::{Mailbox, MultiPart},
-    transport::smtp::authentication::Credentials,
+    transport::smtp::{
+        authentication::Credentials,
+        client::{Certificate, Tls, TlsParameters},
+    },
 };
 use minijinja::Environment;
 use serde::{Deserialize, Serialize};
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -13,6 +16,7 @@ pub struct SmtpSettings {
     pub host: String,
     pub port: u16,
     pub starttls: bool,
+    pub certificate_authority: Option<PathBuf>,
     pub username: Option<String>,
     pub password: Option<String>,
     pub sender: String,
@@ -92,6 +96,19 @@ impl Mailer {
         let mut transport = transport
             .port(settings.port)
             .timeout(Some(Duration::from_secs(15)));
+        if let Some(path) = &settings.certificate_authority {
+            if !settings.starttls {
+                return Err(MailError::Template(
+                    "SMTP CA certificate requires STARTTLS".into(),
+                ));
+            }
+            let certificate = std::fs::read(path)
+                .map_err(|_| MailError::Template("SMTP CA certificate could not be read".into()))?;
+            let parameters = TlsParameters::builder(settings.host.clone())
+                .add_root_certificate(Certificate::from_pem(&certificate)?)
+                .build()?;
+            transport = transport.tls(Tls::Required(parameters));
+        }
         match (&settings.username, &settings.password) {
             (Some(username), Some(password)) => {
                 transport =
@@ -180,6 +197,7 @@ mod tests {
             host: "localhost".into(),
             port: 1025,
             starttls: false,
+            certificate_authority: None,
             username: None,
             password: None,
             sender: "Test <noreply@example.test>".into(),

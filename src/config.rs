@@ -58,6 +58,14 @@ pub struct Settings {
     pub files: FileSettings,
     pub oidc: Vec<ProviderSettings>,
     pub observability: ObservabilitySettings,
+    pub retention: RetentionSettings,
+}
+
+#[derive(Clone, Debug)]
+pub struct RetentionSettings {
+    pub succeeded_job_days: i64,
+    pub failed_job_days: i64,
+    pub audit_days: i64,
 }
 
 impl Settings {
@@ -108,6 +116,16 @@ impl Settings {
             secret_keys: SecretKeys::new(required("ACTIVE_SECRET_KEY")?, encoded_keys)?,
             rate_limit_key: SecretString::new(required("RATE_LIMIT_KEY")?),
             password_concurrency: number(values, "PASSWORD_CONCURRENCY", 4)?,
+            authentication_identity_limit_per_minute: number(
+                values,
+                "AUTH_IDENTITY_LIMIT_PER_MINUTE",
+                10,
+            )?,
+            authentication_client_limit_per_minute: number(
+                values,
+                "AUTH_CLIENT_LIMIT_PER_MINUTE",
+                60,
+            )?,
             session_idle_seconds: number(values, "SESSION_IDLE_SECONDS", 1800)?,
             session_absolute_seconds: number(values, "SESSION_ABSOLUTE_SECONDS", 43_200)?,
         };
@@ -152,6 +170,10 @@ impl Settings {
             host: get("SMTP_HOST", "localhost"),
             port: number(values, "SMTP_PORT", 1025)?,
             starttls: number(values, "SMTP_STARTTLS", false)?,
+            certificate_authority: values
+                .get("SMTP_CA_CERTIFICATE")
+                .filter(|value| !value.is_empty())
+                .map(std::path::PathBuf::from),
             username: values
                 .get("SMTP_USERNAME")
                 .filter(|value| !value.is_empty())
@@ -270,6 +292,21 @@ impl Settings {
             (0.0..=1.0).contains(&observability.sentry_sample_rate),
             "invalid SENTRY_SAMPLE_RATE"
         );
+        let retention = RetentionSettings {
+            succeeded_job_days: number(values, "SUCCEEDED_JOB_RETENTION_DAYS", 30)?,
+            failed_job_days: number(values, "FAILED_JOB_RETENTION_DAYS", 90)?,
+            audit_days: number(values, "AUDIT_RETENTION_DAYS", 180)?,
+        };
+        ensure!(
+            [
+                retention.succeeded_job_days,
+                retention.failed_job_days,
+                retention.audit_days
+            ]
+            .into_iter()
+            .all(|days| (1..=36500).contains(&days)),
+            "retention must be between 1 and 36500 days"
+        );
         Ok(Self {
             database,
             identity,
@@ -279,6 +316,7 @@ impl Settings {
             files,
             oidc,
             observability,
+            retention,
         })
     }
 }

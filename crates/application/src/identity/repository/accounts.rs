@@ -1,7 +1,8 @@
 use super::super::entities::account;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QuerySelect, Set,
+    ExprTrait, IntoActiveModel, QueryFilter, QuerySelect, Set,
+    sea_query::{Expr, LockType},
 };
 use uuid::Uuid;
 
@@ -26,8 +27,9 @@ pub async fn lock_account(
     transaction: &DatabaseTransaction,
     account_id: Uuid,
 ) -> Result<Option<account::Model>, DbErr> {
+    // Serialize account changes without blocking child foreign-key checks.
     account::Entity::find_by_id(account_id)
-        .lock_exclusive()
+        .lock(LockType::NoKeyUpdate)
         .one(transaction)
         .await
 }
@@ -99,6 +101,34 @@ pub async fn record_totp_step(
 ) -> Result<(), DbErr> {
     let mut account = account.into_active_model();
     account.totp_last_step = Set(step);
+    account.update(transaction).await?;
+    Ok(())
+}
+
+pub async fn advance_security_version(
+    transaction: &DatabaseTransaction,
+    account_id: Uuid,
+) -> Result<(), DbErr> {
+    account::Entity::update_many()
+        .col_expr(
+            account::Column::SecurityVersion,
+            Expr::col(account::Column::SecurityVersion).add(1),
+        )
+        .filter(account::Column::Id.eq(account_id))
+        .exec(transaction)
+        .await?;
+    Ok(())
+}
+
+pub async fn set_administrator(
+    transaction: &DatabaseTransaction,
+    account: account::Model,
+    administrator: bool,
+) -> Result<(), DbErr> {
+    let next_version = account.security_version + 1;
+    let mut account = account.into_active_model();
+    account.administrator = Set(administrator);
+    account.security_version = Set(next_version);
     account.update(transaction).await?;
     Ok(())
 }

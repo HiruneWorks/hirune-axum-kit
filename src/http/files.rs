@@ -1,3 +1,4 @@
+use super::validation;
 use super::{
     HttpState,
     contracts::PaginationQuery,
@@ -19,11 +20,16 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
+use validator::Validate;
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ReserveFileInput {
+    #[validate(custom(function = "validation::filename"))]
+    /// Display filename: 1 to 255 UTF-8 bytes, without path separators or control characters.
     pub filename: String,
+    #[validate(custom(function = "validation::media_type"))]
+    #[schema(max_length = 120)]
     pub media_type: Option<String>,
     pub byte_size: u64,
 }
@@ -70,10 +76,12 @@ pub struct FilePageOutput {
 pub struct FileSearchOutput {
     pub items: Vec<FileOutput>,
 }
-#[derive(Deserialize, IntoParams)]
+#[derive(Deserialize, IntoParams, Validate)]
 #[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 pub struct FileSearchQuery {
+    #[validate(length(min = 1, max = 200))]
+    #[param(min_length = 1, max_length = 200)]
     pub q: String,
 }
 pub struct FileBytes;

@@ -7,6 +7,135 @@ use test_support::{TEST_PASSWORD, TestDatabase};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL; run just test-api"]
+async fn recovery_code_endpoint_replaces_codes_once_and_clears_the_session() -> anyhow::Result<()> {
+    let database = TestDatabase::create().await?;
+    let settings = support::settings(&database)?;
+    let app = bootstrap(&settings).await?;
+    let (actor, original_session) = database.verified_account(&app.identity).await?;
+    let email = app.identity.get_account(&actor).await?.email;
+    let server = TestServer::new(build_router(app.clone(), settings.http));
+    let authorization = format!("Bearer {}", original_session.token);
+    let enrollment = server
+        .post("/api/v1/account/totp")
+        .add_header(header::AUTHORIZATION, &authorization)
+        .await;
+    enrollment.assert_status_ok();
+    let enrollment: Value = enrollment.json();
+    let authenticator = totp_rs::Totp::from_url(enrollment["authenticator_url"].as_str().unwrap())?;
+    let response = server.post("/api/v1/account/totp/confirm").add_header(header::AUTHORIZATION, &authorization)
+        .json(&json!({"challenge":enrollment["challenge"], "code":authenticator.generate_current().to_string()})).await;
+    response.assert_status_ok();
+    let codes: Value = response.json();
+    let login = server
+        .post("/api/v1/auth/login")
+        .json(&json!({"email":email,"password":TEST_PASSWORD,"transport":"bearer"}))
+        .await;
+    login.assert_status_ok();
+    let login: Value = login.json();
+    let authenticated = server
+        .post("/api/v1/auth/mfa")
+        .json(&json!({"challenge":login["challenge"],
+        "proof":{"kind":"recovery_code","code":codes["recovery_codes"][0]},"transport":"bearer"}))
+        .await;
+    authenticated.assert_status_ok();
+    let authenticated: Value = authenticated.json();
+    let authorization = format!("Bearer {}", authenticated["token"].as_str().unwrap());
+    let response = server
+        .post("/api/v1/account/recovery-codes")
+        .add_header(header::AUTHORIZATION, &authorization)
+        .json(&json!({"kind":"recovery_code","code":codes["recovery_codes"][1]}))
+        .await;
+    response.assert_status_ok();
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    assert!(
+        response.headers()[header::SET_COOKIE]
+            .to_str()?
+            .contains("Max-Age=0")
+    );
+    let replacements: Value = response.json();
+    assert_eq!(replacements["recovery_codes"].as_array().unwrap().len(), 10);
+    server
+        .get("/api/v1/account")
+        .add_header(header::AUTHORIZATION, &authorization)
+        .await
+        .assert_status_unauthorized();
+    let login: Value = server
+        .post("/api/v1/auth/login")
+        .json(&json!({"email":email,"password":TEST_PASSWORD,"transport":"bearer"}))
+        .await
+        .json();
+    server
+        .post("/api/v1/auth/mfa")
+        .json(&json!({"challenge":login["challenge"],
+        "proof":{"kind":"recovery_code","code":codes["recovery_codes"][2]},"transport":"bearer"}))
+        .await
+        .assert_status_unauthorized();
+    server.post("/api/v1/auth/mfa").json(&json!({"challenge":login["challenge"],
+        "proof":{"kind":"recovery_code","code":replacements["recovery_codes"][0]},"transport":"bearer"})).await.assert_status_ok();
+    app.close().await?;
+    database.finish().await
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; run just test-api"]
+async fn dto_validation_reuses_domain_rules_without_exposing_submitted_secrets()
+-> anyhow::Result<()> {
+    let database = TestDatabase::create().await?;
+    let settings = support::settings(&database)?;
+    let app = bootstrap(&settings).await?;
+    let server = TestServer::new(build_router(app.clone(), settings.http));
+    let overlong_password = "비".repeat(342);
+    let response = server
+        .post("/api/v1/auth/signup")
+        .json(&json!({"email":"unicode@example.test", "password":overlong_password}))
+        .await;
+    response.assert_status_bad_request();
+    assert!(!response.text().contains(&overlong_password));
+    assert!(matches!(
+        app.identity
+            .register_account(
+                "unicode@example.test",
+                overlong_password,
+                jobs::TraceContext::default()
+            )
+            .await,
+        Err(application::ApplicationError::InvalidInput(_))
+    ));
+    server
+        .post("/api/v1/auth/signup")
+        .json(&json!({"email":"unicode@example.test", "password":"비".repeat(15)}))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    server.post("/api/v1/auth/mfa")
+        .json(&json!({"challenge":"invalid", "proof":{"kind":"totp", "code":""}, "transport":"bearer"})).await
+        .assert_status_bad_request();
+    let (actor, credentials) = database.verified_account(&app.identity).await?;
+    let email = app.identity.get_account(&actor).await?.email;
+    server
+        .post("/api/v1/auth/login")
+        .json(&json!({"email":email, "password":"wrong", "transport":"bearer"}))
+        .await
+        .assert_status_unauthorized();
+    let authorization = format!("Bearer {}", credentials.token);
+    server
+        .post("/api/v1/organizations")
+        .add_header(header::AUTHORIZATION, &authorization)
+        .json(&json!({"name":"  "}))
+        .await
+        .assert_status_bad_request();
+    let response = server
+        .post("/api/v1/organizations")
+        .add_header(header::AUTHORIZATION, &authorization)
+        .json(&json!({"name":"  Valid name  "}))
+        .await;
+    response.assert_status(StatusCode::CREATED);
+    assert_eq!(response.json::<Value>()["name"], "Valid name");
+    app.close().await?;
+    database.finish().await
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; run just test-api"]
 async fn organizations_are_scoped_for_detail_list_and_updates() -> anyhow::Result<()> {
     let database = TestDatabase::create().await?;
     let settings = support::settings(&database)?;

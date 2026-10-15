@@ -9,7 +9,7 @@ use utoipa::{
     identity::signup, identity::request_verification, identity::verify_email, identity::login, identity::complete_mfa,
     identity::request_reset, identity::reset_password, identity::get_account, identity::deactivate_account, identity::change_password,
     identity::list_sessions, identity::revoke_session, identity::revoke_all_sessions, identity::rotate_session,
-    identity::begin_totp, identity::confirm_totp, identity::disable_totp,
+    identity::begin_totp, identity::confirm_totp, identity::disable_totp, identity::regenerate_recovery_codes,
     organizations::create_organization, organizations::get_organization, organizations::list_organizations, organizations::rename_organization,
     oidc::begin_login, oidc::begin_link, oidc::callback, oidc::list_identities, oidc::unlink_identity,
     files::reserve_file, files::list_files, files::get_file, files::upload_original, files::delete_file,

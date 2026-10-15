@@ -26,3 +26,6 @@ logs environment="production" *services:
 
 manage environment +arguments:
     docker compose --env-file {{environment}}.env -f compose.yml run --rm manage {{arguments}}
+
+cleanup environment="production":
+    docker compose --env-file {{environment}}.env -f compose.yml run --rm maintenance

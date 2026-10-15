@@ -467,6 +467,9 @@ async fn explicit_linking_does_not_merge_email_and_oidc_cannot_bypass_mfa() -> R
             TraceContext::default(),
         )
         .await?;
+    identity
+        .set_administrator_by_operator(actor.account_id(), true, TraceContext::default())
+        .await?;
     let redirect = oidc.begin_authorization("test", None, None).await?;
     let (state, code) = provider.authorize(&redirect, &email, "linked-subject", false, false)?;
     let CallbackOutcome::Login(LoginOutcome::MfaRequired { challenge }) = oidc
@@ -496,5 +499,29 @@ async fn explicit_linking_does_not_merge_email_and_oidc_cannot_bypass_mfa() -> R
             .account_id(),
         actor.account_id()
     );
+    use application::identity::entities::account;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, sea_query::Expr};
+    account::Entity::update_many()
+        .col_expr(
+            account::Column::TotpSecret,
+            Expr::value(Option::<String>::None),
+        )
+        .filter(account::Column::Id.eq(actor.account_id()))
+        .exec(&database.connection)
+        .await?;
+    let redirect = oidc.begin_authorization("test", None, None).await?;
+    let (state, code) = provider.authorize(&redirect, &email, "linked-subject", false, false)?;
+    assert!(matches!(
+        oidc.complete_authorization(
+            "test",
+            &state,
+            &redirect.browser_binding,
+            Some(&code),
+            None,
+            TraceContext::default()
+        )
+        .await,
+        Err(ApplicationError::Unauthenticated)
+    ));
     database.finish().await
 }

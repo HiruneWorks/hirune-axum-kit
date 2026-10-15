@@ -26,7 +26,8 @@ pub async fn consume_rate_limit(
                 rate_limit::Column::Attempts,
                 Expr::case(expired.clone(), 1).finally(Func::cust("least").args([
                     Expr::col((rate_limit::Entity, rate_limit::Column::Attempts)).add(1),
-                    Expr::value(601),
+                    // A shared ceiling must exceed every supported per-instance budget.
+                    Expr::value(crate::config::MAX_AUTHENTICATION_ATTEMPTS_PER_MINUTE + 1),
                 ])),
             )
             .value(

@@ -396,20 +396,9 @@ fn validate_reservation(input: &ReserveFile, settings: &FileSettings) -> Applica
     if input.byte_size > settings.max_file_bytes {
         return Err(ApplicationError::FileTooLarge);
     }
-    if input.filename.is_empty()
-        || input.filename.len() > 255
-        || input
-            .filename
-            .chars()
-            .any(|character| character.is_control() || matches!(character, '/' | '\\'))
-        || matches!(input.filename.as_str(), "." | "..")
-        || input.media_type.as_ref().is_some_and(|media_type| {
-            media_type.len() > 120
-                || !media_type.is_ascii()
-                || media_type.bytes().any(|byte| byte.is_ascii_control())
-        })
-    {
-        return Err(ApplicationError::InvalidInput("invalid file metadata"));
+    super::validation::validate_filename(&input.filename)?;
+    if let Some(media_type) = &input.media_type {
+        super::validation::validate_media_type(media_type)?;
     }
     Ok(())
 }

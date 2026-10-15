@@ -16,10 +16,13 @@ use tracing::Instrument;
 pub(super) fn acquire_transfer(
     permits: &Arc<Semaphore>,
 ) -> ApplicationResult<OwnedSemaphorePermit> {
-    permits
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| ApplicationError::IntegrationUnavailable)
+    permits.clone().try_acquire_owned().map_err(|_| {
+        tracing::warn!(
+            error_code = "file_transfer_capacity",
+            "file transfer capacity exhausted"
+        );
+        ApplicationError::IntegrationUnavailable
+    })
 }
 
 pub(super) async fn spool_original(

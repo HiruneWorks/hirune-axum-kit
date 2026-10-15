@@ -7,14 +7,14 @@ use axum::{
 };
 use cookie::Cookie;
 use serde::de::DeserializeOwned;
+use validator::Validate;
 
 pub struct ApiJson<T>(pub T);
-impl<T: DeserializeOwned + Send, S: Send + Sync> FromRequest<S> for ApiJson<T> {
+impl<T: DeserializeOwned + Validate + Send, S: Send + Sync> FromRequest<S> for ApiJson<T> {
     type Rejection = ApiError;
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
-        Json::<T>::from_request(request, state)
+        let Json(value) = Json::<T>::from_request(request, state)
             .await
-            .map(|Json(value)| Self(value))
             .map_err(|error| {
                 if error.status() == StatusCode::PAYLOAD_TOO_LARGE {
                     ApiError::new(
@@ -25,17 +25,21 @@ impl<T: DeserializeOwned + Send, S: Send + Sync> FromRequest<S> for ApiJson<T> {
                 } else {
                     ApiError::invalid_input()
                 }
-            })
+            })?;
+        // Validation errors may contain submitted secrets; never log or serialize them.
+        value.validate().map_err(|_| ApiError::invalid_input())?;
+        Ok(Self(value))
     }
 }
 pub struct ApiQuery<T>(pub T);
-impl<T: DeserializeOwned + Send, S: Send + Sync> FromRequestParts<S> for ApiQuery<T> {
+impl<T: DeserializeOwned + Validate + Send, S: Send + Sync> FromRequestParts<S> for ApiQuery<T> {
     type Rejection = ApiError;
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        Query::<T>::from_request_parts(parts, state)
+        let Query(value) = Query::<T>::from_request_parts(parts, state)
             .await
-            .map(|Query(value)| Self(value))
-            .map_err(|_| ApiError::invalid_input())
+            .map_err(|_| ApiError::invalid_input())?;
+        value.validate().map_err(|_| ApiError::invalid_input())?;
+        Ok(Self(value))
     }
 }
 pub struct ApiPath<T>(pub T);

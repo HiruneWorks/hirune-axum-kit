@@ -1,7 +1,7 @@
 use super::{
     AccountSummary, AuthenticatedSession, IdentityService, SessionCredentials, SessionSummary,
     repository::{accounts, security, sessions},
-    service::principal,
+    service::{principal, require_authenticatable_account},
 };
 use crate::{
     ApplicationError, ApplicationResult,
@@ -31,6 +31,7 @@ impl IdentityService {
         let account = accounts::lock_account(&transaction, snapshot.account_id)
             .await?
             .ok_or(ApplicationError::Unauthenticated)?;
+        require_authenticatable_account(&account)?;
         let session = sessions::find_by_hash(&transaction, &token_hash)
             .await?
             .ok_or(ApplicationError::Unauthenticated)?;

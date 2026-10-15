@@ -2,7 +2,7 @@ use super::{
     IdentityService,
     entities::{account, challenge},
     repository::{accounts, challenges, security},
-    service::normalize_email,
+    validation::normalize_email,
 };
 use crate::{ApplicationError, ApplicationResult};
 use auth_core::token::hash_token;

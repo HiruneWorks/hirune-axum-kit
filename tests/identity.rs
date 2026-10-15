@@ -12,6 +12,9 @@ use sea_orm::{EntityTrait, PaginatorTrait, TransactionTrait};
 use test_support::{TEST_PASSWORD, TestDatabase};
 use uuid::Uuid;
 
+#[path = "identity/hardening.rs"]
+mod hardening;
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL; run just test-db"]
 async fn registration_persists_encrypted_mail_and_durable_job() -> anyhow::Result<()> {
@@ -127,7 +130,7 @@ async fn authentication_cleanup_preserves_a_concurrent_idle_extension() -> anyho
     let (actor, credentials) = database.verified_account(&identity).await?;
     let (expired_actor, _) = database.verified_account(&identity).await?;
     let now = database_time(&database.connection).await?;
-    let previous_idle_deadline = now + chrono::Duration::seconds(2);
+    let previous_idle_deadline = now - chrono::Duration::seconds(1);
     session::Entity::update_many()
         .col_expr(
             session::Column::IdleExpiresAt,
@@ -145,6 +148,7 @@ async fn authentication_cleanup_preserves_a_concurrent_idle_extension() -> anyho
         .exec(&database.connection)
         .await?;
 
+    // Model the cleaner's expired snapshot while an idle extension remains uncommitted.
     let extension = database.connection.begin().await?;
     account::Entity::find_by_id(actor.account_id())
         .lock_exclusive()
@@ -158,14 +162,6 @@ async fn authentication_cleanup_preserves_a_concurrent_idle_extension() -> anyho
         .filter(session::Column::Id.eq(actor.session_id()))
         .exec(&extension)
         .await?;
-    anyhow::ensure!(
-        database_time(&extension).await? < previous_idle_deadline,
-        "fixture must extend the session before its previous deadline"
-    );
-    while database_time(&database.connection).await? <= previous_idle_deadline {
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-
     let cleanup_identity = identity.clone();
     let cleanup =
         tokio::spawn(async move { cleanup_identity.cleanup_expired_authentication().await });

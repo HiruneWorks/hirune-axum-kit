@@ -9,6 +9,9 @@ use std::time::Duration;
 use test_support::TestDatabase;
 use uuid::Uuid;
 
+#[path = "jobs/retention.rs"]
+mod retention;
+
 async fn queued_job(database: &TestDatabase) -> anyhow::Result<Uuid> {
     let transaction = database.connection.begin().await?;
     let job_id = Uuid::now_v7();
@@ -89,7 +92,7 @@ async fn retry_delay_and_success_retention_preserve_failed_jobs() -> anyhow::Res
         .filter(job::Column::Id.is_in([job_id, failed_id]))
         .exec(&database.connection)
         .await?;
-    assert_eq!(queue.cleanup_succeeded().await?, 1);
+    assert_eq!(queue.cleanup_finished(30, 90).await?, 1);
     assert!(
         job::Entity::find_by_id(job_id)
             .one(&database.connection)

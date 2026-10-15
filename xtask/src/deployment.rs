@@ -17,6 +17,10 @@ pub fn verify() -> Result<()> {
             ".envs/.example/production/migration.env",
             ".envs/.production/migration.env",
         ),
+        (
+            ".envs/.example/production/maintenance.env",
+            ".envs/.production/maintenance.env",
+        ),
     ] {
         fs::copy(source, root.join(destination))?;
     }
@@ -65,6 +69,19 @@ pub fn verify() -> Result<()> {
             "runtime filesystem must be read-only"
         );
     }
+    ensure!(
+        services["maintenance"]["environment"]["DATABASE_URL"]
+            .as_str()
+            .context("maintenance database missing")?
+            .contains("maintenance:"),
+        "maintenance must use its own role"
+    );
+    ensure!(
+        services["maintenance"]["environment"]
+            .get("MIGRATION_DATABASE_URL")
+            .is_none(),
+        "maintenance received schema-owner credentials"
+    );
     ensure!(
         services["migration"]["environment"]
             .get("DATABASE_URL")

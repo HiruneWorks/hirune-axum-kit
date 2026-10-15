@@ -43,6 +43,8 @@
             "type": "string"
           },
           "new_password": {
+            "description": "At least 15 Unicode characters and at most 1024 UTF-8 bytes.",
+            "minLength": 15,
             "type": "string"
           }
         },
@@ -287,6 +289,8 @@
         "additionalProperties": false,
         "properties": {
           "challenge": {
+            "maxLength": 1024,
+            "minLength": 1,
             "type": "string"
           },
           "proof": {
@@ -357,6 +361,7 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "Trimmed name must contain 1 to 100 Unicode characters.",
             "type": "string"
           }
         },
@@ -432,6 +437,8 @@
             "type": "string"
           },
           "password": {
+            "description": "At least 15 Unicode characters and at most 1024 UTF-8 bytes.",
+            "minLength": 15,
             "type": "string"
           }
         },
@@ -446,9 +453,11 @@
         "properties": {
           "expected_version": {
             "format": "int64",
+            "minimum": 1,
             "type": "integer"
           },
           "name": {
+            "description": "Trimmed name must contain 1 to 100 Unicode characters.",
             "type": "string"
           }
         },
@@ -467,9 +476,11 @@
             "type": "integer"
           },
           "filename": {
+            "description": "Display filename: 1 to 255 UTF-8 bytes, without path separators or control characters.",
             "type": "string"
           },
           "media_type": {
+            "maxLength": 120,
             "type": [
               "string",
               "null"
@@ -486,9 +497,13 @@
         "additionalProperties": false,
         "properties": {
           "new_password": {
+            "description": "At least 15 Unicode characters and at most 1024 UTF-8 bytes.",
+            "minLength": 15,
             "type": "string"
           },
           "token": {
+            "maxLength": 1024,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -556,6 +571,8 @@
         "additionalProperties": false,
         "properties": {
           "token": {
+            "maxLength": 1024,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -568,9 +585,13 @@
         "additionalProperties": false,
         "properties": {
           "challenge": {
+            "maxLength": 1024,
+            "minLength": 1,
             "type": "string"
           },
           "code": {
+            "maxLength": 1024,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1391,6 +1412,143 @@
         ],
         "tags": [
           "Account"
+        ]
+      }
+    },
+    "/api/v1/account/recovery-codes": {
+      "post": {
+        "operationId": "regenerate_recovery_codes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaProofInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Request deadline elapsed"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Conflicting state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Body too large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Too many attempts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "MFA"
         ]
       }
     },
@@ -2982,7 +3140,8 @@
             "required": true,
             "schema": {
               "format": "int64",
-              "minimum": 0,
+              "maximum": 100,
+              "minimum": 1,
               "type": [
                 "integer",
                 "null"
@@ -2994,6 +3153,7 @@
             "name": "cursor",
             "required": true,
             "schema": {
+              "maxLength": 512,
               "type": [
                 "string",
                 "null"
@@ -3563,7 +3723,8 @@
             "required": true,
             "schema": {
               "format": "int64",
-              "minimum": 0,
+              "maximum": 100,
+              "minimum": 1,
               "type": [
                 "integer",
                 "null"
@@ -3575,6 +3736,7 @@
             "name": "cursor",
             "required": true,
             "schema": {
+              "maxLength": 512,
               "type": [
                 "string",
                 "null"
@@ -3870,6 +4032,8 @@
             "name": "q",
             "required": true,
             "schema": {
+              "maxLength": 200,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -4882,7 +5046,8 @@
             "required": true,
             "schema": {
               "format": "int64",
-              "minimum": 0,
+              "maximum": 100,
+              "minimum": 1,
               "type": [
                 "integer",
                 "null"
@@ -4894,6 +5059,7 @@
             "name": "cursor",
             "required": true,
             "schema": {
+              "maxLength": 512,
               "type": [
                 "string",
                 "null"

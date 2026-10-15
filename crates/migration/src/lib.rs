@@ -14,6 +14,8 @@ mod m20261013_000011_create_jobs;
 mod m20261013_000012_create_job_attempts;
 mod m20261013_000013_create_audit_events;
 mod m20261013_000014_create_files;
+mod m20261015_000015_index_audit_retention;
+mod m20261015_000016_index_job_retention;
 
 pub struct Migrator;
 
@@ -47,6 +49,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000012_create_job_attempts::Migration),
             Box::new(m20261013_000013_create_audit_events::Migration),
             Box::new(m20261013_000014_create_files::Migration),
+            Box::new(m20261015_000015_index_audit_retention::Migration),
+            Box::new(m20261015_000016_index_job_retention::Migration),
         ]
     }
 }

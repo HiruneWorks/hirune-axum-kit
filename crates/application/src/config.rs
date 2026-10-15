@@ -97,6 +97,8 @@ pub struct IdentitySettings {
     pub secret_keys: SecretKeys,
     pub rate_limit_key: SecretString,
     pub password_concurrency: usize,
+    pub authentication_identity_limit_per_minute: i32,
+    pub authentication_client_limit_per_minute: i32,
     pub session_idle_seconds: i64,
     pub session_absolute_seconds: i64,
 }
@@ -105,6 +107,10 @@ impl IdentitySettings {
         if self.application_name.is_empty()
             || self.password_concurrency == 0
             || self.password_concurrency > 64
+            || !(1..=MAX_AUTHENTICATION_ATTEMPTS_PER_MINUTE)
+                .contains(&self.authentication_identity_limit_per_minute)
+            || !(1..=MAX_AUTHENTICATION_ATTEMPTS_PER_MINUTE)
+                .contains(&self.authentication_client_limit_per_minute)
             || self.session_idle_seconds < 60
             || self.session_absolute_seconds < self.session_idle_seconds
             || self.rate_limit_key.expose().len() < 32
@@ -114,6 +120,8 @@ impl IdentitySettings {
         Ok(())
     }
 }
+
+pub(crate) const MAX_AUTHENTICATION_ATTEMPTS_PER_MINUTE: i32 = 100_000;
 
 #[cfg(test)]
 mod tests {

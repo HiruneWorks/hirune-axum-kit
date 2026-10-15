@@ -69,8 +69,10 @@ aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["rt-to
 bytes = "1.11.1"
 futures-util = "0.3.32"
 percent-encoding = "2.3.2"
+validator = { version = "0.21.0", features = ["derive"] }
 
 [dependencies]
+validator.workspace = true
 application.workspace = true
 jobs.workspace = true
 mail.workspace = true

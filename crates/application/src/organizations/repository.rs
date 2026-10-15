@@ -2,7 +2,8 @@ use super::entities::{membership, organization};
 use crate::pagination::PageRequest;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Query,
+    IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set,
+    sea_query::{LockType, Query},
 };
 use uuid::Uuid;
 
@@ -34,8 +35,9 @@ pub async fn lock_organization(
     transaction: &DatabaseTransaction,
     organization_id: Uuid,
 ) -> Result<Option<organization::Model>, DbErr> {
+    // Serialize organization changes without blocking child foreign-key checks.
     organization::Entity::find_by_id(organization_id)
-        .lock_exclusive()
+        .lock(LockType::NoKeyUpdate)
         .one(transaction)
         .await
 }

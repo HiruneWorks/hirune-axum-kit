@@ -1,4 +1,4 @@
-use super::{entities::organization, repository};
+use super::{entities::organization, repository, validation::normalize_name};
 use crate::{
     ApplicationError, ApplicationResult,
     authorization::Action,
@@ -55,7 +55,7 @@ impl OrganizationService {
         actor: &AuthenticatedSession,
         name: String,
     ) -> ApplicationResult<OrganizationSummary> {
-        let name = validate_name(name)?;
+        let name = normalize_name(&name)?;
         self.identity
             .lock_authenticated_account(transaction, actor, false)
             .await?;
@@ -140,7 +140,7 @@ impl OrganizationService {
         expected_version: i64,
         name: String,
     ) -> ApplicationResult<OrganizationSummary> {
-        let name = validate_name(name)?;
+        let name = normalize_name(&name)?;
         let transaction = self.identity.database.begin().await?;
         let account = self
             .identity
@@ -167,14 +167,4 @@ impl OrganizationService {
         transaction.commit().await?;
         Ok(updated.into())
     }
-}
-
-fn validate_name(name: String) -> ApplicationResult<String> {
-    let name = name.trim();
-    if name.is_empty() || name.chars().count() > 100 {
-        return Err(ApplicationError::InvalidInput(
-            "organization name must contain 1 to 100 characters",
-        ));
-    }
-    Ok(name.into())
 }

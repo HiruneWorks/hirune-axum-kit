@@ -8,6 +8,7 @@ mod middleware;
 mod oidc;
 mod openapi;
 mod organizations;
+mod validation;
 
 use crate::{bootstrap::Application, config::HttpSettings};
 use axum::{
@@ -100,6 +101,10 @@ pub fn build_router(app: Application, settings: HttpSettings) -> Router {
             post(identity::begin_totp).delete(identity::disable_totp),
         )
         .route("/api/v1/account/totp/confirm", post(identity::confirm_totp))
+        .route(
+            "/api/v1/account/recovery-codes",
+            post(identity::regenerate_recovery_codes),
+        )
         .route(
             "/api/v1/sessions",
             get(identity::list_sessions).delete(identity::revoke_all_sessions),

@@ -2,7 +2,8 @@ use super::{
     AuthenticatedSession, IdentityService, LoginOutcome,
     entities::oauth_flow,
     repository::{accounts, oauth, security, sessions},
-    service::{normalize_email, principal},
+    service::principal,
+    validation::normalize_email,
 };
 use crate::{ApplicationError, ApplicationResult, config::SecretString, database::database_time};
 use auth_core::token::{generate_secure_token, hash_token};

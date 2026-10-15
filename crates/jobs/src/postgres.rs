@@ -271,20 +271,39 @@ impl PostgresQueue {
         Ok(())
     }
 
-    pub async fn cleanup_succeeded(&self) -> Result<u64, JobError> {
+    pub async fn cleanup_finished(
+        &self,
+        succeeded_days: i64,
+        failed_days: i64,
+    ) -> Result<u64, JobError> {
+        if !(1..=36500).contains(&succeeded_days) || !(1..=36500).contains(&failed_days) {
+            return Err(JobError::Invalid);
+        }
         let transaction = self.database.begin().await?;
-        let cutoff = database_time(&transaction).await? - Duration::days(30);
+        let now = database_time(&transaction).await?;
+        let expired = Condition::any()
+            .add(
+                Condition::all()
+                    .add(job::Column::State.eq("succeeded"))
+                    .add(job::Column::FinishedAt.lt(now - Duration::days(succeeded_days))),
+            )
+            .add(
+                Condition::all()
+                    .add(job::Column::State.eq("failed"))
+                    .add(job::Column::FinishedAt.lt(now - Duration::days(failed_days))),
+            );
         let eligible = job::Entity::find()
             .select_only()
             .column(job::Column::Id)
-            .filter(job::Column::State.eq("succeeded"))
-            .filter(job::Column::FinishedAt.lt(cutoff))
+            .filter(expired.clone())
+            .order_by_asc(job::Column::FinishedAt)
             .order_by_asc(job::Column::Id)
-            .limit(1000)
+            .limit(100)
             .into_query();
         let deleted = job::Entity::delete_many()
             .filter(job::Column::Id.in_subquery(eligible))
-            .filter(job::Column::State.eq("succeeded"))
+            // Retry or completion may change both state and timestamp while deletion waits.
+            .filter(expired)
             .exec(&transaction)
             .await?;
         transaction.commit().await?;

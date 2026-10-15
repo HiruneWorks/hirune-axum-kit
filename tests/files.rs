@@ -1,5 +1,8 @@
 mod support;
 
+#[path = "files/locking.rs"]
+mod locking;
+
 use anyhow::Context;
 use application::{
     ApplicationError,
