@@ -28,8 +28,11 @@ and 30 reservations per uploader per minute. These limits are configurable.
 State transitions are `uploading -> transferring -> ready -> deleting -> deleted`.
 An upload key is generated once and never reused. Storage I/O occurs outside DB
 locks. Finalization rechecks session, membership, deadline, and state under the
-same account -> organization -> file lock order. Expired/failed transfers remain
-inaccessible and are reconciled by maintenance. Deletion immediately denies new
+same account -> organization -> file lock order. Follow the
+[transaction boundaries](../transaction-boundaries.md): parent
+business locks allow foreign-key existence checks from background file updates.
+Expired/failed transfers remain inaccessible and are reconciled by maintenance.
+Deletion immediately denies new
 reads; durable jobs remove bytes. Retained tombstones permit repeated cleanup of
 late uploads. Cleanup schedules repeat deletion at most once per hour per
 tombstone. After the configured retention (30 days), metadata can be purged only

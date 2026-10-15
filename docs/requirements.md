@@ -18,6 +18,9 @@ claim that every verification step has already passed.
 | Migrations | One table with its own indexes and constraints per baseline migration. Subsequent migrations have a clear schema responsibility. |
 | Scaling | Replaceable stateless API instances; shared state outside processes; independently scalable workers. |
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
+| Privileged authentication | Global administrators must have confirmed TOTP enrollment. Role changes use an operator command, invalidate existing credentials, and are audited. Ordinary accounts may choose MFA. |
+| Password screening | No external screening service. A local common/breached-password blocklist is deferred; do not add one without a new decision. |
+| Retention | Configurable defaults: succeeded jobs 30 days, failed jobs 90 days, audit events 180 days. Cleanup is bounded and explicitly scheduled; runtime audit access stays append-only. |
 | Device policy | New-device email verification is excluded from the default template. Use MFA for the additional authentication factor. |
 | Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. |
 | Files | Original bytes in a separate private S3-compatible SeaweedFS store; PostgreSQL owns metadata, permissions, quota reservations, and lifecycle. No default content sanitization, antivirus, image reencoding, video processing, or media processor. |
@@ -39,10 +42,12 @@ flows, rate limits, and jobs. A future cache must have explicit consistency and
 failure semantics and must never authorize a revoked session. Provider public
 key caching is separate from account and session authority.
 
-Password signup requires email verification. MFA is optional per account, but once
-enabled it applies to every supported primary login method. New-device email
-verification is intentionally excluded. OIDC linking requires an authenticated
-account; matching email addresses alone do not merge accounts.
+Password signup requires email verification. MFA is optional for ordinary accounts
+and mandatory for global administrators. Once enabled it applies to every supported
+primary login method. Recovery-code regeneration requires recent authentication
+and a fresh factor proof, replaces all codes, and invalidates existing credentials.
+New-device email verification is intentionally excluded. OIDC linking requires an
+authenticated account; matching email addresses alone do not merge accounts.
 
 ## Scope boundaries
 

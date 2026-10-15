@@ -30,6 +30,7 @@ just test-api
 just test-process
 just test-files
 just test-deployment
+just test-production
 just load-test
 just template-check
 ```
@@ -38,6 +39,8 @@ Database and process commands create disposable, uniquely named Compose projects
 and isolated test databases. See [development](docs/development.md) for external
 local infrastructure, test prerequisites, and load-test profiles. CI uses the same
 commands; checked-in workflows are not evidence of a successful remote run.
+The production check builds a release image and uses local HTTPS, STARTTLS, and
+database restoration fixtures. It does not deploy the application.
 
 ## Optional file storage and search
 

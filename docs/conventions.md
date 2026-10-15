@@ -55,6 +55,13 @@ Keep omitted fields distinct from explicit null when an update supports both.
 Do not return ORM models, silently truncate credentials, erase storage failures,
 or use a broad fallback to turn an internal error into an anonymous user.
 
+JSON and query DTOs implement `validator::Validate`; the shared extractors validate
+after deserialization. Reuse pure domain validation through HTTP adapters instead
+of duplicating value rules. Services repeat those checks for non-HTTP callers and
+own all mutable authority checks. `ToSchema` documents a contract; it does not
+validate it. Never log or return validation error parameters, which can contain
+submitted secrets. See [API conventions](api.md).
+
 ## Runtime and operations
 
 Keep `.envs/`, `compose/`, and `deploy/` responsibilities explicit. Commit only
@@ -63,6 +70,10 @@ build configuration belongs in `compose/`; deployment selectors and operator
 commands belong in `deploy/`. `just` or the deployment injects settings, and
 executables read that environment. Do not add implicit root-dotenv discovery or
 pass schema-owner credentials to API/worker processes.
+
+Keep runtime audit access append-only. Retention cleanup uses a separate restricted
+maintenance role with audit deletion, not migration credentials. Schedule bounded
+cleanup explicitly; do not start schedulers during application bootstrap.
 
 API and worker processes are independently replaceable instances of one modular
 monolith. Shared PostgreSQL state owns sessions, MFA and OIDC flows, rate limits,

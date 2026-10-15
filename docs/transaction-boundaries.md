@@ -13,6 +13,20 @@ authentication under that account lock before sensitive operations. Organization
 mutations then lock the organization and check membership, policy, and version.
 Never reverse this order in another endpoint or worker.
 
+Canonical account and organization locks use `FOR NO KEY UPDATE`. They serialize
+business mutations while allowing the `FOR KEY SHARE` existence checks taken by
+child foreign keys. File workers can therefore finish lifecycle updates while
+an authorized request holds its parent locks and waits for the file row. Using
+`FOR UPDATE` for those parent reads creates a cycle with the child's implicit
+foreign-key locks, including checks from successive updates in one transaction.
+Keep file lifecycle locks and final authority checks in place.
+
+Current parent mutations change flags, credentials, names, and versions. Adding
+parent deletion or changes to a foreign-key-eligible unique key, including the
+unique account email, requires a new lock-order review: PostgreSQL can acquire
+`FOR UPDATE` for those writes even when all actual references use UUIDs. See
+[PostgreSQL row locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS).
+
 Email and MFA challenges are discovered before locking their account, then
 re-read and consumed conditionally under the account lock. Expiry is checked at
 consumption. TOTP replay state belongs to the account, not an individual challenge;

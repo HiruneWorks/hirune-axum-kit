@@ -22,7 +22,13 @@ connection limit. Run migrations first. Bootstrap checks migration history using
 a read-only query and refuses an outdated schema; it does not apply DDL.
 Use a schema-owner migration role and a runtime role restricted to the required
 tables, sequences if introduced by dependencies, and migration-history SELECT.
-Development Compose uses a privileged local role solely for convenience/testing.
+Runtime audit access is append-only: it must not update or delete audit events.
+A separate maintenance role adds the audit deletion needed by retention while
+retaining the other permissions needed for cleanup; it must not own the schema
+or have DDL privileges. Deployment Compose injects this role only into its explicit
+maintenance service. Provision and verify these database grants in the deployment;
+separate environment files alone do not enforce permissions. Development Compose
+uses a privileged local role solely for convenience/testing.
 
 ## Configuration
 
@@ -38,6 +44,14 @@ OIDC_REDIRECT_URL, and OIDC_PROVIDER. Without them, the app starts without OIDC.
 Configured providers must be reachable for initial discovery. SENTRY_DSN is optional;
 SENTRY_SAMPLE_RATE controls performance sampling when enabled. The SMTP server
 need not be reachable at API startup; delivery failure follows the queue contract.
+
+Authentication budgets are `AUTH_IDENTITY_LIMIT_PER_MINUTE` (default 10 per
+operation/identity) and `AUTH_CLIENT_LIMIT_PER_MINUTE` (default 60 shared across
+authentication routes per client). Both accept 1 through 100000. Retention settings
+are `SUCCEEDED_JOB_RETENTION_DAYS` (30), `FAILED_JOB_RETENTION_DAYS` (90), and
+`AUDIT_RETENTION_DAYS` (180), each from 1 through 36500 days. API, worker, and
+management settings should agree across replicas; changing a limit does not reset
+shared counters.
 
 Behind a proxy, configure exact ALLOWED_ORIGINS and the explicit TRUSTED_PROXY_IPS
 contract in [security](security.md). Protect the backend from direct untrusted
@@ -61,7 +75,10 @@ SIGTERM/Ctrl-C changes readiness and begins bounded shutdown. Liveness reports
 process availability; readiness also requires the database and an accepting API.
 The API drains for at most thirty seconds. Workers stop claiming and drain for
 WORKER_DRAIN_SECONDS, then cancel unfinished tasks; leases recover them later.
-Schedule `manage cleanup` outside application startup. See [jobs and mail](behavior/jobs-and-mail.md).
+Schedule `manage cleanup` outside application startup using the restricted
+maintenance role. The [deployment examples](../deploy/README.md) include an
+optional systemd timer for cleanup and search repair; installing or enabling it
+is an operator action. See [jobs and mail](behavior/jobs-and-mail.md).
 
 ## Container
 

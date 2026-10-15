@@ -14,3 +14,6 @@ This index is updated when a milestone is complete.
 - [2026-10-13 — Integrated template verification](2026-10-13-integration-verification.md):
   combined local suites, extended k6, successful implementation CI, copied-template
   validation, and Linux release-image build evidence.
+- [2026-10-15 — Authentication, retention, and runtime verification](2026-10-15-security-and-verification.md):
+  typed validation, administrator MFA, recovery-code replacement, bounded retention,
+  mixed workloads, foreign-key lock ordering, and release-runtime acceptance.

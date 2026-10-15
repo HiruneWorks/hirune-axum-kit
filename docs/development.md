@@ -18,7 +18,8 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just infra-up-files` | Start PostgreSQL, Mailpit, SeaweedFS, and Meilisearch with local-only credentials. |
 | `just migrate` | Apply SeaORM migrations under a PostgreSQL advisory transaction lock. |
 | `just api` / `just worker` | Start the actual API/worker executable. |
-| `just manage cleanup` | Remove bounded batches of expired authentication rows and old successful jobs, and reconcile file cleanup. |
+| `just manage cleanup` | Remove bounded expired authentication/audit/finished-job batches and reconcile files; production uses the maintenance role through `deploy/justfile cleanup`. |
+| `just manage set-administrator <uuid> <true\|false>` | Operator-only role change; promotion requires enrolled MFA and changes revoke existing credentials. |
 | `just manage retry-job <uuid>` | Retry a retained failed job without erasing its attempt history. |
 | `just manage initialize-integrations` | Explicitly create the configured private bucket and file search index/settings; safe to repeat. |
 | `just manage repair-search` | Queue a bounded batch of current file metadata for index reconciliation. |
@@ -28,8 +29,9 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-api` | Production-router API tests and local signed OIDC provider tests. |
 | `just test-process` | Separate API/worker processes, real HTTP, Mailpit SMTP, worker replacement, shared session revocation, and log secrecy. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
-| `just test-deployment` | Validate local/deployment Compose and separation of runtime and migration credentials using temporary example files. |
-| `just load-test` | Docker k6 smoke thresholds against a real API process. |
+| `just test-deployment` | Validate local/deployment Compose and separation of runtime, maintenance, and migration credentials using temporary example files. |
+| `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
+| `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
 | `just template-check` | Copy/rename the source into a temporary directory and run its workspace and identity/database tests. |
 
@@ -53,14 +55,45 @@ generated `kit_test_` names before explicit cleanup.
 
 ## Load evidence
 
-The default k6 profile runs two virtual users for ten seconds against readiness,
-authenticated account reads, and organization pagination. It fails on any failed
-business check, an HTTP failure rate of 1% or higher, or p95 at/above two seconds.
+The default k6 profile uses two virtual users for ten seconds, each with its own
+account and organizations. It exercises scoped reads and pagination, optimistic
+updates, cross-organization denial, cross-instance session rotation/revocation,
+and original-file upload/download/search/deletion. Search visibility waits are
+bounded. Expected rejection probes have explicit allowed statuses; unexpected
+HTTP failures and failed business checks fail the run. It also rejects p95
+latency at/above two seconds. Thresholds require `http_req_failed: rate==0`,
+`checks: rate==1`, and `workflow_failures: count==0`; every virtual user must
+complete a full workflow and revoke its separate session once. Search visibility
+must remain below ten seconds for each workflow, with a matching p95 threshold.
+After k6 exits, originals must reach the deleted state and pending work must drain.
+Any failed background attempt also fails the check, even if a later retry succeeds.
 `K6_PROFILE=extended` uses twenty users for two minutes. Set the environment in
 your shell before `just load-test`. The workflow dispatch input selects that
 profile in CI. Thresholds are regression gates, not a production capacity promise.
 Benchmark production builds, realistic data, distinct user populations, deployed
 network paths, and intended concurrency before a capacity decision.
+
+## Production fixture scope
+
+`just test-production` builds the canonical release image and runs it with
+`APP_ENV=production` inside a uniquely named local Compose project. Set
+`PRODUCTION_TEST_IMAGE` only when deliberately verifying an existing local image;
+that supplied image is preserved during cleanup. The fixture uses an internal
+Docker network, an ephemeral private CA, an HTTPS proxy, and Mailpit requiring
+STARTTLS. It checks secure cookies, origins, proxy header replacement, and actual
+Rust-worker mail delivery, including rejection of an untrusted SMTP certificate
+and a certificate whose hostname does not match. Runtime containers use a
+non-root user and read-only filesystem.
+
+The fixture provisions separate migration, runtime, and maintenance PostgreSQL
+roles and exercises allowed and denied operations. It stops API/worker processes,
+backs up PostgreSQL, recreates the database, restores the dump, and signs in with
+the restored password and encrypted TOTP state using retained encryption keys.
+Only fixture containers, volumes, and generated images are removed. These checks
+cover local release-image behavior; they do not publish or deploy the image,
+verify a real SMTP/OIDC provider, or test S3 original-file backup and restoration.
+Record actual execution results in [milestones](../memory/README.md); the presence
+of this command or its CI step is not evidence that it passed.
 
 ## Editing and diagnostics
 

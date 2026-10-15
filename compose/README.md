@@ -13,3 +13,9 @@ volumes. Development volumes are preserved by `just infra-down`.
 `production/app/Dockerfile` builds API, worker, migration, and management binaries
 from the repository-root build context. It excludes environment secrets and runs
 as an unprivileged user. See [deployment](../deploy/README.md) for runtime wiring.
+
+`verification/` contains the disposable production-mode acceptance fixture:
+private TLS certificates, an HTTPS proxy, STARTTLS Mailpit, restricted PostgreSQL
+roles, and database restore checks against the release image. Run it through
+`just test-production`; see [verification scope](../docs/development.md#production-fixture-scope).
+Its scripts provision test infrastructure and are not deployment scripts.

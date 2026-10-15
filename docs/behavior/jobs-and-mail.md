@@ -16,7 +16,8 @@ exponential delay, bounded by the attempt budget. Permanent failure or exhausted
 attempts become retained failed jobs. An expired claim closes its attempt history
 and either schedules a delayed retry or retains failure. The default budget is
 five attempts. `just manage retry-job <uuid>` explicitly grants another five
-attempts while preserving history, up to the schema's 1000-attempt bound.
+attempts while preserving history, up to the schema's 1000-attempt bound. A failed
+job remains retryable only while its retained row exists.
 
 Shutdown stops claiming, drains current work for a bounded period, then cancels
 remaining futures. Interrupted claims recover after expiry. A heartbeat cannot
@@ -38,9 +39,26 @@ recording it can resend. Reuse the delivery UUID in Message-ID; do not assume th
 forces downstream deduplication. Action-token consumption remains single use.
 Account/challenge authority is checked again when the recipient uses the action.
 
-`just manage cleanup` removes bounded batches of expired authentication rows and
-successful jobs older than 30 days, including their attempt history. Failed jobs
-are retained for inspection/retry. Arrange the cleanup command through deployment
-scheduling; API/worker startup does not create a hidden scheduler. A busy backlog
-may require repeated cleanup runs. Set product-specific audit and failed-job
-retention before production operation.
+## Retention and maintenance
+
+`manage cleanup` removes expired authentication rows, finished jobs and their
+attempt history, expired audit events, and due file lifecycle records in bounded
+batches. Retention defaults are `SUCCEEDED_JOB_RETENTION_DAYS=30`,
+`FAILED_JOB_RETENTION_DAYS=90`, and `AUDIT_RETENTION_DAYS=180`. Each accepts 1 through
+36500 days. Job age is measured from `finished_at`; audit age uses `created_at`.
+
+Each invocation deletes at most 100 finished jobs, with at most 1000 attempt rows
+per job removed through the foreign key cascade, and at most 1000 audit events.
+Pending and running jobs are never retention candidates. Final job deletion repeats
+the terminal-state and age predicates after lock contention, preserving a job that
+was retried or failed again recently while cleanup waited. Deleting a retained
+failed job also removes its inspection history and ability to retry it; export or
+investigate it before the configured deadline.
+
+Use `just cleanup <environment>` from `deploy/` so audit cleanup receives the
+restricted maintenance role. API, worker, and ordinary management commands keep
+append-only audit privileges. Schedule cleanup explicitly; application startup
+does not create a scheduler. The [deployment templates](../../deploy/README.md)
+include a five-minute systemd timer for cleanup and search repair. A busy backlog
+may require repeated runs. Review retention against the consuming application's
+requirements before deployment.

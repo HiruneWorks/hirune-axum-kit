@@ -10,8 +10,15 @@ without disclosing whether an account exists.
 Password login verifies credentials before locking, then rechecks the account and
 credential snapshot under lock. An account must be active and verified. If TOTP
 is enabled, primary login returns a short-lived MFA challenge rather than a
-session. Password and OIDC login use this same final gate. The baseline does not
-send a separate confirmation email for every new device.
+session. Global administrators must have confirmed TOTP enrollment. Password and
+OIDC login use this same final gate; session issuance, session authentication, and
+final service checks also reject administrators without MFA. The baseline does
+not send a separate confirmation email for every new device.
+
+New passwords require at least 15 Unicode characters and at most 1024 UTF-8 bytes.
+They are not trimmed, truncated, or subject to composition rules. Argon2id hashing
+uses a random salt. There is no external password-screening service or local
+common/breached-password blocklist.
 
 Sessions are opaque credentials backed by PostgreSQL, with idle and absolute
 expiry. Activity extends idle expiry at most once per minute and never beyond the
@@ -38,9 +45,41 @@ encrypted with the active application key and account-specific context.
 Accepted TOTP steps are tracked on the account, so reusing a step through another
 challenge fails. Recovery codes and MFA challenges are consumed atomically under
 the account lock. Removing MFA requires recent authentication plus an unused
-TOTP step or recovery code, and revokes sessions. Keep the returned recovery
-codes outside the authenticated browser session. Recovery-code regeneration and
-support-assisted recovery are not baseline operations.
+TOTP step or recovery code, and revokes sessions. Global administrators cannot
+remove MFA. Keep the returned recovery codes outside the authenticated browser
+session.
+
+`POST /api/v1/account/recovery-codes` requires recent full authentication within
+five minutes and an unused TOTP step or recovery code. Under the account lock it
+consumes the proof, replaces all ten recovery-code hashes, advances the security
+version, revokes sessions/challenges, and appends an audit event in one transaction.
+It returns plaintext replacement codes once with `no-store` and clears the cookie.
+Concurrent regeneration cannot expose two usable generations; a stale session or
+previous recovery code cannot authorize another regeneration. Sign in again after
+saving the new codes. Support-assisted factor reset is not a baseline operation.
+
+## Administration, limits, and retention
+
+`manage set-administrator <uuid> <true|false>` is an operator-only command with no
+public HTTP counterpart. Promotion requires an active, verified account with TOTP
+already enrolled. A changed flag advances the security version, revokes existing
+sessions/challenges, and records `administrator_granted` or `administrator_removed`
+atomically. Repeating the current flag makes no change. Organization ownership
+does not grant this global role. An administrator missing TOTP must be demoted by
+an operator before signing in, enrolling TOTP, and being promoted again.
+
+Authentication budgets are shared PostgreSQL counters. The identity limit defaults
+to 10 attempts per operation/identity per minute; the client limit defaults to 60
+requests shared across authentication routes per minute. Both are configurable
+from 1 to 100000. Failed attempts persist independently of an authentication
+transaction rollback. Counter saturation is shared across configurations and
+exceeds the maximum allowed budget; lower instance limits cannot erase attempts.
+
+Audit events are append-only to runtime processes. Explicit maintenance deletes
+up to 1000 events older than `AUDIT_RETENTION_DAYS` per invocation, ordered by
+creation time and UUID. The default is 180 days; the supported range is 1 through
+36500 days. The deployment maintenance role has the required deletion grant and
+no schema-owner privileges. Authentication cleanup retains its per-table bounds.
 
 ## OIDC
 

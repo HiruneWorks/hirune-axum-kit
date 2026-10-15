@@ -12,17 +12,25 @@ extensions. Malformed JSON, UUIDs, and query values use the same error envelope.
 
 ## Typed input and validation
 
-`ApiJson<T>`, `ApiQuery<T>`, and `ApiPath<T>` deserialize concrete input types and
-translate extraction failures into the shared API error. Serde enforces field
-types and required fields; normal JSON DTOs use `deny_unknown_fields`. `ToSchema`
-describes OpenAPI and does not perform runtime validation. The extractors do not
-automatically call a DTO validation trait.
+`ApiJson<T>` and `ApiQuery<T>` require `DeserializeOwned + validator::Validate`.
+They deserialize concrete input types, then call `validate()` before the handler
+runs. `ApiPath<T>` uses typed Serde extraction for path values such as UUIDs.
+Serde enforces field types and required fields; normal JSON DTOs use
+`deny_unknown_fields`. `ToSchema` describes OpenAPI and does not perform runtime
+validation. Keep schema descriptions aligned with the actual validation rules.
 
-Owning services validate values such as normalized email, password length,
-organization names, and file metadata. Authorization and rules that depend on
-current state remain in those services, with final checks under their locks.
-These checks also apply when a worker or management command calls the service
-without HTTP. Any future DTO validation must preserve this service boundary.
+DTOs declare shape, length, and range checks. Custom validators call the owning
+domain's pure validation functions through `src/http/validation.rs`: identity
+owns email and new-password rules, organizations own names, and files own
+filename and media-type metadata rules. Services call those same functions, so
+workers and management commands cannot bypass value validation. Normalization
+occurs in the service; extraction checks do not mutate the submitted DTO.
+
+Authorization, quotas, configuration-dependent limits, and rules that depend on
+current state remain in services, with final checks under their locks. Never log
+or serialize `ValidationErrors`: their parameters may contain submitted passwords
+or tokens. Extraction and validation failures return the generic `400`
+`invalid_input` error; an oversized JSON body retains its `413` error.
 
 ## Errors and headers
 
@@ -54,6 +62,11 @@ and receive the same opaque session credential in JSON. Send it as `Authorizatio
 Bearer <token>`. It is not a JWT. Cookie and bearer credentials together, duplicate
 session cookies, and multiple Authorization headers are rejected. Session rotation
 preserves the request's transport. Never put credentials in query strings.
+
+`POST /api/v1/account/recovery-codes` accepts an MFA proof and requires recent
+authentication. It returns ten replacement codes once, invalidates the previous
+set and all sessions/challenges, and clears the session cookie. Save the returned
+codes before signing in again. The endpoint follows the API's `no-store` policy.
 
 ## Pagination and updates
 

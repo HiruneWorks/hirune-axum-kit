@@ -8,6 +8,8 @@ and limitations are recorded in [milestones](../memory/README.md).
 Current suites: [identity](../tests/identity.rs), [API](../tests/api.rs),
 [OIDC](../tests/oidc.rs), [jobs](../tests/jobs.rs),
 [files/search](../tests/files.rs), and [process/SMTP/load](../tests/process.rs).
+Identity includes [privileged authentication and retention](../tests/identity/hardening.rs);
+jobs include [retention races](../tests/jobs/retention.rs).
 Core policy, encryption, mail rendering,
 pagination, proxy trust, and Sentry controls also have workspace unit tests.
 
@@ -39,10 +41,10 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 | `board.rs::pinned_posts_reorder_to_the_order_sent` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
 | `board.rs::pin_reorder_requires_board_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
 | `board.rs::pin_reorder_rejects_a_stale_pin_set` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `moderation.rs::banned_user_loses_board_write_access_until_unbanned` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
-| `moderation.rs::admins_cannot_ban_themselves_or_other_admins` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
-| `moderation.rs::role_management_rejects_self_and_admin_targets` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
-| `moderation.rs::moderation_logs_require_moderator_role` | Excluded: content moderation and role administration are product features. Active-account denial and Cedar organization scope remain baseline security contracts. |
+| `moderation.rs::banned_user_loses_board_write_access_until_unbanned` | Excluded: content moderation is a product feature. Active-account denial and Cedar organization scope remain baseline security contracts. |
+| `moderation.rs::admins_cannot_ban_themselves_or_other_admins` | Excluded: moderation API policy is a product feature. Global administrator changes are operator-only, with MFA eligibility and credential revocation covered by `privileged_accounts_require_mfa_at_login_session_and_final_authority`. |
+| `moderation.rs::role_management_rejects_self_and_admin_targets` | Excluded: public role-management API policy. The baseline has an operator-only global administrator command, not user-facing role delegation. |
+| `moderation.rs::moderation_logs_require_moderator_role` | Excluded: moderation log APIs are a product feature. Runtime audit access is append-only; age-based deletion is a restricted maintenance operation. |
 | `notification.rs::inbox_requires_login` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
 | `notification.rs::comment_notifies_post_author_and_inbox_lifecycle_works` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
 | `notification.rs::mentions_in_posts_and_comments_notify_mentioned_users` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
@@ -66,7 +68,7 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 | `smoke.rs::profile_image_upload_is_processed_to_webp` | Excluded by owner decision: media processing is not in the baseline. Original attachments use private S3 storage without content conversion. |
 | `totp.rs::login_with_totp_requires_second_factor` | `totp_and_recovery_codes_are_single_use_across_challenges`; OIDC gate in `explicit_linking_does_not_merge_email_and_oidc_cannot_bypass_mfa`. |
 | `totp.rs::sec_002_backup_code_is_single_use_under_concurrency` | `totp_and_recovery_codes_are_single_use_across_challenges` races the same recovery code through different challenges. |
-| `totp.rs::status_backup_code_rotation_and_disable_flow` | Enrollment, recovery consumption, status, and removal are exercised by `totp_and_recovery_codes_are_single_use_across_challenges`; code regeneration is intentionally excluded. |
+| `totp.rs::status_backup_code_rotation_and_disable_flow` | Enrollment, recovery consumption, status, and removal: `totp_and_recovery_codes_are_single_use_across_challenges`. Replacement and credential revocation: `concurrent_recovery_regeneration_returns_one_generation_and_revokes_credentials`. TOTP replay across replacement: `recovery_regeneration_keeps_the_consumed_totp_step_after_version_change`. |
 | `user_public.rs::handle_availability_reflects_signups` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
 | `user_public.rs::public_profile_never_exposes_the_email` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
 | `user_public.rs::public_profile_by_id_matches_handle_lookup` | Excluded: handles and public profiles are outside the baseline. Private account DTOs require owner authentication. |
@@ -82,8 +84,30 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 - Authentication cleanup preserves an idle extension committed while deletion
   waits on its row lock, while still deleting sessions past absolute expiry.
 - Client and identity limits survive failures and are shared across instances.
+- Configurable limits above the former saturation ceiling remain effective, and
+  an instance with a lower limit cannot truncate shared attempts.
+- Global administrator promotion requires confirmed MFA and invalidates old
+  credentials; primary login, session authentication, and final service checks
+  deny an administrator without MFA. Administrator MFA removal is forbidden.
+- Recovery-code regeneration requires recent authentication and a fresh proof;
+  concurrent replacements leave one returned generation and revoke old credentials.
+- JSON/query validation reuses domain rules, rejects invalid input before the
+  handler, and does not expose submitted secrets in error responses.
+- Audit retention deletes bounded old batches while preserving recent events.
+- Finished-job retention preserves rows retried or failed again while deletion
+  waits, and removes attempts only with an eligible retained job.
+- File cleanup's successive updates can finish while an authorized deletion
+  holds canonical parent locks and waits for the file row. A synchronized
+  PostgreSQL regression covers the foreign-key lock cycle found by mixed load.
 - OIDC checks browser binding, state replay, nonce, signed key rotation, provider outages, explicit linking, and the common MFA gate.
 - Worker crash recovery preserves attempt history, honors retry delay, and fences stale completion; a hung heartbeat/handler cannot hold a lease forever.
 - Database outages return unavailable; HTTP configuration is isolated across application instances.
 - Real Mailpit delivery checks HTML/text content, worker replacement, cross-process revocation, and absence of secrets in captured process logs.
-- k6 checks readiness, authenticated reads, and scoped pagination with explicit failure and latency thresholds.
+- k6 uses distinct accounts and organizations across two API processes for scoped
+  pagination, optimistic writes and stale-write rejection, cross-tenant denial,
+  session rotation/revocation, and original-file upload/download/ranges/search/
+  deletion. Every virtual user must complete a workflow; unexpected HTTP failures,
+  failed checks, and workflow failures are forbidden. HTTP p95 must be below two
+  seconds and filename visibility must remain below its ten-second bound.
+  Post-load checks require completed deletion and no failed background attempts,
+  so retryable worker defects cannot hide behind successful HTTP responses.
