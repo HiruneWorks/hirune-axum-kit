@@ -84,7 +84,7 @@ services:
       - certificates:/certificates:ro
     depends_on: [api]
   mailpit:
-    image: axllent/mailpit:v1.31.4
+    image: axllent/mailpit:v1.31.5
     environment:
       MP_SMTP_TLS_CERT: /certificates/server.crt
       MP_SMTP_TLS_KEY: /certificates/server.key
