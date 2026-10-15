@@ -10,8 +10,9 @@ applications without modifying global environment or initializing global tracing
 ## Shared authority
 
 PostgreSQL owns sessions, security versions, challenges, OAuth flows, rate limits,
-organizations, job leases, and delivery state. API instances require no sticky
-routing. Worker concurrency can be increased with more processes; database locks
+organizations, external API clients/keys/usage budgets, job leases, and delivery
+state. API instances require no sticky routing. Worker concurrency can be
+increased with more processes; database locks
 and fencing remain authoritative across them. In-process semaphores only bound
 local CPU/request capacity. Redis, a broker, and provider credentials are not
 baseline startup dependencies.
@@ -22,8 +23,9 @@ connection limit. Run migrations first. Bootstrap checks migration history using
 a read-only query and refuses an outdated schema; it does not apply DDL.
 Use a schema-owner migration role and a runtime role restricted to the required
 tables, sequences if introduced by dependencies, and migration-history SELECT.
-Runtime audit access is append-only: it must not update or delete audit events.
-A separate maintenance role adds the audit deletion needed by retention while
+Runtime audit and API-usage access is append-only: it must not update or delete
+audit_events or api_usage. A separate maintenance role adds deletion on those
+tables for retention, with no UPDATE or TRUNCATE privilege, while
 retaining the other permissions needed for cleanup; it must not own the schema
 or have DDL privileges. Deployment Compose injects this role only into its explicit
 maintenance service. Provision and verify these database grants in the deployment;
@@ -81,9 +83,16 @@ Authentication budgets are `AUTH_IDENTITY_LIMIT_PER_MINUTE` (default 10 per
 operation/identity) and `AUTH_CLIENT_LIMIT_PER_MINUTE` (default 60 shared across
 authentication routes per client). Both accept 1 through 100000. Retention settings
 are `SUCCEEDED_JOB_RETENTION_DAYS` (30), `FAILED_JOB_RETENTION_DAYS` (90), and
-`AUDIT_RETENTION_DAYS` (180), each from 1 through 36500 days. API, worker, and
+`AUDIT_RETENTION_DAYS` (180), and `API_USAGE_RETENTION_DAYS` (90), each from 1
+through 36500 days. API, worker, and
 management settings should agree across replicas; changing a limit does not reset
 shared counters.
+
+External API request allocation is stored per client in PostgreSQL rather than
+replica environment variables. New clients receive zero allocation; a trusted
+operator runs `manage set-api-client-quota <uuid> <per-minute> <per-month>`.
+The quotas use fixed UTC minutes and UTC calendar months. See
+[API access](behavior/api-access.md) for accounting and extension boundaries.
 
 `MAINTENANCE_INTERVAL_SECONDS` defaults to 300 and supports 1 through 86400.
 Run `maintenance` with the restricted maintenance database role. It schedules one

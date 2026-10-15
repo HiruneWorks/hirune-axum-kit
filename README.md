@@ -52,6 +52,15 @@ for deletion and indexing, and run `maintenance` for periodic cleanup and search
 repair in deployment. See the
 [file contract](docs/behavior/files-and-search.md) for limits and lifecycle.
 
+## External developer API
+
+Organization owners can register clients and issue scoped, expiring API keys.
+New clients have zero allocation; an operator assigns minute and calendar-month
+budgets with `just manage set-api-client-quota <uuid> <per-minute> <per-month>`.
+All keys and API replicas share the same PostgreSQL authority. See the
+[API access contract](docs/behavior/api-access.md) for routes, credential format,
+rotation, request accounting, and extension boundaries.
+
 ## Own the source
 
 Copy the repository and change the root Cargo package name, README/NOTICE,

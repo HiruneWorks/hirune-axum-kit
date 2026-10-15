@@ -45,6 +45,8 @@ request IDs are not trusted. Expected failures use 400, 401, 403, 404, 409, or 4
 storage/provider unavailability uses 503. Internal details and secrets are never
 returned. Middleware normalizes router and extractor errors too. All API responses
 use `Cache-Control: no-store`, `nosniff`, a restrictive CSP, and no-referrer.
+Authentication-required responses include a `WWW-Authenticate: Bearer realm="api"`
+challenge.
 
 Services use `ApplicationError`; the HTTP adapter centrally maps it to status and
 public error codes. Worker handlers return error codes and retryability to the
@@ -53,7 +55,9 @@ preserve correlation across these boundaries without returning internal details.
 
 JSON bodies are bounded at 16 KiB. Requests have a configured deadline and a
 bounded concurrency budget; overload returns 503. Invalid attempts count toward
-authentication limits. A 429 includes `Retry-After: 60`.
+authentication limits. Authentication 429 responses include `Retry-After: 60`;
+external API rate/quota errors use the actual remaining seconds to their window
+boundary and distinct `api_rate_limited` / `api_quota_exceeded` codes.
 
 ## Authentication transports
 
@@ -67,6 +71,12 @@ and receive the same opaque session credential in JSON. Send it as `Authorizatio
 Bearer <token>`. It is not a JWT. Cookie and bearer credentials together, duplicate
 session cookies, and multiple Authorization headers are rejected. Session rotation
 preserves the request's transport. Never put credentials in query strings.
+The Bearer scheme name is case-insensitive; the credential remains case-sensitive.
+
+External server applications use an organization-owned API key in the Bearer
+header on explicitly designated external routes. Keys and user sessions cannot
+be substituted for each other. See [API access](behavior/api-access.md) for key
+format, owner management, operator allocation, scopes, charging, and headers.
 
 `POST /api/v1/account/recovery-codes` accepts an MFA proof and requires recent
 authentication. It returns ten replacement codes once, invalidates the previous

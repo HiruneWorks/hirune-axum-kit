@@ -30,7 +30,10 @@ schedules and consumes the dedicated queue; no operating-system scheduler is nee
 Authentication limits and retention periods belong in `app.env` and should agree
 across replicas. Defaults are 10 identity attempts and 60 client requests per
 minute, with succeeded jobs retained for 30 days, failed jobs for 90 days, and
-audit events for 180 days. See [runtime settings](../docs/runtime.md) for names and
+audit events for 180 days, and API admission history for 90 days through
+`API_USAGE_RETENTION_DAYS`. External API allocations are stored per client in
+PostgreSQL, rather than in replica environment variables.
+See [runtime settings](../docs/runtime.md) for names and
 supported ranges. There is no password-screening provider configuration.
 
 `OIDC_PROVIDERS` is a JSON array of provider objects, with `[]` as the disabled

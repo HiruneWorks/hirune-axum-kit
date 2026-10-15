@@ -20,3 +20,6 @@ This index is updated when a milestone is complete.
 - [2026-10-15 — Multiple providers, portable maintenance, and identity mail](2026-10-15-oidc-maintenance-and-mail.md):
   multiple OIDC providers, queue-scoped periodic maintenance, dedicated mail
   templates, account notifications, and shared error/worker verification.
+- [2026-10-15 — External API keys and shared allocation](2026-10-15-external-api-access.md):
+  organization-owned clients, expiring scoped keys, operator allocation, strict
+  shared request accounting, usage retention, and multi-instance/runtime evidence.

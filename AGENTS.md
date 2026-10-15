@@ -28,6 +28,7 @@
 - Use structured `tracing` spans across requests, services, and jobs. Never record credentials, cookies, tokens, secret URLs, or mail bodies. Use the existing MJML mail templates and transport.
 - Review authentication changes against [security](docs/security.md), including the OWASP references and regression tests. PostgreSQL is authoritative; cached data must never bypass revocation or final authorization.
 - Password and OIDC login must share the same account and MFA gates. New-device email verification is excluded from the baseline; do not add it without a new product decision.
+- External API keys represent organization-owned clients, not user sessions. Recheck scope and revocation under client/key locks and commit shared quota counters with admission history. Only operators allocate quotas; rotation must preserve usage. See [API access](docs/behavior/api-access.md).
 - Store file originals unchanged in the private S3 store. PostgreSQL owns attachment access and lifecycle. Do not add content processing or scanning without a new requirement; see [files and search](docs/behavior/files-and-search.md).
 - Use `just` and the locked Cargo workspace. Run the relevant unit, PostgreSQL, API, process, k6, and OpenAPI checks; [development](docs/development.md) and `.github/workflows/ci.yml` define the commands.
 - Use version tags or maintained channels for GitHub Actions. Manage dependency updates through `.github/dependabot.yml`; do not pin action references to commit hashes.

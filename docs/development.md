@@ -21,14 +21,15 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just maintenance` | Start the portable periodic scheduler/worker; production supplies separate maintenance-role credentials. |
 | `just manage cleanup` | Remove bounded expired authentication/audit/finished-job batches and reconcile files; production uses the maintenance role through `deploy/justfile cleanup`. |
 | `just manage set-administrator <uuid> <true\|false>` | Operator-only role change; promotion requires enrolled MFA and changes revoke existing credentials. |
+| `just manage set-api-client-quota <uuid> <per-minute> <per-month>` | Operator-only request allocation shared by all keys and API replicas; changing limits preserves usage. |
 | `just manage retry-job <uuid>` | Retry a retained failed job without erasing its attempt history. |
 | `just manage initialize-integrations` | Explicitly create the configured private bucket and file search index/settings; safe to repeat. |
 | `just manage repair-search` | Queue a bounded batch of current file metadata for index reconciliation. |
 | `just fmt` | Format the workspace. |
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, OpenAPI drift. |
 | `just test-db` | Real PostgreSQL identity and queue tests, including transaction and concurrency failures. |
-| `just test-api` | Production-router API tests and local signed OIDC provider tests. |
-| `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, and periodic cleanup deduplication. |
+| `just test-api` | Production-router API and local signed OIDC tests; external API scope, shared quota concurrency, window rollover, authority races, transaction rollback, and retention. |
+| `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
 | `just test-deployment` | Validate local/deployment Compose and separation of runtime, maintenance, and migration credentials using temporary example files. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
@@ -59,7 +60,11 @@ generated `kit_test_` names before explicit cleanup.
 The default k6 profile uses two virtual users for ten seconds, each with its own
 account and organizations. It exercises scoped reads and pagination, optimistic
 updates, cross-organization denial, cross-instance session rotation/revocation,
-and original-file upload/download/search/deletion. Search visibility waits are
+and original-file upload/download/search/deletion. Two API keys per client also
+exercise the external organization route across both instances and verify their
+shared monthly counter; PostgreSQL admission records are checked after the run.
+These fixture clients receive explicit operator allocation, independent of the
+ordinary session and file limits. Search visibility waits are
 bounded. Expected rejection probes have explicit allowed statuses; unexpected
 HTTP failures and failed business checks fail the run. It also rejects p95
 latency at/above two seconds. Thresholds require `http_req_failed: rate==0`,
@@ -87,10 +92,13 @@ and a certificate whose hostname does not match. Runtime containers use a
 non-root user and read-only filesystem.
 
 The fixture provisions separate migration, runtime, and maintenance PostgreSQL
-roles and exercises allowed and denied operations, including scheduled maintenance
+roles and exercises allowed and denied operations, including append-only API usage,
+operator API allocation, external admission/exhaustion, and scheduled maintenance
 with restricted credentials. It stops API, worker, and maintenance processes,
 backs up PostgreSQL, recreates the database, restores the dump, and signs in with
 the restored password and encrypted TOTP state using retained encryption keys.
+It also checks that API credentials, exhausted allocation, and usage survive the
+restore, then revokes the restored key through an authenticated owner session.
 Only fixture containers, volumes, and generated images are removed. These checks
 cover local release-image behavior; they do not publish or deploy the image,
 verify a real SMTP/OIDC provider, or test S3 original-file backup and restoration.

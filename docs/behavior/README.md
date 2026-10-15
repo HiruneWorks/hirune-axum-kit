@@ -6,6 +6,7 @@ They are updated with the implementation, not used as a completion checklist.
 - [Identity](identity.md): account, credential, session, OAuth, and MFA lifecycle.
 - [Jobs and mail](jobs-and-mail.md): atomic registration, delivery, recovery, and retries.
 - [Authorization](authorization.md): Cedar decisions, organization scope, and list filtering.
+- [External API access](api-access.md): organization-owned keys, scopes, operator allocation, shared request accounting, and retention.
 - [Files and search](files-and-search.md): private originals, upload limits, attachment access, deletion, and derived filename search.
 - [API](../api.md): validation, errors, cookies, and pagination.
 - [Transaction boundaries](../transaction-boundaries.md): ownership and lock order.

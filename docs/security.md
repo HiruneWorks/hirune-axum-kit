@@ -13,6 +13,7 @@ not a secret or an access-control mechanism.
 | Enumeration | Signup, verification resend, and reset requests return the same accepted response for eligible and ineligible accounts. Invalid logins share an authentication error; missing accounts use dummy password verification. |
 | Abuse limits | PostgreSQL stores keyed hashes of client and identity rate keys. Client requests are limited before hashing/provider requests; identity limits survive failed authentication. Defaults are 60 requests per client and 10 attempts per operation/identity per minute, with explicit settings. There is no attacker-exhaustible global login quota. |
 | Sessions | Random 256-bit opaque credentials; only hashes stored. Shared database authority, idle and absolute expiry, rotation, per-session and all-session revocation. Credential changes increment account security version and revoke existing sessions/challenges. |
+| External API keys | Organization-owned principals, explicit scopes, expiring 256-bit random secrets with domain-separated hashes, one-time issuance, revocation, and atomic shared request accounting. New clients have zero allocation; only trusted operators grant quotas. See [API access](behavior/api-access.md). |
 | MFA | TOTP is optional for ordinary accounts and required for global administrators. Secrets are encrypted; accepted TOTP steps and hashed recovery codes are single use. Password and OIDC login share the gate, which is also checked at session issuance, session authentication, and final service authorization. New-device email challenges are excluded. |
 | Sensitive actions | Require a valid session and recent full authentication (within 5 minutes), with final checks under account lock. Password changes require the current password. MFA removal and recovery-code regeneration additionally require an unused TOTP step or recovery code; administrators cannot remove MFA. |
 | OIDC | Maintained protocol library; authorization code flow, PKCE S256, state, browser binding, nonce, issuer, audience, signature, expiry, and access-token hash validation. Explicit linking only; matching email does not merge accounts. |
@@ -73,8 +74,9 @@ keys while rows encrypted with them remain, including enrolled TOTP secrets.
 Removing an old key early makes those rows unreadable; automatic re-encryption is
 not provided. Rotate database, SMTP, and provider credentials using their own
 deployment procedures. Use separate migration, runtime, and maintenance database
-roles. Runtime must not update or delete audit events; maintenance adds the audit
-deletion needed for retention without schema-owner privileges. Development Compose
+roles. Runtime must not update or delete audit events or API-usage records;
+maintenance adds deletion for retention, without UPDATE, TRUNCATE, or schema-owner
+privileges on those records. Development Compose
 credentials are public local fixtures.
 
 External password-screening services are excluded by owner decision. A local
@@ -102,4 +104,6 @@ verified, active account; action mail still requires its live challenge/version.
 - [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 - [OWASP Forgot Password Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
 - [OWASP OAuth2 Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html)
+- [OWASP REST Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html)
+- [OWASP API resource consumption](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/)
 - [OpenID Connect library verification guidance](https://docs.rs/openidconnect/latest/openidconnect/)

@@ -22,6 +22,7 @@ retry, and attempt-history implementation as ordinary workers.
 | `src/maintenance.rs` | bounded cross-domain cleanup coordination and periodic maintenance registration | owning services and jobs |
 | `crates/application/src/identity/` | accounts, credentials, sessions, authentication flows | auth-core, jobs, mail, SeaORM |
 | `crates/application/src/organizations/` | minimal organizations and scoped memberships | authorization, SeaORM |
+| `crates/application/src/api_access/` | organization-owned clients, hashed API keys, strict shared allocations, admission history | identity and organization services, SeaORM |
 | `crates/application/src/files/` | original attachment metadata, quota, lifecycle, S3 transport, derived filename search | organization service, AWS S3 SDK, Meilisearch REST, SeaORM, jobs |
 | `crates/application/src/authorization/` | validated Cedar policies and decisions | Cedar |
 | `crates/jobs/` | durable registration, leases, retries, attempt history | SeaORM, Tokio |

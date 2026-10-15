@@ -19,6 +19,7 @@ claim that every verification step has already passed.
 | Scaling | Replaceable stateless API instances; shared state outside processes; independently scalable workers. |
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
 | External providers | Multiple OIDC providers may be configured simultaneously, each with an explicit name, issuer, client credentials, and callback URL. |
+| Developer API | Provide organization-owned API clients and scoped, expiring, revocable API keys. All keys of a client share operator-allocated request budgets across API replicas; owners cannot self-allocate. OAuth2 client credentials is outside this baseline. |
 | Privileged authentication | Global administrators must have confirmed TOTP enrollment. Role changes use an operator command, invalidate existing credentials, and are audited. Ordinary accounts may choose MFA. |
 | Password screening | No external screening service. A local common/breached-password blocklist is deferred; do not add one without a new decision. |
 | Retention | Configurable defaults: succeeded jobs 30 days, failed jobs 90 days, audit events 180 days. Cleanup is bounded and explicitly scheduled; runtime audit access stays append-only. |
@@ -57,6 +58,8 @@ authenticated account; matching email addresses alone do not merge accounts.
 The baseline demonstrates identity, a small organization domain, scoped
 authorization and pagination, durable background work, and transactional mail.
 The file example demonstrates organization attachments and filename search.
+The external API example demonstrates scoped server-to-server access with shared
+minute and calendar-month allocations; see [API access](behavior/api-access.md).
 Conversation-specific attachment permissions belong to the owning conversation
 service in a consuming project. Arbitrary file contents are not parsed or executed;
 `ready` describes completed storage, not a malware or content-safety verdict.

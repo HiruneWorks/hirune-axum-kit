@@ -55,6 +55,15 @@ password, challenge, or rolled-back business change must not refund the attempt.
 Job claims and completion have their own short transactions and use claim-token
 fencing, database time, leases, and hard execution deadlines.
 
+External API admission has a separate accounting contract. It first rejects an
+incorrect secret without authority locks, then locks client and key in that
+order and repeats mutable checks using database time. Both request counters and
+one admission record commit together. A committed admission remains charged if
+response delivery subsequently fails. Human management locks account,
+organization, client, then key; external organization reads take no subsequent
+organization lock. See [API access](behavior/api-access.md) before adding external
+writes, organization deletion/suspension, or new billing semantics.
+
 Use `tests/identity.rs` for atomic composition and credential races,
 `tests/jobs.rs` for lease and retry behavior, and `tests/process.rs` for the
 separate-process SMTP boundary. Do not replace these with database mocks.
