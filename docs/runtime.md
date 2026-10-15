@@ -1,7 +1,7 @@
 # Runtime and deployment
 
-`api`, `worker`, `migration`, and `manage` are separate executables from one source
-workspace. The API owns HTTP lifecycle; the worker owns bounded job execution;
+`api`, `worker`, `maintenance`, `migration`, and `manage` are separate executables
+from one source workspace. The API owns HTTP lifecycle; the worker owns bounded job execution;
 migration and management run explicitly. `bootstrap(settings)` assembles shared
 dependencies, `build_router` constructs the production router, and `serve` accepts
 an existing listener and shutdown token. Tests can create multiple independent
@@ -39,8 +39,40 @@ and deployment Compose uses explicit env_file paths. Production requires HTTPS a
 origin, and provider URLs plus STARTTLS SMTP. Cookie security follows APP_ENV.
 Secrets use redacted Debug representations. Do not log complete settings.
 
-Configure a provider with OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET,
-OIDC_REDIRECT_URL, and OIDC_PROVIDER. Without them, the app starts without OIDC.
+Configure any number of named providers with the `OIDC_PROVIDERS` JSON array.
+Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirect_url`:
+
+```json
+[
+  {
+    "name": "google",
+    "issuer": "https://accounts.google.com",
+    "client_id": "replace-with-google-client-id",
+    "client_secret": "replace-with-google-client-secret",
+    "redirect_url": "https://app.example.com/api/v1/auth/oidc/google/callback"
+  },
+  {
+    "name": "company",
+    "issuer": "https://identity.example.com",
+    "client_id": "replace-with-company-client-id",
+    "client_secret": "replace-with-company-client-secret",
+    "redirect_url": "https://app.example.com/api/v1/auth/oidc/company/callback"
+  }
+]
+```
+
+In `app.env`, encode this as one line inside single quotes:
+`OIDC_PROVIDERS='[{...},{...}]'`, replacing the placeholders with complete objects.
+Keep the JSON and its client secrets out of logs. Omitted, blank, or `[]` disables
+OIDC. Provider names are unique, contain ASCII letters, digits, or hyphens, and
+are at most 64 bytes. Empty credentials, unknown fields, duplicate names, and
+invalid URLs fail configuration; production issuer and callback URLs require
+HTTPS. The old individual `OIDC_*` provider settings are rejected rather than
+silently ignored. Keep provider definitions and compatible secret keys consistent
+across API replicas. Routes select the provider by its `name`; identity ownership
+uses the verified issuer and subject. This configuration supports OIDC providers;
+OAuth-only integrations need their own protocol adapter.
+
 Configured providers must be reachable for initial discovery. SENTRY_DSN is optional;
 SENTRY_SAMPLE_RATE controls performance sampling when enabled. The SMTP server
 need not be reachable at API startup; delivery failure follows the queue contract.
@@ -52,6 +84,17 @@ are `SUCCEEDED_JOB_RETENTION_DAYS` (30), `FAILED_JOB_RETENTION_DAYS` (90), and
 `AUDIT_RETENTION_DAYS` (180), each from 1 through 36500 days. API, worker, and
 management settings should agree across replicas; changing a limit does not reset
 shared counters.
+
+`MAINTENANCE_INTERVAL_SECONDS` defaults to 300 and supports 1 through 86400.
+Run `maintenance` with the restricted maintenance database role. It schedules one
+durable job per database-time interval bucket in the `maintenance` queue and
+consumes that queue with the common job runtime. Normal workers consume only the
+`application` queue. Multiple maintenance replicas use the same interval and
+deduplicate registration in PostgreSQL. Each process runs one maintenance job at
+a time; retries or adjacent buckets may overlap across replicas. Cleanup and
+search repair tolerate repeated execution. Missing buckets during a full outage
+are not backfilled; existing queued jobs resume and a current-bucket job is
+registered on restart. Retention and explicit manual retry cover both queues.
 
 Behind a proxy, configure exact ALLOWED_ORIGINS and the explicit TRUSTED_PROXY_IPS
 contract in [security](security.md). Protect the backend from direct untrusted
@@ -75,10 +118,11 @@ SIGTERM/Ctrl-C changes readiness and begins bounded shutdown. Liveness reports
 process availability; readiness also requires the database and an accepting API.
 The API drains for at most thirty seconds. Workers stop claiming and drain for
 WORKER_DRAIN_SECONDS, then cancel unfinished tasks; leases recover them later.
-Schedule `manage cleanup` outside application startup using the restricted
-maintenance role. The [deployment examples](../deploy/README.md) include an
-optional systemd timer for cleanup and search repair; installing or enabling it
-is an operator action. See [jobs and mail](behavior/jobs-and-mail.md).
+Run the explicit `maintenance` process for periodic cleanup and search repair,
+using the restricted maintenance role. Deployment starts it alongside API and
+worker; no host cron or systemd timer is required. `manage cleanup` remains an
+explicit one-off command using the same cleanup implementation.
+See [jobs and mail](behavior/jobs-and-mail.md).
 
 ## Container
 

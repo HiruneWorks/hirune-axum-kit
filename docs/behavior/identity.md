@@ -2,7 +2,8 @@
 
 Accounts use normalized email as a unique login identifier. Entity IDs are UUIDv7.
 Password signup creates an inactive-for-login, unverified account and queues a
-verification email atomically. Verification consumes one expiring challenge.
+verification email atomically. Verification consumes one expiring challenge and
+registers a welcome email in the same transaction.
 Resending replaces the previous verification challenge and only sends for pending
 accounts. Duplicate signup and ineligible resend/reset requests return accepted
 without disclosing whether an account exists.
@@ -34,6 +35,8 @@ Password reset is available for verified active accounts with a password. It is
 single use, changes the password, and invalidates sessions in one transaction.
 It does not remove TOTP. OIDC-only accounts do not gain a password through reset.
 Changing a password requires the current password and recent authentication.
+Successful password changes and resets register a tokenless security notification
+in that transaction. See [mail delivery behavior](jobs-and-mail.md).
 
 ## MFA and recovery
 
@@ -83,6 +86,15 @@ no schema-owner privileges. Authentication cleanup retains its per-table bounds.
 
 ## OIDC
 
+`OIDC_PROVIDERS` configures multiple named providers together. Login and linking
+select a provider through the existing `{provider}` route parameter. Names must
+be unique; each entry has its own issuer, client credentials, and callback URL.
+No provider is enabled by default. See [runtime configuration](../runtime.md).
+
+Each new verified OIDC account registers a welcome email in the account-creation
+transaction. A returning identity or a link operation does not register another
+welcome.
+
 Configured OIDC providers use authorization code flow and PKCE S256. State,
 nonce, verifier, and browser binding are persisted in a five-minute flow; sensitive
 flow material is encrypted. A callback can be handled by another API instance.
@@ -101,6 +113,9 @@ requires a verified provider email and cannot silently claim an existing local
 email address. Linking starts from a recent authenticated session, and callback
 rechecks that initiating session and security version. Unlinking cannot remove an
 account's last login method. Provider access tokens are not stored.
+The same subject from different issuers identifies different external identities.
+A callback sent to another configured provider is rejected without consuming the
+valid initiating flow. Login can start on one API replica and finish on another.
 
 These controls are exercised in `tests/identity.rs`, `tests/api.rs`,
 `tests/oidc.rs`, and `tests/process.rs`. Live provider registration, consent,

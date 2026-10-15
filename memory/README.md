@@ -17,3 +17,6 @@ This index is updated when a milestone is complete.
 - [2026-10-15 — Authentication, retention, and runtime verification](2026-10-15-security-and-verification.md):
   typed validation, administrator MFA, recovery-code replacement, bounded retention,
   mixed workloads, foreign-key lock ordering, and release-runtime acceptance.
+- [2026-10-15 — Multiple providers, portable maintenance, and identity mail](2026-10-15-oidc-maintenance-and-mail.md):
+  multiple OIDC providers, queue-scoped periodic maintenance, dedicated mail
+  templates, account notifications, and shared error/worker verification.

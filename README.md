@@ -48,8 +48,8 @@ Run `just infra-up-files`, enable the commented S3/Meilisearch settings in
 `.envs/.local/app.env`, and run `just manage initialize-integrations` after
 migrations. The API stores original bytes in the private S3 bucket. PostgreSQL
 controls attachment access; Meilisearch indexes filenames only. Run the worker
-for deletion and indexing, and schedule bounded `manage cleanup` and
-`manage repair-search` operations in deployment. See the
+for deletion and indexing, and run `maintenance` for periodic cleanup and search
+repair in deployment. See the
 [file contract](docs/behavior/files-and-search.md) for limits and lifecycle.
 
 ## Own the source

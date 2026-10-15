@@ -72,8 +72,9 @@ executables read that environment. Do not add implicit root-dotenv discovery or
 pass schema-owner credentials to API/worker processes.
 
 Keep runtime audit access append-only. Retention cleanup uses a separate restricted
-maintenance role with audit deletion, not migration credentials. Schedule bounded
-cleanup explicitly; do not start schedulers during application bootstrap.
+maintenance role with audit deletion, not migration credentials. The explicit
+maintenance executable schedules bounded cleanup through the shared queue; do not
+start schedulers during application bootstrap or require an operating-system timer.
 
 API and worker processes are independently replaceable instances of one modular
 monolith. Shared PostgreSQL state owns sessions, MFA and OIDC flows, rate limits,

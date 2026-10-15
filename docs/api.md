@@ -46,6 +46,11 @@ storage/provider unavailability uses 503. Internal details and secrets are never
 returned. Middleware normalizes router and extractor errors too. All API responses
 use `Cache-Control: no-store`, `nosniff`, a restrictive CSP, and no-referrer.
 
+Services use `ApplicationError`; the HTTP adapter centrally maps it to status and
+public error codes. Worker handlers return error codes and retryability to the
+job runtime, which owns attempt recording and retry decisions. Request/job spans
+preserve correlation across these boundaries without returning internal details.
+
 JSON bodies are bounded at 16 KiB. Requests have a configured deadline and a
 bounded concurrency budget; overload returns 503. Invalid attempts count toward
 authentication limits. A 429 includes `Retry-After: 60`.

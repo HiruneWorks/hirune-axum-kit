@@ -88,6 +88,13 @@ acceptance tests. The baseline does not include passkeys, account email changes,
 administrator UI, or an email delivery guarantee. Do not describe these as
 implemented merely because they appear in OWASP guidance.
 
+Successful password changes and resets register an encrypted, tokenless security
+notification in the same transaction as the credential change. It contains no
+password. Existing sessions remain revoked and a normal login is required. The
+notification remains eligible after account deactivation so deactivation cannot
+suppress a pending password-change alert. Signup welcome messages require a
+verified, active account; action mail still requires its live challenge/version.
+
 ## Sources
 
 - [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)

@@ -18,13 +18,23 @@ Deployment selectors (image, project, port) live separately under `deploy/`.
 
 `app.env` uses the restricted runtime role, including append-only audit access.
 `migration.env` supplies only migration settings and the schema-owner connection.
-Deployment cleanup reads `app.env` followed by `maintenance.env`, whose
+The deployment maintenance process reads `app.env` followed by `maintenance.env`, whose
 `DATABASE_URL` overrides the runtime connection with a restricted role that may
 delete expired audit events. Provision and verify the actual grants separately;
 an environment-file name does not enforce database privileges.
+
+`MAINTENANCE_INTERVAL_SECONDS` controls periodic registration (300 seconds by
+default). Keep it consistent across maintenance replicas. The same process
+schedules and consumes the dedicated queue; no operating-system scheduler is needed.
 
 Authentication limits and retention periods belong in `app.env` and should agree
 across replicas. Defaults are 10 identity attempts and 60 client requests per
 minute, with succeeded jobs retained for 30 days, failed jobs for 90 days, and
 audit events for 180 days. See [runtime settings](../docs/runtime.md) for names and
 supported ranges. There is no password-screening provider configuration.
+
+`OIDC_PROVIDERS` is a JSON array of provider objects, with `[]` as the disabled
+default. Store it as a single quoted line in `app.env` or inject it through secret
+management. Each configured provider has its own client secret. The
+[runtime example](../docs/runtime.md) shows two providers; no separate per-provider
+environment variable scheme is needed.

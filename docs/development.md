@@ -18,6 +18,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just infra-up-files` | Start PostgreSQL, Mailpit, SeaweedFS, and Meilisearch with local-only credentials. |
 | `just migrate` | Apply SeaORM migrations under a PostgreSQL advisory transaction lock. |
 | `just api` / `just worker` | Start the actual API/worker executable. |
+| `just maintenance` | Start the portable periodic scheduler/worker; production supplies separate maintenance-role credentials. |
 | `just manage cleanup` | Remove bounded expired authentication/audit/finished-job batches and reconcile files; production uses the maintenance role through `deploy/justfile cleanup`. |
 | `just manage set-administrator <uuid> <true\|false>` | Operator-only role change; promotion requires enrolled MFA and changes revoke existing credentials. |
 | `just manage retry-job <uuid>` | Retry a retained failed job without erasing its attempt history. |
@@ -27,7 +28,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, OpenAPI drift. |
 | `just test-db` | Real PostgreSQL identity and queue tests, including transaction and concurrency failures. |
 | `just test-api` | Production-router API tests and local signed OIDC provider tests. |
-| `just test-process` | Separate API/worker processes, real HTTP, Mailpit SMTP, worker replacement, shared session revocation, and log secrecy. |
+| `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, and periodic cleanup deduplication. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
 | `just test-deployment` | Validate local/deployment Compose and separation of runtime, maintenance, and migration credentials using temporary example files. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
@@ -86,7 +87,8 @@ and a certificate whose hostname does not match. Runtime containers use a
 non-root user and read-only filesystem.
 
 The fixture provisions separate migration, runtime, and maintenance PostgreSQL
-roles and exercises allowed and denied operations. It stops API/worker processes,
+roles and exercises allowed and denied operations, including scheduled maintenance
+with restricted credentials. It stops API, worker, and maintenance processes,
 backs up PostgreSQL, recreates the database, restores the dump, and signs in with
 the restored password and encrypted TOTP state using retained encryption keys.
 Only fixture containers, volumes, and generated images are removed. These checks

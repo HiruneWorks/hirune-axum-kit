@@ -23,6 +23,7 @@
 - Use application-generated UUIDv7 primary keys and UUID foreign keys. Keep natural uniqueness in explicit constraints; integers are for counts and versions, not entity identities.
 - Give each migration one clear schema responsibility. Keep its table, indexes, and constraints together; preserve applied migrations and add subsequent changes as new migrations.
 - Pass settings explicitly. Keep API and worker processes replaceable; shared storage owns sessions, authentication flows, rate limits, and jobs. See [runtime](docs/runtime.md).
+- Run periodic maintenance through the portable maintenance executable and its shared job queue, with separate database credentials. Do not require an operating-system scheduler.
 - Keep environment examples under `.envs/.example/`, actual secrets under ignored `.envs/.<environment>/`, container build/local files under `compose/`, and deployment wiring under `deploy/`. Runtime processes must not receive migration-role credentials.
 - Use structured `tracing` spans across requests, services, and jobs. Never record credentials, cookies, tokens, secret URLs, or mail bodies. Use the existing MJML mail templates and transport.
 - Review authentication changes against [security](docs/security.md), including the OWASP references and regression tests. PostgreSQL is authoritative; cached data must never bypass revocation or final authorization.

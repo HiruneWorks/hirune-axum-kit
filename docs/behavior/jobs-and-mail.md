@@ -11,6 +11,13 @@ the current token, running state, and a live lease. A stale worker cannot overwr
 a replacement's result. Database time governs lease authority; a corresponding
 Tokio monotonic deadline bounds the complete handler/heartbeat operation.
 
+Ordinary registrations use the `application` queue. The maintenance executable
+uses the separate `maintenance` queue; claim and expired-lease recovery both
+filter the selected queue. Periodic registration uses database time and a unique
+`(queue, schedule_key)` constraint to insert at most one job per interval bucket.
+Completed jobs retain that key until normal retention. Scheduling intervals are
+at most one day, no longer than the minimum finished-history retention.
+
 Successful work becomes succeeded. Retryable failure becomes pending with
 exponential delay, bounded by the attempt budget. Permanent failure or exhausted
 attempts become retained failed jobs. An expired claim closes its attempt history
@@ -25,7 +32,29 @@ extend a job past its execution deadline. Handlers must respect cancellation;
 blocking operations need their own bound. This is at-least-once execution, not an
 exactly-once guarantee for external side effects.
 
+Multiple API instances enqueue into the same database and multiple worker
+processes consume that shared queue. Workers need the same supported job kinds;
+no API-to-worker affinity or manual job partition is required. Each worker's
+concurrency limit applies locally, so budget the total database connections and
+external-service capacity across all replicas.
+
+Handlers return a stable error code and whether failure is retryable. The shared
+runtime records the attempt and chooses delayed retry or retained failure; a
+normal handler failure does not stop unrelated work. A lost lease cannot finalize
+the old attempt. Finalization/storage errors are logged and leave lease recovery
+authoritative. A database error while claiming exits the worker with an error;
+the deployment supervisor restarts it. This worker policy is separate from the
+HTTP adapter's common status/code/request-ID error response.
+
 ## Authentication mail
+
+Purpose-specific MJML and plain-text templates live under `crates/mail/templates/`:
+`verify-email`, `reset-password`, `welcome`, and `password-changed`. Signup sends
+verification instructions; successful verification or new verified OIDC signup
+registers the welcome message. A completed password change or reset registers a
+security notification, never the password itself. These notifications have no
+action token and expire after 24 hours. All registrations commit with the owning
+account change and use the same encrypted delivery/job path.
 
 The identity domain prepares an encrypted, short-lived delivery in the business
 transaction. The mail crate renders MJML HTML and plain text through strict
@@ -55,10 +84,17 @@ was retried or failed again recently while cleanup waited. Deleting a retained
 failed job also removes its inspection history and ability to retry it; export or
 investigate it before the configured deadline.
 
-Use `just cleanup <environment>` from `deploy/` so audit cleanup receives the
-restricted maintenance role. API, worker, and ordinary management commands keep
-append-only audit privileges. Schedule cleanup explicitly; application startup
-does not create a scheduler. The [deployment templates](../../deploy/README.md)
-include a five-minute systemd timer for cleanup and search repair. A busy backlog
-may require repeated runs. Review retention against the consuming application's
+The portable `maintenance` executable registers periodic cleanup and search repair
+in its dedicated queue and consumes it through the normal fenced runtime. It runs
+with the restricted maintenance role. Multiple replicas deduplicate each bucket's
+registration; repeat execution and overlap across different buckets remain
+possible. Both cleanup and repair are bounded and repeatable. Keep the interval
+consistent across replicas. A fatal scheduler or consumer error stops both so the
+deployment supervisor can restart the process.
+
+Use `just cleanup <environment>` from `deploy/` for a one-off cleanup with the
+same restricted role. API, worker, and ordinary management commands keep
+append-only audit privileges. The [deployment templates](../../deploy/README.md)
+start maintenance as a normal service. A busy backlog may require shorter intervals
+or explicit extra runs. Review retention against the consuming application's
 requirements before deployment.

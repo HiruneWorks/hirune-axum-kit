@@ -10,12 +10,16 @@ This is a modular monolith with separately scalable API and worker processes.
 PostgreSQL owns accounts, authentication state, authorization facts, deliveries,
 and jobs. Neither process requires sticky routing or in-memory authority.
 Migration and management commands are explicit one-off processes.
+The separate maintenance executable registers periodic jobs and consumes a
+dedicated queue using restricted database credentials. It shares the same lease,
+retry, and attempt-history implementation as ordinary workers.
 
 | Location | Owns | May depend on |
 | --- | --- | --- |
 | `src/http/` | HTTP extraction, DTOs, middleware, error mapping, OpenAPI | application services |
 | `src/bootstrap.rs` | connection and service assembly | application, jobs, mail |
 | `src/bin/` | environment, process tracing, executable lifecycle | bootstrap and runtime |
+| `src/maintenance.rs` | bounded cross-domain cleanup coordination and periodic maintenance registration | owning services and jobs |
 | `crates/application/src/identity/` | accounts, credentials, sessions, authentication flows | auth-core, jobs, mail, SeaORM |
 | `crates/application/src/organizations/` | minimal organizations and scoped memberships | authorization, SeaORM |
 | `crates/application/src/files/` | original attachment metadata, quota, lifecycle, S3 transport, derived filename search | organization service, AWS S3 SDK, Meilisearch REST, SeaORM, jobs |
