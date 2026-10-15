@@ -3,6 +3,11 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+mod chronological;
+mod numbered;
+pub use chronological::{ChronologicalPageRequest, ChronologicalPosition};
+pub use numbered::{NumberedPageRequest, SEARCH_WINDOW_LIMIT, SearchPage};
+
 #[derive(Clone, Copy)]
 pub struct PageRequest {
     pub(crate) limit: u64,

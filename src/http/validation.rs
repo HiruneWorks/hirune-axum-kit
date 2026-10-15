@@ -33,7 +33,30 @@ pub fn api_access_name(value: &str) -> Result<(), ValidationError> {
         .map_err(|_| ValidationError::new("api_name"))
 }
 
-pub fn api_client_scopes(values: &[String]) -> Result<(), ValidationError> {
-    application::api_access::validation::scopes(values)
-        .map_err(|_| ValidationError::new("api_scopes"))
+pub fn post_title(value: &str) -> Result<(), ValidationError> {
+    application::posts::validation::title(value).map_err(|_| ValidationError::new("post_title"))
+}
+pub fn post_body(value: &str) -> Result<(), ValidationError> {
+    application::posts::validation::body(value).map_err(|_| ValidationError::new("post_body"))
+}
+pub fn comment_body(value: &str) -> Result<(), ValidationError> {
+    application::posts::validation::comment(value).map_err(|_| ValidationError::new("comment_body"))
+}
+pub fn post_attachments(values: &[uuid::Uuid]) -> Result<(), ValidationError> {
+    application::posts::validation::attachments(values)
+        .map_err(|_| ValidationError::new("post_attachments"))
+}
+pub fn display_name(value: &str) -> Result<(), ValidationError> {
+    application::profiles::validation::display_name(value)
+        .map_err(|_| ValidationError::new("display_name"))
+}
+pub fn profile_bio(value: &str) -> Result<(), ValidationError> {
+    application::profiles::validation::bio(value).map_err(|_| ValidationError::new("profile_bio"))
+}
+pub fn search_query(value: &str) -> Result<(), ValidationError> {
+    application::search::validate_query(value).map_err(|_| ValidationError::new("search_query"))
+}
+pub fn push_token(value: &str) -> Result<(), ValidationError> {
+    application::notifications::validation::device_token(value)
+        .map_err(|_| ValidationError::new("push_token"))
 }

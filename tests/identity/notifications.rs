@@ -5,7 +5,7 @@ use sea_orm::{ColumnTrait, QueryFilter};
 async fn pending_messages(database: &TestDatabase) -> anyhow::Result<Vec<AuthenticationMail>> {
     let settings = test_support::identity_settings()?;
     mail_delivery::Entity::find()
-        .filter(mail_delivery::Column::State.eq("pending"))
+        .filter(mail_delivery::Column::State.eq(application::identity::MailDeliveryState::Pending))
         .all(&database.connection)
         .await?
         .into_iter()
@@ -96,7 +96,11 @@ async fn verification_queues_welcome_once_and_password_changes_queue_tokenless_n
         .await?;
     let reset_token = generate_secure_token();
     database
-        .insert_challenge(actor.account_id(), "reset_password", &reset_token)
+        .insert_challenge(
+            actor.account_id(),
+            application::identity::ChallengePurpose::ResetPassword,
+            &reset_token,
+        )
         .await?;
     identity
         .reset_password(

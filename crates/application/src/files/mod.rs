@@ -1,3 +1,5 @@
+mod state;
+pub use state::FileState;
 pub mod entities;
 mod maintenance;
 mod repository;

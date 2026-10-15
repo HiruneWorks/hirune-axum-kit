@@ -35,11 +35,13 @@ revocation disables every associated key and cannot be undone by the public API.
 Rotation means issuing a replacement, updating the caller, then revoking the
 old key. It never resets usage.
 
-The supported scope is organizations:read. An empty scope list denies all current
-external operations. Unknown or duplicate scopes are rejected. The example GET
-/api/v1/external/organization returns only the client's owning organization's
-UUID, name, and version. It accepts no caller-selected organization UUID.
-HEAD explicitly returns 405 without admitting or charging a request.
+The supported scopes are organizations:read and posts:read. They are typed enums
+in service and HTTP contracts. An empty list denies all external operations;
+unknown or duplicate scopes are rejected. GET /api/v1/external/organization
+returns the owning organization's UUID, name, and version. GET
+/api/v1/external/posts returns only its published posts with scoped cursor
+pagination and Cedar authorization. Neither accepts a caller-selected organization.
+HEAD explicitly returns 405 on both routes without admitting or charging a request.
 Expose another domain through its own concrete external operation and scope;
 do not enable key authentication across the existing session router.
 
@@ -93,7 +95,10 @@ After checking the presented secret without authority locks, admission starts a
 short transaction, locks the client and then the key, and repeats credential,
 expiry, client-state, scope, and allocation checks. It reads database time after
 those locks. Both counters and one UUIDv7 admission record commit atomically.
-The organization service supplies the scoped read projection in that transaction.
+The organization service supplies its scoped projection in that transaction.
+Post listing starts a separate scoped read transaction after admission commits;
+that read cannot refund admission if it later fails. New external writes need
+an explicit business transaction/idempotency contract.
 No network request, response streaming, or external processing runs under these
 locks.
 
@@ -133,8 +138,8 @@ cleanup run, using API_USAGE_RETENTION_DAYS (default 90, range 1 through 36,500)
 Retention does not change counters. Admission records are operational history,
 not an invoicing ledger or an exactly-once billing system.
 
-Human management locks account, organization, client, then key. External reads
-lock client then key and perform a plain scoped organization read; they do not
+Human management locks account, organization, client, then key. External admission
+locks client then key and performs a plain scoped organization read; it does not
 subsequently take an organization lock. The current organization domain has no
 suspension or deletion operation. New organization policies, deletion, or external
 writes must extend the authority and lock-order contract before implementation.

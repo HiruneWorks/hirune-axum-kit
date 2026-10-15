@@ -1,3 +1,4 @@
+use crate::identity::ChallengePurpose;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -7,7 +8,7 @@ pub struct Model {
     pub id: Uuid,
     pub token_hash: String,
     pub account_id: Uuid,
-    pub purpose: String,
+    pub purpose: ChallengePurpose,
     pub security_version: i64,
     pub secret: Option<String>,
     pub expires_at: DateTimeUtc,

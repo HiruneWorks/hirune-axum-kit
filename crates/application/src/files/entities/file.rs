@@ -1,3 +1,4 @@
+use crate::files::FileState;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -11,7 +12,7 @@ pub struct Model {
     pub filename: String,
     pub media_type: Option<String>,
     pub byte_size: i64,
-    pub state: String,
+    pub state: FileState,
     pub version: i64,
     pub content_hash: Option<String>,
     pub upload_expires_at: DateTimeUtc,

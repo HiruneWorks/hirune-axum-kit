@@ -12,13 +12,11 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         [command] if command == "initialize-integrations" => {
-            app.files.initialize_integrations().await?;
-            tracing::info!("configured file integrations initialized");
+            kit::integrations::initialize(&app).await?;
             Ok(())
         }
         [command] if command == "repair-search" => {
-            let files = app.files.repair_search().await?;
-            tracing::info!(files, "search repair jobs registered");
+            kit::integrations::repair_search(&app).await?;
             Ok(())
         }
         [command, account_id, enabled] if command == "set-administrator" => {

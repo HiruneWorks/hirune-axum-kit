@@ -7,6 +7,10 @@ contracts with `just openapi`; `just check` rejects drift. Do not hand-edit it.
 HTTP handlers extract typed input, authentication context, and request correlation,
 call an owning application service, and translate its result. They contain no
 database queries or business policy. Return DTOs rather than persistence models.
+Versioned adapters live in `src/http/v1/<feature>/`. Each operation file owns its
+handler and exclusive DTOs; `routes.rs` declares URLs and methods, and
+`contracts.rs` contains genuinely shared contracts. Common extraction, cookies,
+errors, and middleware stay at the HTTP root.
 Normal input objects reject unknown fields; the OIDC callback accepts protocol
 extensions. Malformed JSON, UUIDs, and query values use the same error envelope.
 
@@ -86,13 +90,27 @@ codes before signing in again. The endpoint follows the API's `no-store` policy.
 ## Pagination and updates
 
 Lists use `limit` (default 25, range 1–100) and an optional opaque `cursor`. Results
-are `{ "items": [...], "next_cursor": null }`, ordered by ascending UUID. Queries
+are `{ "items": [...], "next_cursor": null }`. Sessions, organizations, clients,
+keys, and files use ascending UUID order. Posts, comments, organization users,
+and the inbox use descending `(created_at, id)` order, including an explicit UUID
+tie-breaker. Their cursors carry typed positions and the list's organization,
+actor, and filter scope. Creation timestamps are immutable; edits do not move rows. Queries
 fetch at most limit+1 rows and always apply the owner/membership scope in SQL.
 No implicit count query is made. A cursor has a version and scope, but is not an
 authorization credential; every query still enforces access. Unknown versions,
 invalid encoding, and mismatched scopes are invalid input.
 
-Organization updates require `expected_version`; a stale value returns 409.
+Post and profile search use numbered `page` / `per_page` inputs. They hydrate at
+most 1,000 candidate ID/revision pairs through the authorized PostgreSQL query
+before slicing pages. Responses include `total_in_window`, `search_window_limit`,
+and `has_next_page`; this is the authorized count within that finite candidate
+window, not an unbounded search-engine total. Stale revisions, private drafts,
+removed memberships, and deleted resources cannot leak through result text or
+counts. Filename search retains its bounded first-page contract. See
+[profiles and search](behavior/profiles-and-search.md).
+
+Organization, post, comment-deletion, and profile changes require
+`expected_version`; a stale value returns 409. New posts/profiles use version zero.
 Current operations have explicit full input fields. If a future partial-update
 contract accepts both omission and null, represent and test those states separately.
 Unauthorized organization detail access returns 404, including for administrators

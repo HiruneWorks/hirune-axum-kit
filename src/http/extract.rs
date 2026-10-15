@@ -1,4 +1,5 @@
 use super::{HttpState, error::ApiError};
+use application::config::SecretString;
 use application::{ApplicationError, identity::AuthenticatedSession};
 use axum::{
     Json,
@@ -8,6 +9,23 @@ use axum::{
 use cookie::Cookie;
 use serde::de::DeserializeOwned;
 use validator::Validate;
+
+pub struct ApiKeyCredential(pub(super) SecretString);
+impl FromRequestParts<HttpState> for ApiKeyCredential {
+    type Rejection = ApiError;
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &HttpState,
+    ) -> Result<Self, Self::Rejection> {
+        if read_cookie(&parts.headers, state.settings.session_cookie_name())?.is_some() {
+            return Err(ApiError::invalid_input());
+        }
+        let value = read_bearer_token(&parts.headers)?
+            .filter(|value| value.len() <= 128)
+            .ok_or(ApplicationError::Unauthenticated)?;
+        Ok(Self(SecretString::new(value)))
+    }
+}
 
 pub struct ApiJson<T>(pub T);
 impl<T: DeserializeOwned + Validate + Send, S: Send + Sync> FromRequest<S> for ApiJson<T> {

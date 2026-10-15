@@ -1,3 +1,4 @@
+use crate::identity::MailDeliveryState;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -8,7 +9,7 @@ pub struct Model {
     pub account_id: Uuid,
     pub challenge_hash: Option<String>,
     pub ciphertext: Option<String>,
-    pub state: String,
+    pub state: MailDeliveryState,
     pub expires_at: DateTimeUtc,
     pub accepted_at: Option<DateTimeUtc>,
     pub created_at: DateTimeUtc,

@@ -23,12 +23,13 @@ fn main() -> Result<()> {
         Some("test-api") => infrastructure::run_tests(&["api", "oidc", "api_access"]),
         Some("test-process") => infrastructure::run_tests(&["process"]),
         Some("test-files") => infrastructure::run_tests(&["files"]),
+        Some("test-content") => infrastructure::run_tests(&["content"]),
         Some("test-deployment") => deployment::verify(),
         Some("test-production") => production::verify(),
         Some("load-test") => infrastructure::run_load_test(),
         Some("template-check") => template::verify(root),
         _ => anyhow::bail!(
-            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-deployment|test-production|load-test|template-check>"
+            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|load-test|template-check>"
         ),
     }
 }

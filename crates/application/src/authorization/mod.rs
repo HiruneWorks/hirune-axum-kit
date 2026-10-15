@@ -5,6 +5,8 @@ use cedar_policy::{
 };
 use serde_json::json;
 use uuid::Uuid;
+mod content;
+pub(crate) use content::PostFacts;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Principal {
@@ -21,6 +23,12 @@ pub enum Action {
     ReadOrganization,
     ManageOrganization,
     AdministerAccount,
+    CreatePost,
+    ReadPost,
+    EditPost,
+    DeletePost,
+    CreateComment,
+    DeleteComment,
 }
 impl Action {
     fn as_str(self) -> &'static str {
@@ -30,6 +38,12 @@ impl Action {
             Self::ReadOrganization => "read_organization",
             Self::ManageOrganization => "manage_organization",
             Self::AdministerAccount => "administer_account",
+            Self::CreatePost => "create_post",
+            Self::ReadPost => "read_post",
+            Self::EditPost => "edit_post",
+            Self::DeletePost => "delete_post",
+            Self::CreateComment => "create_comment",
+            Self::DeleteComment => "delete_comment",
         }
     }
 }

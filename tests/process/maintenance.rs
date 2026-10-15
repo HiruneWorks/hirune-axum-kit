@@ -56,7 +56,7 @@ async fn maintenance_replicas_schedule_cleanup_and_leave_application_jobs_for_wo
             });
             let completed = job::Entity::find()
                 .filter(job::Column::Queue.eq("maintenance"))
-                .filter(job::Column::State.eq("succeeded"))
+                .filter(job::Column::State.eq(jobs::JobState::Succeeded))
                 .count(&database.connection)
                 .await?;
             if started && completed == 1 {

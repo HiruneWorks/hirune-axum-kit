@@ -241,7 +241,11 @@ async fn password_reset_consumes_once_and_revokes_every_session() -> anyhow::Res
     let (actor, old_session) = database.verified_account(&identity).await?;
     let token = generate_secure_token();
     database
-        .insert_challenge(actor.account_id(), "reset_password", &token)
+        .insert_challenge(
+            actor.account_id(),
+            application::identity::ChallengePurpose::ResetPassword,
+            &token,
+        )
         .await?;
     let (left, right) = tokio::join!(
         identity.reset_password(

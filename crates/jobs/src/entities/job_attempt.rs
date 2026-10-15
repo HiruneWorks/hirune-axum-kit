@@ -1,3 +1,4 @@
+use crate::AttemptOutcome;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -9,7 +10,7 @@ pub struct Model {
     pub attempt: i32,
     pub started_at: DateTimeUtc,
     pub finished_at: Option<DateTimeUtc>,
-    pub outcome: Option<String>,
+    pub outcome: Option<AttemptOutcome>,
     pub error_code: Option<String>,
 }
 

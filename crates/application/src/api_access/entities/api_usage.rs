@@ -1,3 +1,4 @@
+use crate::api_access::ApiScope;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -7,7 +8,7 @@ pub struct Model {
     pub id: Uuid,
     pub client_id: Uuid,
     pub key_id: Uuid,
-    pub operation: String,
+    pub operation: ApiScope,
     pub request_id: Uuid,
     pub admitted_at: DateTimeUtc,
 }

@@ -14,6 +14,7 @@ claim that every verification step has already passed.
 | Operational layout | `.envs/` owns environment examples and ignored secrets; `compose/` owns container/local configuration; `deploy/` owns deployment wiring and commands. |
 | Design | Independently reasoned crate and file boundaries. References demonstrate useful behavior, not a prescribed crate diagram. |
 | Code quality | Clarity and maintainability first; explicit descriptive names, even when longer; concise English comments only where needed. |
+| Closed value sets | Existing and new internal states, purposes, roles, platforms, scopes, ordering, and environment modes use enums. String conversion belongs at protocol/configuration/storage boundaries; preserve explicit wire spellings and reject unknown values. |
 | Persistence | Prefer SeaORM and SeaQuery, including migrations. Application-generated UUIDv7 entity primary keys and UUID references. |
 | Migrations | One table with its own indexes and constraints per baseline migration. Subsequent migrations have a clear schema responsibility. |
 | Scaling | Replaceable stateless API instances; shared state outside processes; independently scalable workers. |
@@ -29,6 +30,9 @@ claim that every verification step has already passed.
 | Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. |
 | Files | Original bytes in a separate private S3-compatible SeaweedFS store; PostgreSQL owns metadata, permissions, quota reservations, and lifecycle. No default content sanitization, antivirus, image reencoding, video processing, or media processor. |
 | Search | Meilisearch is a derived index behind the authenticated API; current PostgreSQL state and permissions decide which results may be returned. |
+| Content example | Organization posts and single-level comments connect authorization, original attachments, profile/user and post search, cursor lists, numbered search pages, and durable notifications. No wiki engine. |
+| Notifications | Durable in-app comment notifications, preferences, unread/read state; optional FCM HTTP v1 using Google ADC. Disabled by default; no credentials required when disabled. |
+| HTTP organization | All version-one domains live under `src/http/v1/<feature>/`. Named endpoint files own their handler and exclusive DTOs; `contracts.rs` contains shared DTOs and `routes.rs` contains URL/method composition. Application services remain unversioned. |
 | Dependency maintenance | Use version tags or maintained channels for GitHub Actions, with Dependabot updates; do not pin action references to commit hashes. |
 | Agent guidance | Concise mandatory instructions in AGENTS.md, detailed conventions and contracts in docs, milestone evidence in memory. |
 | Git | Coherent local commits with concise English messages; no `codex/` branch prefix; preserve unrelated work. |
@@ -55,17 +59,20 @@ authenticated account; matching email addresses alone do not merge accounts.
 
 ## Scope boundaries
 
-The baseline demonstrates identity, a small organization domain, scoped
-authorization and pagination, durable background work, and transactional mail.
+The baseline demonstrates identity, organizations with owner-managed existing
+members, profiles, organization posts and comments, Cedar authorization,
+pagination, durable background work, and transactional mail.
 The file example demonstrates organization attachments and filename search.
+Post/user search and notification behavior are defined in their owning contracts.
 The external API example demonstrates scoped server-to-server access with shared
 minute and calendar-month allocations; see [API access](behavior/api-access.md).
 Conversation-specific attachment permissions belong to the owning conversation
 service in a consuming project. Arbitrary file contents are not parsed or executed;
 `ready` describes completed storage, not a malware or content-safety verdict.
-Storage and search are separately optional integrations. Public profiles, social
-content, notification inboxes, campaign email, and application-specific
-permissions are project extensions.
+Storage, search, and FCM are separately optional integrations. User profiles are
+discoverable only within current shared organization membership. Wiki engines,
+campaign email, public social graphs, and application-specific permission models
+remain consuming-project extensions.
 The [regression inventory](regressions.md) records retained security behavior and
 intentional exclusions from the reference test coverage.
 

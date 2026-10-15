@@ -10,7 +10,7 @@ async fn storage_failure_rolls_back_both_counters_and_usage_and_retention_preser
         id: Set(conflicting_id),
         client_id: Set(fixture.client_id),
         key_id: Set(fixture.key_id),
-        operation: Set("fixture".into()),
+        operation: Set(application::api_access::ApiScope::OrganizationsRead),
         request_id: Set(Uuid::now_v7()),
         admitted_at: Set(database_now(&fixture.database).await?),
     }
@@ -69,7 +69,7 @@ async fn storage_failure_rolls_back_both_counters_and_usage_and_retention_preser
         id: Set(expired_usage_id),
         client_id: Set(fixture.client_id),
         key_id: Set(fixture.key_id),
-        operation: Set("fixture".into()),
+        operation: Set(application::api_access::ApiScope::OrganizationsRead),
         request_id: Set(Uuid::now_v7()),
         admitted_at: Set(Utc::now() - chrono::Duration::days(91)),
     }

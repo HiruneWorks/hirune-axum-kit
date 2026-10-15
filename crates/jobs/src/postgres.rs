@@ -1,10 +1,12 @@
-use crate::entities::{job, job_attempt};
+use crate::{
+    AttemptOutcome, JobState,
+    entities::{job, job_attempt},
+};
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::ExprTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, DbErr, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait, Set,
+    DatabaseTransaction, DbErr, EntityTrait, ExprTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    QuerySelect, QueryTrait, Set, TransactionTrait,
     sea_query::{Expr, Func, LockBehavior, LockType, OnConflict, Query},
 };
 use serde::{Deserialize, Serialize};
@@ -150,12 +152,22 @@ impl PostgresQueue {
             .filter(job::Column::Queue.eq(&self.queue))
             .filter(
                 Condition::any()
-                    .add(Condition::all().add(job::Column::State.eq("pending")).add(
-                        Expr::col(job::Column::AvailableAt).lte(Func::cust("clock_timestamp")),
-                    ))
-                    .add(Condition::all().add(job::Column::State.eq("running")).add(
-                        Expr::col(job::Column::LeaseUntil).lte(Func::cust("clock_timestamp")),
-                    )),
+                    .add(
+                        Condition::all()
+                            .add(job::Column::State.eq(JobState::Pending))
+                            .add(
+                                Expr::col(job::Column::AvailableAt)
+                                    .lte(Func::cust("clock_timestamp")),
+                            ),
+                    )
+                    .add(
+                        Condition::all()
+                            .add(job::Column::State.eq(JobState::Running))
+                            .add(
+                                Expr::col(job::Column::LeaseUntil)
+                                    .lte(Func::cust("clock_timestamp")),
+                            ),
+                    ),
             )
             .order_by_asc(job::Column::AvailableAt)
             .order_by_asc(job::Column::Id)
@@ -179,7 +191,10 @@ impl PostgresQueue {
             };
             job_attempt::Entity::update_many()
                 .col_expr(job_attempt::Column::FinishedAt, Expr::value(database_now))
-                .col_expr(job_attempt::Column::Outcome, Expr::value("lease_expired"))
+                .col_expr(
+                    job_attempt::Column::Outcome,
+                    Expr::value(AttemptOutcome::LeaseExpired),
+                )
                 .col_expr(job_attempt::Column::ErrorCode, Expr::value(error_code))
                 .filter(job_attempt::Column::Id.eq(expired_attempt_id))
                 .filter(job_attempt::Column::FinishedAt.is_null())
@@ -188,7 +203,7 @@ impl PostgresQueue {
         }
         let mut next_state = candidate.clone().into_active_model();
         if candidate.attempts >= candidate.max_attempts {
-            next_state.state = Set("failed".into());
+            next_state.state = Set(JobState::Failed);
             next_state.finished_at = Set(Some(database_now));
             next_state.last_error = Set(Some("attempts_exhausted".into()));
             next_state.claim_token = Set(None);
@@ -198,10 +213,12 @@ impl PostgresQueue {
             transaction.commit().await?;
             return Ok(None);
         }
-        if candidate.state == "running" {
-            next_state.state = Set("pending".into());
-            next_state.available_at =
-                Set(database_now + Duration::seconds(retry_delay_seconds(candidate.attempts)));
+        if candidate.state == JobState::Running {
+            next_state.state = Set(JobState::Pending);
+            next_state.available_at = Set(std::cmp::max(
+                candidate.available_at,
+                database_now + Duration::seconds(retry_delay_seconds(candidate.attempts)),
+            ));
             next_state.last_error = Set(Some(
                 if candidate
                     .deadline_at
@@ -222,7 +239,7 @@ impl PostgresQueue {
         }
         let attempt_id = Uuid::now_v7();
         let deadline_at = database_now + Duration::seconds(i64::from(execution_seconds));
-        next_state.state = Set("running".into());
+        next_state.state = Set(JobState::Running);
         next_state.attempts = Set(candidate.attempts + 1);
         next_state.claim_token = Set(Some(attempt_id));
         next_state.lease_until = Set(Some(
@@ -279,27 +296,30 @@ impl PostgresQueue {
         failure: Option<(&str, bool)>,
     ) -> Result<(), JobError> {
         let (next_state, outcome, error_code, retry_delay) = match failure {
-            None => ("succeeded", "succeeded", None, 0),
+            None => (JobState::Succeeded, AttemptOutcome::Succeeded, None, 0),
             Some((code, true)) if claim.attempts < claim.max_attempts => (
-                "pending",
-                "retry",
+                JobState::Pending,
+                AttemptOutcome::Retry,
                 Some(code),
                 retry_delay_seconds(claim.attempts),
             ),
-            Some((code, _)) => ("failed", "failed", Some(code), 0),
+            Some((code, _)) => (JobState::Failed, AttemptOutcome::Failed, Some(code), 0),
         };
         if error_code.is_some_and(|code| code.len() > 100) {
             return Err(JobError::Invalid);
         }
         let transaction = self.database.begin().await?;
         let database_now = database_time(&transaction).await?;
-        let finished_at = (next_state != "pending").then_some(database_now);
+        let finished_at = (next_state != JobState::Pending).then_some(database_now);
         let updated = job::Entity::update_many()
             .col_expr(job::Column::State, Expr::value(next_state))
             .col_expr(job::Column::LastError, Expr::value(error_code))
             .col_expr(
                 job::Column::AvailableAt,
-                Expr::value(database_now + Duration::seconds(retry_delay)),
+                Func::cust("greatest")
+                    .arg(Expr::col(job::Column::AvailableAt))
+                    .arg(database_now + Duration::seconds(retry_delay))
+                    .into(),
             )
             .col_expr(job::Column::FinishedAt, Expr::value(finished_at))
             .col_expr(job::Column::ClaimToken, Expr::value(Option::<Uuid>::None))
@@ -328,6 +348,28 @@ impl PostgresQueue {
         Ok(())
     }
 
+    pub async fn defer_retry(&self, claim: &Claim, seconds: u64) -> Result<(), JobError> {
+        if !(1..=86400).contains(&seconds) {
+            return Err(JobError::Invalid);
+        }
+        let now = database_time(&self.database).await?;
+        let updated = job::Entity::update_many()
+            .col_expr(
+                job::Column::AvailableAt,
+                Func::cust("greatest")
+                    .arg(Expr::col(job::Column::AvailableAt))
+                    .arg(now + Duration::seconds(seconds as i64))
+                    .into(),
+            )
+            .filter(valid_claim(claim))
+            .exec(&self.database)
+            .await?;
+        if updated.rows_affected != 1 {
+            return Err(JobError::LeaseLost);
+        }
+        Ok(())
+    }
+
     pub async fn cleanup_finished(
         &self,
         succeeded_days: i64,
@@ -341,12 +383,12 @@ impl PostgresQueue {
         let expired = Condition::any()
             .add(
                 Condition::all()
-                    .add(job::Column::State.eq("succeeded"))
+                    .add(job::Column::State.eq(JobState::Succeeded))
                     .add(job::Column::FinishedAt.lt(now - Duration::days(succeeded_days))),
             )
             .add(
                 Condition::all()
-                    .add(job::Column::State.eq("failed"))
+                    .add(job::Column::State.eq(JobState::Failed))
                     .add(job::Column::FinishedAt.lt(now - Duration::days(failed_days))),
             );
         let eligible = job::Entity::find()
@@ -369,7 +411,7 @@ impl PostgresQueue {
 
     pub async fn retry_failed(&self, job_id: Uuid) -> Result<bool, JobError> {
         Ok(job::Entity::update_many()
-            .col_expr(job::Column::State, Expr::value("pending"))
+            .col_expr(job::Column::State, Expr::value(JobState::Pending))
             .col_expr(
                 job::Column::MaxAttempts,
                 Expr::col(job::Column::Attempts).add(5),
@@ -383,7 +425,7 @@ impl PostgresQueue {
                 Expr::value(Option::<DateTime<Utc>>::None),
             )
             .filter(job::Column::Id.eq(job_id))
-            .filter(job::Column::State.eq("failed"))
+            .filter(job::Column::State.eq(JobState::Failed))
             .filter(job::Column::Attempts.lte(995))
             .exec(&self.database)
             .await?
@@ -396,7 +438,7 @@ fn valid_claim(claim: &Claim) -> Condition {
     Condition::all()
         .add(job::Column::Id.eq(claim.id))
         .add(job::Column::ClaimToken.eq(claim.claim_token))
-        .add(job::Column::State.eq("running"))
+        .add(job::Column::State.eq(JobState::Running))
         .add(Expr::col(job::Column::LeaseUntil).gt(Func::cust("clock_timestamp")))
 }
 
@@ -415,5 +457,3 @@ async fn database_time(connection: &impl ConnectionTrait) -> Result<DateTime<Utc
         .ok_or_else(|| DbErr::Custom("database clock unavailable".into()))?
         .try_get("", "database_time")
 }
-
-use sea_orm::TransactionTrait;

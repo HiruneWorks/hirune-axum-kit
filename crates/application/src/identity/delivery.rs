@@ -3,7 +3,11 @@ use super::{
     entities::account,
     repository::{accounts, challenges, deliveries},
 };
-use crate::{ApplicationError, ApplicationResult, database::database_time};
+use crate::{
+    ApplicationError, ApplicationResult,
+    database::database_time,
+    identity::{ChallengePurpose, MailDeliveryState},
+};
 use auth_core::token::{generate_secure_token, hash_token};
 use chrono::Duration;
 use jobs::{Claim, HandlerFailure, TraceContext};
@@ -195,7 +199,7 @@ impl IdentityService {
         let Some(delivery) = deliveries::find_delivery(&transaction, delivery_id).await? else {
             return Ok(None);
         };
-        if delivery.state != "pending" {
+        if delivery.state != MailDeliveryState::Pending {
             return Ok(None);
         }
         let account = accounts::find_by_id(&transaction, delivery.account_id).await?;
@@ -244,10 +248,10 @@ impl IdentityService {
 fn delivery_context(delivery_id: Uuid) -> String {
     format!("authentication mail v1:{delivery_id}")
 }
-fn challenge_purpose(purpose: MailPurpose) -> Option<&'static str> {
+fn challenge_purpose(purpose: MailPurpose) -> Option<ChallengePurpose> {
     match purpose {
-        MailPurpose::VerifyEmail => Some("verify_email"),
-        MailPurpose::ResetPassword => Some("reset_password"),
+        MailPurpose::VerifyEmail => Some(ChallengePurpose::VerifyEmail),
+        MailPurpose::ResetPassword => Some(ChallengePurpose::ResetPassword),
         MailPurpose::Welcome | MailPurpose::PasswordChanged => None,
     }
 }

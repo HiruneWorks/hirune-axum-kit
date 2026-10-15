@@ -144,7 +144,7 @@ async fn admission_rechecks_mutable_authority_after_waiting_for_the_client_lock(
             key.expires_at = Set(now + chrono::Duration::days(1));
             key.revoked_at = Set(None);
             client.active = Set(true);
-            client.scopes = Set(json!([ORGANIZATIONS_READ]));
+            client.scopes = Set(json!([ApiScope::OrganizationsRead]));
             client.month_limit = Set(100);
             match change {
                 "expiry" => key.expires_at = Set(now - chrono::Duration::seconds(1)),
@@ -188,7 +188,7 @@ async fn admission_rechecks_mutable_authority_after_waiting_for_the_client_lock(
         // Restore authority before starting the next blocked request.
         let mut client = client.into_active_model();
         client.active = Set(true);
-        client.scopes = Set(json!([ORGANIZATIONS_READ]));
+        client.scopes = Set(json!([ApiScope::OrganizationsRead]));
         client.month_limit = Set(100);
         client.update(&fixture.database.connection).await?;
         let mut key = api_key::Entity::find_by_id(fixture.key_id)

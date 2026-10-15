@@ -23,14 +23,15 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just manage set-administrator <uuid> <true\|false>` | Operator-only role change; promotion requires enrolled MFA and changes revoke existing credentials. |
 | `just manage set-api-client-quota <uuid> <per-minute> <per-month>` | Operator-only request allocation shared by all keys and API replicas; changing limits preserves usage. |
 | `just manage retry-job <uuid>` | Retry a retained failed job without erasing its attempt history. |
-| `just manage initialize-integrations` | Explicitly create the configured private bucket and file search index/settings; safe to repeat. |
-| `just manage repair-search` | Queue a bounded batch of current file metadata for index reconciliation. |
+| `just manage initialize-integrations` | Explicitly create the configured private bucket and filename/post/profile indexes/settings; safe to repeat. |
+| `just manage repair-search` | Queue up to 100 current records per configured filename/post/profile index for reconciliation. |
 | `just fmt` | Format the workspace. |
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, OpenAPI drift. |
 | `just test-db` | Real PostgreSQL identity and queue tests, including transaction and concurrency failures. |
 | `just test-api` | Production-router API and local signed OIDC tests; external API scope, shared quota concurrency, window rollover, authority races, transaction rollback, and retention. |
 | `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
+| `just test-content` | Real PostgreSQL/SeaweedFS/Meilisearch content, profiles, Cedar, revision conflicts, scoped pagination/search, transactional inbox, session-bound push devices, and provider-independent push gates. |
 | `just test-deployment` | Validate local/deployment Compose and separation of runtime, maintenance, and migration credentials using temporary example files. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
 | `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
@@ -57,11 +58,20 @@ generated `kit_test_` names before explicit cleanup.
 
 ## Load evidence
 
+The k6 entry point is `tests/load/mixed.js`; shared HTTP assertions live in
+`helpers.js`, and organization/session/file/external/content workflows own their
+respective modules. The process fixture mounts this script directory read-only
+into the k6 container.
+
 The default k6 profile uses two virtual users for ten seconds, each with its own
 account and organizations. It exercises scoped reads and pagination, optimistic
 updates, cross-organization denial, cross-instance session rotation/revocation,
-and original-file upload/download/search/deletion. Two API keys per client also
-exercise the external organization route across both instances and verify their
+and original-file upload/download/search/deletion. Each VU also has a separate
+commenter account in its primary organization. It creates and updates published
+posts plus a private draft, traverses user/post/comment/inbox cursors, reads
+notifications, searches current post/profile revisions with numbered pages,
+and deletes the content. Two API keys per client also exercise the external
+organization and published-post routes across both instances and verify their
 shared monthly counter; PostgreSQL admission records are checked after the run.
 These fixture clients receive explicit operator allocation, independent of the
 ordinary session and file limits. Search visibility waits are

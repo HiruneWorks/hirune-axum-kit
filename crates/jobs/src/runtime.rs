@@ -1,9 +1,8 @@
+use crate::{Claim, JobError, PostgresQueue};
 use std::{future::Future, time::Duration};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
-
-use crate::{Claim, JobError, PostgresQueue};
 
 #[derive(Clone, Copy)]
 pub struct WorkerSettings {

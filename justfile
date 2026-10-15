@@ -51,6 +51,9 @@ test-process:
 test-files:
     cargo xtask test-files
 
+test-content:
+    cargo xtask test-content
+
 test-deployment:
     cargo xtask test-deployment
 

@@ -13,7 +13,14 @@ to shorten a name.
 
 Every file, module, function, and type has one understandable responsibility.
 Feature modules own their services, queries, entities, and internal types. HTTP
-extraction and input/output contracts belong in `src/http/`. Split files when
+extraction and input/output contracts belong in `src/http/`. Group versioned
+routers, handlers, and DTOs in `src/http/v1/<feature>/`; keep shared extraction,
+errors, cookies, and middleware at the HTTP root. Each operation has a file named
+for its purpose, containing its handler and exclusive input/output DTOs.
+`routes.rs` declares URLs and methods; `contracts.rs` holds DTOs genuinely shared
+by multiple operations. Module indexes declare/re-export modules and contain no
+business logic or database queries. Version HTTP contracts rather
+than application services. Split files when
 responsibilities differ, not to meet an arbitrary line count. Crate boundaries
 must clarify ownership or enforce an actual dependency boundary.
 
@@ -40,6 +47,8 @@ Generate entity primary keys in the application with `Uuid::now_v7()`. Reference
 to those entities are UUIDs as well. Do not introduce integer or sequence entity
 IDs. Counts, ordering positions, versions, and durations may be integers. Natural
 identifiers such as normalized email have their own unique constraints.
+The migration helper `uuid_primary_key` declares the UUID column and primary key;
+it does not generate values or restrict the UUID version.
 
 Each migration creates one table and its indexes and constraints, or makes one
 coherent subsequent schema change. Foreign keys express dependencies and migration
@@ -61,6 +70,23 @@ of duplicating value rules. Services repeat those checks for non-HTTP callers an
 own all mutable authority checks. `ToSchema` documents a contract; it does not
 validate it. Never log or return validation error parameters, which can contain
 submitted secrets. See [API conventions](api.md).
+
+## Finite value sets
+
+Use enums for closed sets: resource/job/delivery states, authentication purposes,
+membership roles, API scopes, push platforms, cursor ordering, and application
+environments. Do not use unrestricted strings and repeated literal comparisons
+for these internal values. Define each enum in the owning domain. Keep genuinely
+open identifiers, such as caller-defined job kinds, queue names, OIDC provider
+names, and opaque protocol state tokens, as validated strings.
+
+Deserialize configuration and protocol values at the boundary. Preserve existing
+wire spellings with explicit Serde mappings; HTTP enums belong to their versioned
+adapter and convert into domain enums. Unknown closed values are errors, not
+defaults. Map persisted closed sets through SeaORM ActiveEnum using the existing
+string columns and constraints; a Rust type change does not require replacing
+those columns with PostgreSQL native enums. Never rewrite applied migrations to
+change a Rust representation. See [SeaORM ActiveEnum](https://www.sea-ql.org/SeaORM/docs/generate-entity/enumeration/).
 
 ## Runtime and operations
 

@@ -1,10 +1,9 @@
 use super::super::entities::session;
 use crate::pagination::PageRequest;
 use chrono::{DateTime, Utc};
-use sea_orm::ExprTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ExprTrait, QueryFilter, QueryOrder, QuerySelect, Set,
     sea_query::{Expr, Func},
 };
 use uuid::Uuid;

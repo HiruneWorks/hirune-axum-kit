@@ -1,10 +1,10 @@
 use super::{
     FILE_DELETE_JOB, FILE_SEARCH_JOB, FileService, entities::file, repository, service::FileJob,
 };
-use crate::{ApplicationError, ApplicationResult, database::database_time};
+use crate::{ApplicationError, ApplicationResult, database::database_time, files::FileState};
 use jobs::{Claim, HandlerFailure, TraceContext};
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, Condition, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
     TransactionTrait,
     sea_query::{Expr, NullOrdering},
 };
@@ -38,7 +38,7 @@ impl FileService {
         let Some(snapshot) = repository::find(&self.identity.database, file_id).await? else {
             return Ok(());
         };
-        if !matches!(snapshot.state.as_str(), "deleting" | "deleted") {
+        if !matches!(snapshot.state, FileState::Deleting | FileState::Deleted) {
             return Ok(());
         }
         self.require_storage()?
@@ -48,9 +48,9 @@ impl FileService {
         let Some(current) = repository::lock(&transaction, file_id).await? else {
             return Ok(());
         };
-        if current.state == "deleting" {
+        if current.state == FileState::Deleting {
             let now = database_time(&transaction).await?;
-            repository::set_state(&transaction, current, "deleted", now, None).await?;
+            repository::set_state(&transaction, current, FileState::Deleted, now, None).await?;
             self.enqueue_search(&transaction, file_id, TraceContext::default())
                 .await?;
         }
@@ -58,7 +58,7 @@ impl FileService {
         file::Entity::update_many()
             .col_expr(file::Column::CleanupCompletedAt, Expr::value(Some(now)))
             .filter(file::Column::Id.eq(file_id))
-            .filter(file::Column::State.eq("deleted"))
+            .filter(file::Column::State.eq(FileState::Deleted))
             .exec(&transaction)
             .await?;
         transaction.commit().await?;
@@ -101,7 +101,7 @@ impl FileService {
         let purge = file::Entity::find()
             .select_only()
             .column(file::Column::Id)
-            .filter(file::Column::State.eq("deleted"))
+            .filter(file::Column::State.eq(FileState::Deleted))
             .filter(file::Column::SearchDocumentMayExist.eq(false))
             .filter(
                 file::Column::UpdatedAt
@@ -112,7 +112,7 @@ impl FileService {
         let purge = purge.limit(100).into_query();
         file::Entity::delete_many()
             .filter(file::Column::Id.in_subquery(purge))
-            .filter(file::Column::State.eq("deleted"))
+            .filter(file::Column::State.eq(FileState::Deleted))
             .exec(&transaction)
             .await?;
         let candidates = file::Entity::find()
@@ -120,12 +120,18 @@ impl FileService {
                 Condition::any()
                     .add(
                         Condition::all()
-                            .add(file::Column::State.is_in(["uploading", "transferring"]))
+                            .add(
+                                file::Column::State
+                                    .is_in([FileState::Uploading, FileState::Transferring]),
+                            )
                             .add(file::Column::UploadExpiresAt.lte(now)),
                     )
                     .add(
                         Condition::all()
-                            .add(file::Column::State.is_in(["deleting", "deleted"]))
+                            .add(
+                                file::Column::State
+                                    .is_in([FileState::Deleting, FileState::Deleted]),
+                            )
                             .add(
                                 Condition::any()
                                     .add(file::Column::CleanupScheduledAt.is_null())
@@ -152,8 +158,12 @@ impl FileService {
         let count = candidates.len() as u64;
         for candidate in candidates {
             let file_id = candidate.id;
-            if matches!(candidate.state.as_str(), "uploading" | "transferring") {
-                repository::set_state(&transaction, candidate, "deleting", now, None).await?;
+            if matches!(
+                candidate.state,
+                FileState::Uploading | FileState::Transferring
+            ) {
+                repository::set_state(&transaction, candidate, FileState::Deleting, now, None)
+                    .await?;
                 self.enqueue_search(&transaction, file_id, TraceContext::default())
                     .await?;
             }
@@ -198,5 +208,3 @@ impl FileService {
         Ok(candidates.len() as u64)
     }
 }
-
-use sea_orm::QueryTrait;

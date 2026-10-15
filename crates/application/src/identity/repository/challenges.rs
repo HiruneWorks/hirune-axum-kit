@@ -1,9 +1,9 @@
 use super::super::entities::challenge;
+use crate::identity::ChallengePurpose;
 use chrono::{DateTime, Utc};
-use sea_orm::ExprTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait,
-    QueryFilter, Set,
+    ExprTrait, QueryFilter, Set,
     sea_query::{Expr, Func},
 };
 use uuid::Uuid;
@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub async fn find_valid(
     connection: &impl ConnectionTrait,
     token_hash: &str,
-    purpose: &str,
+    purpose: ChallengePurpose,
 ) -> Result<Option<challenge::Model>, DbErr> {
     challenge::Entity::find()
         .filter(challenge::Column::TokenHash.eq(token_hash))
@@ -24,7 +24,7 @@ pub async fn insert_challenge(
     transaction: &DatabaseTransaction,
     account_id: Uuid,
     token_hash: String,
-    purpose: &str,
+    purpose: ChallengePurpose,
     security_version: i64,
     expires_at: DateTime<Utc>,
     secret: Option<String>,
@@ -33,7 +33,7 @@ pub async fn insert_challenge(
         id: Set(Uuid::now_v7()),
         account_id: Set(account_id),
         token_hash: Set(token_hash),
-        purpose: Set(purpose.into()),
+        purpose: Set(purpose),
         security_version: Set(security_version),
         expires_at: Set(expires_at),
         secret: Set(secret),
@@ -58,7 +58,7 @@ pub async fn delete_challenge(
 pub async fn delete_for_account(
     transaction: &DatabaseTransaction,
     account_id: Uuid,
-    purpose: Option<&str>,
+    purpose: Option<ChallengePurpose>,
 ) -> Result<(), DbErr> {
     let mut query =
         challenge::Entity::delete_many().filter(challenge::Column::AccountId.eq(account_id));

@@ -96,10 +96,13 @@ async fn exercise_cleanup_lock_order(
         .one(&transaction)
         .await?
         .context("file reservation was missing")?;
-    anyhow::ensure!(current.state == "deleting", "file was not awaiting cleanup");
+    anyhow::ensure!(
+        current.state == application::files::FileState::Deleting,
+        "file was not awaiting cleanup"
+    );
     let expected_version = current.version + 1;
     let mut deleted = current.into_active_model();
-    deleted.state = Set("deleted".into());
+    deleted.state = Set(application::files::FileState::Deleted);
     deleted.version = Set(expected_version);
     deleted.updated_at = Set(chrono::Utc::now());
     deleted.search_reconciled_at = Set(None);
@@ -129,7 +132,7 @@ async fn exercise_cleanup_lock_order(
                     Expr::value(Some(chrono::Utc::now())),
                 )
                 .filter(file::Column::Id.eq(reservation.id))
-                .filter(file::Column::State.eq("deleted"))
+                .filter(file::Column::State.eq(application::files::FileState::Deleted))
                 .exec(&transaction),
         )
         .await
@@ -161,7 +164,10 @@ async fn exercise_cleanup_lock_order(
         .one(&database.connection)
         .await?
         .context("cleaned file was missing")?;
-    anyhow::ensure!(current.state == "deleted", "cleaned file state changed");
+    anyhow::ensure!(
+        current.state == application::files::FileState::Deleted,
+        "cleaned file state changed"
+    );
     anyhow::ensure!(
         current.cleanup_completed_at.is_some(),
         "cleanup completion was not recorded"

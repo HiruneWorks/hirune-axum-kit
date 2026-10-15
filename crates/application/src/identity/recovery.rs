@@ -4,7 +4,10 @@ use super::{
     repository::{accounts, challenges, security},
     validation::normalize_email,
 };
-use crate::{ApplicationError, ApplicationResult};
+use crate::{
+    ApplicationError, ApplicationResult,
+    identity::{ChallengePurpose, authentication_operation::AuthenticationOperation},
+};
 use auth_core::token::hash_token;
 use jobs::TraceContext;
 use sea_orm::{DatabaseTransaction, TransactionTrait};
@@ -35,7 +38,7 @@ impl IdentityService {
         trace: TraceContext,
     ) -> ApplicationResult<()> {
         let email = normalize_email(email)?;
-        self.limit_authentication_attempts("authentication_mail", &email)
+        self.limit_authentication_attempts(AuthenticationOperation::AuthenticationMail, &email)
             .await?;
         let Some(snapshot) = accounts::find_by_email(&self.database, &email).await? else {
             return Ok(());
@@ -65,11 +68,14 @@ impl IdentityService {
     }
 
     pub async fn verify_email(&self, token: &str, trace: TraceContext) -> ApplicationResult<()> {
-        self.limit_authentication_attempts("verify_email", &hash_token(token))
-            .await?;
+        self.limit_authentication_attempts(
+            AuthenticationOperation::VerifyEmail,
+            &hash_token(token),
+        )
+        .await?;
         let transaction = self.database.begin().await?;
         let (account, challenge) = self
-            .lock_challenge_account(&transaction, token, "verify_email")
+            .lock_challenge_account(&transaction, token, ChallengePurpose::VerifyEmail)
             .await?;
         if account.verified {
             return Err(ApplicationError::Unauthenticated);
@@ -102,12 +108,15 @@ impl IdentityService {
         new_password: String,
         trace: TraceContext,
     ) -> ApplicationResult<()> {
-        self.limit_authentication_attempts("reset_password", &hash_token(token))
-            .await?;
+        self.limit_authentication_attempts(
+            AuthenticationOperation::ResetPassword,
+            &hash_token(token),
+        )
+        .await?;
         let password_hash = self.hash_new_password(new_password).await?;
         let transaction = self.database.begin().await?;
         let (account, challenge) = self
-            .lock_challenge_account(&transaction, token, "reset_password")
+            .lock_challenge_account(&transaction, token, ChallengePurpose::ResetPassword)
             .await?;
         if !account.verified || account.password_hash.is_none() {
             return Err(ApplicationError::Unauthenticated);
@@ -140,7 +149,7 @@ impl IdentityService {
         &self,
         transaction: &DatabaseTransaction,
         token: &str,
-        purpose: &str,
+        purpose: ChallengePurpose,
     ) -> ApplicationResult<(account::Model, challenge::Model)> {
         if token.len() != 43 {
             return Err(ApplicationError::Unauthenticated);

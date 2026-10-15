@@ -1,3 +1,4 @@
+use crate::JobState;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -10,7 +11,7 @@ pub struct Model {
     pub schedule_key: Option<String>,
     pub payload: Json,
     pub request_id: Uuid,
-    pub state: String,
+    pub state: JobState,
     pub attempts: i32,
     pub max_attempts: i32,
     pub available_at: DateTimeUtc,

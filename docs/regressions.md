@@ -7,7 +7,8 @@ and limitations are recorded in [milestones](../memory/README.md).
 
 Current suites: [identity](../tests/identity.rs), [API](../tests/api.rs),
 [OIDC](../tests/oidc.rs), [jobs](../tests/jobs.rs),
-[files/search](../tests/files.rs), and [process/SMTP/load](../tests/process.rs).
+[files/search](../tests/files.rs), [connected content](../tests/content.rs), and
+[process/SMTP/load](../tests/process.rs).
 Identity includes [privileged authentication and retention](../tests/identity/hardening.rs);
 jobs include [retention races](../tests/jobs/retention.rs).
 Core policy, encryption, mail rendering,
@@ -24,33 +25,33 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 | `auth.rs::change_password_requires_the_current_password` | `session_ownership_password_change_and_deactivation_recheck_authority`. |
 | `auth.rs::logout_invalidates_the_current_session` | `two_applications_share_sessions_but_keep_http_configuration_separate` revokes the current session and checks the other instance. |
 | `auth.rs::resend_verification_email_is_pending_only_and_enumeration_safe` | `verification_resend_is_pending_only_and_replaces_the_previous_challenge`; HTTP uses the same accepted response. |
-| `board.rs::seeded_boards_are_publicly_listed` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::board_management_is_admin_only` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::posting_requires_login` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::post_update_and_delete_respect_ownership_and_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::post_requires_title` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::comment_create_and_list` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::comments_paginate_oldest_first_regardless_of_direction` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::reply_depth_is_capped_at_two` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::comment_list_focus_anchor_returns_containing_window` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::comment_count_tracks_creates_and_deletes` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::comment_update_and_delete_respect_ownership_and_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::moderators_cannot_edit_others_content` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::locked_post_blocks_new_comments` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::pinned_posts_ride_along_on_every_page` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::pinned_posts_reorder_to_the_order_sent` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::pin_reorder_requires_board_moderation` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
-| `board.rs::pin_reorder_rejects_a_stale_pin_set` | Excluded: boards, posts, comments, moderation, pin ordering, and their pagination are product features. Scoped pagination and optimistic updates are demonstrated by organizations. |
+| `board.rs::seeded_boards_are_publicly_listed` | Excluded: public boards and seeded catalogs. The current post example is organization-scoped. |
+| `board.rs::board_management_is_admin_only` | Excluded: separate board administration. Cedar author/organization-owner rules govern the content example. |
+| `board.rs::posting_requires_login` | Replaced by the production-router content contract test; unauthenticated posting is rejected. |
+| `board.rs::post_update_and_delete_respect_ownership_and_moderation` | Replaced by content role/version/membership and concurrent-write tests; authors and organization owners manage posts. Moderator roles remain excluded. |
+| `board.rs::post_requires_title` | Replaced by content HTTP/domain validation; blank titles are rejected. |
+| `board.rs::comment_create_and_list` | Replaced by the content inbox lifecycle and k6 workflows through published posts. |
+| `board.rs::comments_paginate_oldest_first_regardless_of_direction` | Changed: immutable descending (created_at, id) cursors. Timestamp ties and scope changes are covered by the content suite. |
+| `board.rs::reply_depth_is_capped_at_two` | Changed: single-level comments only; nested reply inputs are not part of the contract. |
+| `board.rs::comment_list_focus_anchor_returns_containing_window` | Excluded: focus anchors. The baseline provides scoped forward cursor traversal. |
+| `board.rs::comment_count_tracks_creates_and_deletes` | Excluded: denormalized comment counts; comment rows are authoritative. |
+| `board.rs::comment_update_and_delete_respect_ownership_and_moderation` | Deletion is covered by content role and concurrency tests. Comment editing and moderator roles are excluded. |
+| `board.rs::moderators_cannot_edit_others_content` | Changed: there is no moderator role. Ordinary members cannot edit other authors' posts; organization-owner authority is explicit. |
+| `board.rs::locked_post_blocks_new_comments` | Excluded: a separate locked-post state. Draft/deleted parents cannot accept comments. |
+| `board.rs::pinned_posts_ride_along_on_every_page` | Excluded: pinning and pin-aware pagination. |
+| `board.rs::pinned_posts_reorder_to_the_order_sent` | Excluded: pin ordering. |
+| `board.rs::pin_reorder_requires_board_moderation` | Excluded: pin ordering and moderator roles. |
+| `board.rs::pin_reorder_rejects_a_stale_pin_set` | Excluded: pin ordering. Current post/profile writes have explicit optimistic versions. |
 | `moderation.rs::banned_user_loses_board_write_access_until_unbanned` | Excluded: content moderation is a product feature. Active-account denial and Cedar organization scope remain baseline security contracts. |
 | `moderation.rs::admins_cannot_ban_themselves_or_other_admins` | Excluded: moderation API policy is a product feature. Global administrator changes are operator-only, with MFA eligibility and credential revocation covered by `privileged_accounts_require_mfa_at_login_session_and_final_authority`. |
 | `moderation.rs::role_management_rejects_self_and_admin_targets` | Excluded: public role-management API policy. The baseline has an operator-only global administrator command, not user-facing role delegation. |
 | `moderation.rs::moderation_logs_require_moderator_role` | Excluded: moderation log APIs are a product feature. Runtime audit access is append-only; age-based deletion is a restricted maintenance operation. |
-| `notification.rs::inbox_requires_login` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
-| `notification.rs::comment_notifies_post_author_and_inbox_lifecycle_works` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
-| `notification.rs::mentions_in_posts_and_comments_notify_mentioned_users` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
-| `notification.rs::sec_007_notifications_are_scoped_per_user` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
-| `notification.rs::action_preference_opt_out_suppresses_new_notifications` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
-| `notification.rs::notification_preferences_require_login_and_are_per_user` | Excluded: notification inbox and preference features. The owner-isolation invariant is retained for sessions and organization list/detail queries. |
+| `notification.rs::inbox_requires_login` | Replaced by session extraction on all inbox routes and production-router/load requests. |
+| `notification.rs::comment_notifies_post_author_and_inbox_lifecycle_works` | Replaced by inbox/preferences/read/visibility tests and the two-API k6 content workflow. |
+| `notification.rs::mentions_in_posts_and_comments_notify_mentioned_users` | Excluded: mention parsing and mention notifications. |
+| `notification.rs::sec_007_notifications_are_scoped_per_user` | Replaced by inbox owner-isolation and removed-member visibility/count tests. |
+| `notification.rs::action_preference_opt_out_suppresses_new_notifications` | Replaced by transactional comment/inbox preference tests. |
+| `notification.rs::notification_preferences_require_login_and_are_per_user` | Replaced by authenticated per-account preferences in the content inbox lifecycle test. |
 | `rbac.rs::permissions_catalog_is_mod_readable_and_lists_board_codenames` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
 | `rbac.rs::group_management_is_admin_gated` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
 | `rbac.rs::group_permission_grant_gates_post_pinning` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
@@ -58,9 +59,9 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
 | `rbac.rs::membership_expiry_ends_the_grant` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
 | `rbac.rs::unknown_permission_codename_is_rejected` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
 | `rbac.rs::system_groups_are_immutable_via_the_generic_api` | Excluded: generic permission catalog and group administration. The baseline uses validated Cedar policies with explicit organization membership scope. |
-| `search.rs::user_search_indexes_new_signups` | Excluded: public profile search is a product feature. Optional filename search is covered by the attachment contract and files suite. |
-| `search.rs::profile_update_reindexes_user_search` | Excluded: public profile search is a product feature. Optional filename search is covered by the attachment contract and files suite. |
-| `search.rs::account_deletion_removes_user_from_search` | Excluded: public profile search is a product feature. Optional filename search is covered by the attachment contract and files suite. |
+| `search.rs::user_search_indexes_new_signups` | Changed: profiles are explicit and discoverable only within shared organization membership. Profile saves and membership changes enqueue projections. |
+| `search.rs::profile_update_reindexes_user_search` | Replaced by stale-profile revision and membership-projection tests plus the two-API k6 workflow. |
+| `search.rs::account_deletion_removes_user_from_search` | Replaced by current active/verified account filtering during scoped search hydration; stale indexed rows cannot reveal suspended profiles. |
 | `smoke.rs::health_check_returns_no_content` | `storage_failure_is_not_treated_as_anonymous` and process readiness probes. |
 | `smoke.rs::signup_verify_login_flow` | `signup_mail_login_cross_process_revocation_and_worker_restart`: actual SMTP and two API processes. |
 | `smoke.rs::duplicate_handle_is_rejected` | Changed: no handles; normalized email uniqueness and generic duplicate acceptance in `registration_persists_encrypted_mail_and_durable_job`. |

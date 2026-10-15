@@ -1,11 +1,10 @@
 use super::{
-    ApiAccessService, ExternalOrganization,
+    ApiAccessService, ApiAdmission, ExternalOrganization,
     entities::api_usage,
     repository,
     types::{QuotaPeriods, quota_status},
-    validation::ORGANIZATIONS_READ,
 };
-use crate::{ApplicationError, ApplicationResult, database::database_time};
+use crate::{ApplicationError, ApplicationResult, api_access::ApiScope, database::database_time};
 use auth_core::{constant_time::constant_time_str_eq, token::hash_token};
 use jobs::TraceContext;
 use sea_orm::{ActiveModelTrait, IntoActiveModel, Set, TransactionTrait};
@@ -31,12 +30,38 @@ fn retry_seconds(until: chrono::DateTime<chrono::Utc>, now: chrono::DateTime<chr
 }
 
 impl ApiAccessService {
-    #[tracing::instrument(skip_all, fields(request_id = %trace.request_id))]
     pub async fn read_organization(
         &self,
         credential: &str,
         trace: TraceContext,
     ) -> ApplicationResult<ExternalOrganization> {
+        let grant = self
+            .admit_request(credential, ApiScope::OrganizationsRead, trace)
+            .await?;
+        Ok(ExternalOrganization {
+            id: grant.organization.id,
+            name: grant.organization.name,
+            version: grant.organization.version,
+            quota: grant.quota,
+        })
+    }
+
+    pub async fn admit_posts(
+        &self,
+        credential: &str,
+        trace: TraceContext,
+    ) -> ApplicationResult<ApiAdmission> {
+        self.admit_request(credential, ApiScope::PostsRead, trace)
+            .await
+    }
+
+    #[tracing::instrument(skip_all, fields(request_id = %trace.request_id))]
+    async fn admit_request(
+        &self,
+        credential: &str,
+        required_scope: ApiScope,
+        trace: TraceContext,
+    ) -> ApplicationResult<ApiAdmission> {
         let key_id = key_id(credential)?;
         let snapshot = repository::find_key(&self.identity.database, key_id)
             .await?
@@ -65,9 +90,9 @@ impl ApiAccessService {
         {
             return Err(ApplicationError::Unauthenticated);
         }
-        let scopes: Vec<String> =
+        let scopes: Vec<ApiScope> =
             serde_json::from_value(client.scopes.clone()).map_err(ApplicationError::internal)?;
-        if !scopes.iter().any(|scope| scope == ORGANIZATIONS_READ) {
+        if !scopes.contains(&required_scope) {
             return Err(ApplicationError::Forbidden);
         }
         if client.minute_limit == 0 || client.month_limit == 0 {
@@ -101,7 +126,7 @@ impl ApiAccessService {
             id: Set(Uuid::now_v7()),
             client_id: Set(key.client_id),
             key_id: Set(key.id),
-            operation: Set(ORGANIZATIONS_READ.into()),
+            operation: Set(required_scope),
             request_id: Set(trace.request_id),
             admitted_at: Set(now),
         }
@@ -109,10 +134,10 @@ impl ApiAccessService {
         .await?;
         transaction.commit().await?;
         tracing::info!(client_id = %key.client_id, key_id = %key.id, outcome = "admitted", "external API request admitted");
-        Ok(ExternalOrganization {
-            id: organization.id,
-            name: organization.name,
-            version: organization.version,
+        Ok(ApiAdmission {
+            organization,
+            client_id: key.client_id,
+            scope: required_scope,
             quota,
         })
     }

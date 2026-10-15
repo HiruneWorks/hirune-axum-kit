@@ -64,6 +64,19 @@ organization, client, then key; external organization reads take no subsequent
 organization lock. See [API access](behavior/api-access.md) before adding external
 writes, organization deletion/suspension, or new billing semantics.
 
-Use `tests/identity.rs` for atomic composition and credential races,
+Content mutations lock actor account, organization, post, then comment or sorted
+attachment files as needed. The caller's transaction includes post revisions,
+attachment associations, search jobs, and comment notification/delivery jobs.
+Comment notification registration reads recipient eligibility without taking a
+second account lock after the organization. Push execution instead starts with
+the recipient account, then organization and device, rechecks current access and
+session/device generation, commits, and sends a generic provider payload outside
+locks. Provider acceptance and durable completion have the same at-least-once
+boundary as mail. See [content](behavior/posts-and-comments.md) and
+[notifications](behavior/notifications-and-push.md).
+
+Use `tests/content.rs` for content versions, membership, scoped search/inbox
+visibility, and atomic notification registration,
+`tests/identity.rs` for atomic composition and credential races,
 `tests/jobs.rs` for lease and retry behavior, and `tests/process.rs` for the
 separate-process SMTP boundary. Do not replace these with database mocks.

@@ -5,6 +5,7 @@ use super::{
 use crate::{
     ApplicationError, ApplicationResult,
     database::database_time,
+    files::FileState,
     identity::{AuthenticatedSession, IdentityService},
     organizations::OrganizationService,
     pagination::{Page, PageRequest},
@@ -39,6 +40,24 @@ pub struct FileService {
 }
 
 impl FileService {
+    pub(crate) async fn require_ready_attachments_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        organization_id: Uuid,
+        file_ids: &[Uuid],
+    ) -> ApplicationResult<()> {
+        let mut file_ids = file_ids.to_vec();
+        file_ids.sort();
+        for file_id in file_ids {
+            let file = repository::lock(transaction, file_id)
+                .await?
+                .ok_or(ApplicationError::NotFound)?;
+            if file.organization_id != organization_id || file.state != FileState::Ready {
+                return Err(ApplicationError::NotFound);
+            }
+        }
+        Ok(())
+    }
     pub fn new(
         identity: IdentityService,
         organizations: OrganizationService,
@@ -143,11 +162,11 @@ impl FileService {
         if file.uploader_id != actor.account_id() {
             return Err(ApplicationError::Forbidden);
         }
-        if file.state != "uploading" || file.upload_expires_at <= now {
+        if file.state != FileState::Uploading || file.upload_expires_at <= now {
             return Err(ApplicationError::Conflict);
         }
         let transferring =
-            repository::set_state(&transaction, file, "transferring", now, None).await?;
+            repository::set_state(&transaction, file, FileState::Transferring, now, None).await?;
         transaction.commit().await?;
         let (temporary, content_hash) =
             transfer::spool_original(body, transferring.byte_size as u64, &self.settings).await?;
@@ -167,14 +186,20 @@ impl FileService {
             organization_id,
         )?;
         let now = database_time(&transaction).await?;
-        if current.state != "transferring"
+        if current.state != FileState::Transferring
             || current.version != transferring.version
             || current.upload_expires_at <= now
         {
             return Err(ApplicationError::Conflict);
         }
-        let ready =
-            repository::set_state(&transaction, current, "ready", now, Some(content_hash)).await?;
+        let ready = repository::set_state(
+            &transaction,
+            current,
+            FileState::Ready,
+            now,
+            Some(content_hash),
+        )
+        .await?;
         self.enqueue_search(&transaction, file_id, trace).await?;
         transaction.commit().await?;
         Ok(ready.into())
@@ -194,10 +219,10 @@ impl FileService {
             repository::find(&transaction, file_id).await?,
             organization_id,
         )?;
-        if file.state != "ready" && file.uploader_id != actor.account_id() {
+        if file.state != FileState::Ready && file.uploader_id != actor.account_id() {
             return Err(ApplicationError::NotFound);
         }
-        if matches!(file.state.as_str(), "deleting" | "deleted") {
+        if matches!(file.state, FileState::Deleting | FileState::Deleted) {
             return Err(ApplicationError::NotFound);
         }
         transaction.commit().await?;
@@ -244,7 +269,7 @@ impl FileService {
             repository::find(&transaction, file_id).await?,
             organization_id,
         )?;
-        if file.state != "ready" {
+        if file.state != FileState::Ready {
             return Err(ApplicationError::NotFound);
         }
         transaction.commit().await?;
@@ -269,7 +294,7 @@ impl FileService {
         file_id: Uuid,
     ) -> ApplicationResult<FileSummary> {
         let file = self.get_file(actor, organization_id, file_id).await?;
-        if file.state != "ready" {
+        if file.state != FileState::Ready {
             return Err(ApplicationError::NotFound);
         }
         self.require_storage()?
@@ -301,9 +326,9 @@ impl FileService {
         if file.uploader_id != actor.account_id() && organization.owner_id != actor.account_id() {
             return Err(ApplicationError::Forbidden);
         }
-        if !matches!(file.state.as_str(), "deleting" | "deleted") {
+        if !matches!(file.state, FileState::Deleting | FileState::Deleted) {
             let now = database_time(&transaction).await?;
-            repository::set_state(&transaction, file, "deleting", now, None).await?;
+            repository::set_state(&transaction, file, FileState::Deleting, now, None).await?;
             jobs::enqueue(
                 &transaction,
                 Uuid::now_v7(),
@@ -362,7 +387,7 @@ impl FileService {
                     sea_orm::sea_query::Expr::value(true),
                 )
                 .filter(file::Column::Id.eq(file_id))
-                .filter(file::Column::State.eq("ready"))
+                .filter(file::Column::State.eq(FileState::Ready))
                 .exec(transaction)
                 .await?;
             jobs::enqueue(

@@ -1,8 +1,8 @@
 use super::super::entities::{audit_event, rate_limit, recovery_code};
 use chrono::{DateTime, Utc};
-use sea_orm::ExprTrait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ExprTrait, QueryFilter,
+    Set,
     sea_query::{Expr, Func, OnConflict},
 };
 use uuid::Uuid;

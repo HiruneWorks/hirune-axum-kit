@@ -16,7 +16,11 @@ retry, and attempt-history implementation as ordinary workers.
 
 | Location | Owns | May depend on |
 | --- | --- | --- |
-| `src/http/` | HTTP extraction, DTOs, middleware, error mapping, OpenAPI | application services |
+| `src/http/` | shared HTTP extraction, middleware, error mapping, version composition | application services |
+| `src/http/v1/<feature>/` | feature router, handlers, and versioned input/output contracts | owning application service |
+| `src/http/v1/openapi.rs` | version-one contract assembly | feature HTTP contracts |
+| `src/integrations.rs` | explicit provisioning and bounded search-repair coordination | owning services |
+| `src/job_handler.rs` | concrete application job dispatch | owning feature services |
 | `src/bootstrap.rs` | connection and service assembly | application, jobs, mail |
 | `src/bin/` | environment, process tracing, executable lifecycle | bootstrap and runtime |
 | `src/maintenance.rs` | bounded cross-domain cleanup coordination and periodic maintenance registration | owning services and jobs |
@@ -24,6 +28,10 @@ retry, and attempt-history implementation as ordinary workers.
 | `crates/application/src/organizations/` | minimal organizations and scoped memberships | authorization, SeaORM |
 | `crates/application/src/api_access/` | organization-owned clients, hashed API keys, strict shared allocations, admission history | identity and organization services, SeaORM |
 | `crates/application/src/files/` | original attachment metadata, quota, lifecycle, S3 transport, derived filename search | organization service, AWS S3 SDK, Meilisearch REST, SeaORM, jobs |
+| `crates/application/src/posts/` | organization posts, single-level comments, attachment links, post search | identity, organizations, files, notifications, authorization, SeaORM, jobs |
+| `crates/application/src/profiles/` | account profiles and organization-scoped user discovery | identity, organizations, search, SeaORM, jobs |
+| `crates/application/src/notifications/` | durable comment inbox, preferences, session-bound devices, optional FCM delivery | identity, owning content facts, SeaORM, jobs, Google ADC |
+| `crates/application/src/search/` | bounded Meilisearch HTTP/task transport | reqwest; domain modules own documents and eligibility |
 | `crates/application/src/authorization/` | validated Cedar policies and decisions | Cedar |
 | `crates/jobs/` | durable registration, leases, retries, attempt history | SeaORM, Tokio |
 | `crates/mail/` | MJML/Minijinja rendering and SMTP | lettre, mrml, minijinja |
@@ -36,7 +44,18 @@ retry, and attempt-history implementation as ordinary workers.
 | `deploy/` | environment selectors and runtime/operator wiring | container tooling |
 
 The application crate has no Axum dependency. Its feature modules contain their
-own service, repository, model, and types. HTTP DTOs stay in the HTTP adapter.
+own service, repository, model, and types. HTTP DTOs stay with their versioned
+feature adapter. Each named operation has its own file with its exclusive DTOs;
+shared DTOs stay in `contracts.rs`, URL/method assembly in `routes.rs`, and module
+indexes only declare/re-export modules. Nested comment and OIDC folders keep
+related endpoints together. The top-level HTTP router owns health/OpenAPI routes and nests
+the version router; a version router only composes feature routers. Add a new
+version directory when a real HTTP contract needs one. Business services are not
+duplicated for each API version.
+Notifications separate service assembly, inbox reads/writes, preferences, comment
+recipient registration, devices, and push execution. Post API-client reads do not
+live in search; profile module indexes contain no queries or job registration.
+
 Do not create a crate for every module or a trait for every concrete service.
 Introduce a boundary when it makes ownership, dependencies, or testing clearer.
 
@@ -65,9 +84,11 @@ adapter and transaction decision: a broker needs an outbox when a domain write
 must commit with publication. A common function signature cannot create a
 distributed transaction.
 
-Optional SeaweedFS storage and Meilisearch filename search demonstrate scoped
-attachments. Boards, comments, SSE, campaign mail, and workflow engines are
-extensions for the consuming project.
+Organization posts and comments connect Cedar, profiles, scoped search,
+pagination, attachments, and notifications through concrete service operations.
+In-app notifications work without FCM credentials. Optional FCM uses the same
+durable PostgreSQL queue. Search documents are expendable projections; PostgreSQL
+decides visible fields, revision eligibility, and authorized result counts.
 
 ## Design references
 

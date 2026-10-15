@@ -37,7 +37,7 @@ async fn wait_for_delete_lock(database: &TestDatabase) -> anyhow::Result<()> {
 async fn failed_job_retention_preserves_retried_and_recently_refailed_rows() -> anyhow::Result<()> {
     let database = TestDatabase::create().await?;
     let queue = PostgresQueue::new(database.connection.clone());
-    for next_state in ["pending", "failed"] {
+    for next_state in [jobs::JobState::Pending, jobs::JobState::Failed] {
         let job_id = queued_job(&database).await?;
         let claim = queue.claim(10, 30).await?.unwrap();
         queue.finish(&claim, Some(("permanent", false))).await?;
@@ -58,7 +58,7 @@ async fn failed_job_retention_preserves_retried_and_recently_refailed_rows() -> 
             .col_expr(job::Column::State, Expr::value(next_state))
             .col_expr(
                 job::Column::FinishedAt,
-                Expr::value((next_state == "failed").then(chrono::Utc::now)),
+                Expr::value((next_state == jobs::JobState::Failed).then(chrono::Utc::now)),
             )
             .filter(job::Column::Id.eq(job_id))
             .exec(&transaction)
@@ -74,7 +74,7 @@ async fn failed_job_retention_preserves_retried_and_recently_refailed_rows() -> 
                 .await?
                 .is_some()
         );
-        if next_state == "pending" {
+        if next_state == jobs::JobState::Pending {
             let claim = queue.claim(10, 30).await?.unwrap();
             queue.finish(&claim, None).await?;
         }

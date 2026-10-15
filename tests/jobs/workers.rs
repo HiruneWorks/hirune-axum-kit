@@ -95,7 +95,9 @@ async fn independent_workers_distribute_jobs_and_preserve_retry_and_failure_outc
                 "a worker exited unexpectedly"
             );
             let finished = job::Entity::find()
-                .filter(job::Column::State.is_in(["succeeded", "failed"]))
+                .filter(
+                    job::Column::State.is_in([jobs::JobState::Succeeded, jobs::JobState::Failed]),
+                )
                 .count(&database.connection)
                 .await?;
             if finished == identifiers.len() as u64 {
@@ -126,13 +128,13 @@ async fn independent_workers_distribute_jobs_and_preserve_retry_and_failure_outc
         .one(&database.connection)
         .await?
         .unwrap();
-    assert_eq!(retry.state, "succeeded");
+    assert_eq!(retry.state, jobs::JobState::Succeeded);
     assert_eq!(retry.attempts, 2);
     let permanent = job::Entity::find_by_id(identifiers[1])
         .one(&database.connection)
         .await?
         .unwrap();
-    assert_eq!(permanent.state, "failed");
+    assert_eq!(permanent.state, jobs::JobState::Failed);
     assert_eq!(
         permanent.last_error.as_deref(),
         Some("expected_permanent_failure")

@@ -17,24 +17,11 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     let result = jobs::run(app.queue.clone(), settings.worker, shutdown, {
-        let identity = app.identity.clone();
-        let mailer = app.mailer.clone();
-        let files = app.files.clone();
+        let app = app.clone();
         move |claim| {
-            let identity = identity.clone();
-            let mailer = mailer.clone();
-            let files = files.clone();
-            async move {
-                if matches!(
-                    claim.kind.as_str(),
-                    application::files::FILE_DELETE_JOB | application::files::FILE_SEARCH_JOB
-                ) {
-                    files.execute_job(&claim).await
-                } else {
-                    identity.execute_job(&claim, &mailer).await
-                }
-            }
-            .bind_hub(Arc::new(sentry::Hub::new_from_top(sentry::Hub::current())))
+            let app = app.clone();
+            async move { kit::job_handler::execute(&app, &claim).await }
+                .bind_hub(Arc::new(sentry::Hub::new_from_top(sentry::Hub::current())))
         }
     })
     .await;

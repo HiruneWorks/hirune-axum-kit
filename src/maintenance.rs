@@ -19,6 +19,10 @@ pub async fn cleanup(app: &Application, retention: &RetentionSettings) -> Applic
         .cleanup_audit_events(retention.audit_days)
         .await?;
     let file_records = app.files.reconcile_files().await?;
+    let notification_records = app
+        .notifications
+        .cleanup(retention.notification_days)
+        .await?;
     let api_usage_records = app
         .api_access
         .cleanup_usage(retention.api_usage_days)
@@ -28,6 +32,7 @@ pub async fn cleanup(app: &Application, retention: &RetentionSettings) -> Applic
         completed_jobs,
         audit_events,
         file_records,
+        notification_records,
         api_usage_records,
         "expired records removed"
     );
@@ -49,15 +54,12 @@ pub async fn execute_job(
         code: "maintenance_cleanup_failed",
         retryable: true,
     })?;
-    let files = app
-        .files
-        .repair_search()
+    crate::integrations::repair_search(app)
         .await
         .map_err(|_| HandlerFailure {
             code: "search_repair_failed",
             retryable: true,
         })?;
-    tracing::info!(files, "search repair jobs registered");
     Ok(())
 }
 

@@ -1,6 +1,5 @@
-use crate::{ApplicationError, ApplicationResult};
+use crate::{ApplicationError, ApplicationResult, api_access::ApiScope};
 
-pub const ORGANIZATIONS_READ: &str = "organizations:read";
 pub const MAX_CLIENTS_PER_ORGANIZATION: u64 = 100;
 pub const MAX_KEYS_PER_CLIENT: u64 = 100;
 pub const MAX_QUOTA: i64 = 1_000_000_000_000;
@@ -14,8 +13,13 @@ pub fn name(value: &str) -> ApplicationResult<String> {
     }
     Ok(value.into())
 }
-pub fn scopes(values: &[String]) -> ApplicationResult<()> {
-    if values.len() > 1 || values.iter().any(|value| value != ORGANIZATIONS_READ) {
+pub fn scopes(values: &[ApiScope]) -> ApplicationResult<()> {
+    if values.len() > 2
+        || values
+            .iter()
+            .enumerate()
+            .any(|(index, scope)| values[..index].contains(scope))
+    {
         return Err(ApplicationError::InvalidInput(
             "unsupported API client scopes",
         ));

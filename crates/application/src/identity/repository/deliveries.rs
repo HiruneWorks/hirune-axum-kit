@@ -1,4 +1,5 @@
 use super::super::entities::mail_delivery;
+use crate::identity::MailDeliveryState;
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait,
@@ -47,14 +48,14 @@ pub async fn finish_delivery(
         .col_expr(
             mail_delivery::Column::State,
             Expr::value(if accepted_at.is_some() {
-                "accepted"
+                MailDeliveryState::Accepted
             } else {
-                "expired"
+                MailDeliveryState::Expired
             }),
         )
         .col_expr(mail_delivery::Column::AcceptedAt, Expr::value(accepted_at))
         .filter(mail_delivery::Column::Id.eq(delivery_id))
-        .filter(mail_delivery::Column::State.eq("pending"))
+        .filter(mail_delivery::Column::State.eq(MailDeliveryState::Pending))
         .exec(transaction)
         .await?;
     Ok(())

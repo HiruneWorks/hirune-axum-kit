@@ -18,6 +18,9 @@ mod workers;
 #[path = "jobs/scheduling.rs"]
 mod scheduling;
 
+#[path = "jobs/provider_retry.rs"]
+mod provider_retry;
+
 async fn queued_job(database: &TestDatabase) -> anyhow::Result<Uuid> {
     let transaction = database.connection.begin().await?;
     let job_id = Uuid::now_v7();
@@ -65,7 +68,7 @@ async fn shutdown_stops_claiming_and_bounds_drain_of_a_hung_handler() -> anyhow:
             .await?
             .unwrap()
             .state,
-        "running"
+        jobs::JobState::Running
     );
     database.finish().await
 }
@@ -118,7 +121,7 @@ async fn retry_delay_and_success_retention_preserve_failed_jobs() -> anyhow::Res
             .await?
             .unwrap()
             .state,
-        "failed"
+        jobs::JobState::Failed
     );
     database.finish().await
 }
@@ -167,9 +170,8 @@ async fn concurrent_claims_fence_expired_attempts_and_preserve_history() -> anyh
             .one(&database.connection)
             .await?
             .unwrap()
-            .outcome
-            .as_deref(),
-        Some("lease_expired")
+            .outcome,
+        Some(jobs::AttemptOutcome::LeaseExpired)
     );
     database.finish().await
 }
@@ -194,7 +196,7 @@ async fn final_attempt_crash_becomes_retained_failure_and_can_be_retried() -> an
             .await?
             .unwrap()
             .state,
-        "failed"
+        jobs::JobState::Failed
     );
     assert!(queue.retry_failed(job_id).await?);
     let retried = queue.claim(1, 5).await?.unwrap();

@@ -3,7 +3,11 @@ use super::{
     entities::account,
     repository::{accounts, challenges, security},
 };
-use crate::{ApplicationError, ApplicationResult, database::database_time};
+use crate::{
+    ApplicationError, ApplicationResult,
+    database::database_time,
+    identity::{ChallengePurpose, authentication_operation::AuthenticationOperation},
+};
 use auth_core::{
     constant_time::constant_time_str_eq,
     token::{generate_secure_token, hash_token},
@@ -44,12 +48,13 @@ impl IdentityService {
             .secret_keys
             .encrypt(&totp_context(account.id), &secret)?;
         let challenge = generate_secure_token();
-        challenges::delete_for_account(&transaction, account.id, Some("totp_setup")).await?;
+        challenges::delete_for_account(&transaction, account.id, Some(ChallengePurpose::TotpSetup))
+            .await?;
         challenges::insert_challenge(
             &transaction,
             account.id,
             hash_token(&challenge),
-            "totp_setup",
+            ChallengePurpose::TotpSetup,
             account.security_version,
             database_time(&transaction).await? + Duration::minutes(5),
             Some(encrypted_secret),
@@ -69,15 +74,22 @@ impl IdentityService {
         code: &str,
         trace: TraceContext,
     ) -> ApplicationResult<Vec<String>> {
-        self.limit_authentication_attempts("totp_setup", &actor.account_id().to_string())
-            .await?;
+        self.limit_authentication_attempts(
+            AuthenticationOperation::TotpSetup,
+            &actor.account_id().to_string(),
+        )
+        .await?;
         let transaction = self.database.begin().await?;
         let account = self
             .lock_authenticated_account(&transaction, actor, true)
             .await?;
-        let challenge = challenges::find_valid(&transaction, &hash_token(token), "totp_setup")
-            .await?
-            .ok_or(ApplicationError::Unauthenticated)?;
+        let challenge = challenges::find_valid(
+            &transaction,
+            &hash_token(token),
+            ChallengePurpose::TotpSetup,
+        )
+        .await?
+        .ok_or(ApplicationError::Unauthenticated)?;
         if challenge.account_id != account.id
             || challenge.security_version != account.security_version
             || account.totp_secret.is_some()
@@ -123,16 +135,18 @@ impl IdentityService {
         proof: MfaProof,
         trace: TraceContext,
     ) -> ApplicationResult<SessionCredentials> {
-        let candidate = challenges::find_valid(&self.database, &hash_token(token), "mfa").await?;
+        let candidate =
+            challenges::find_valid(&self.database, &hash_token(token), ChallengePurpose::Mfa)
+                .await?;
         let limit_identity = candidate.map_or_else(
             || hash_token(token),
             |challenge| challenge.account_id.to_string(),
         );
-        self.limit_authentication_attempts("mfa", &limit_identity)
+        self.limit_authentication_attempts(AuthenticationOperation::Mfa, &limit_identity)
             .await?;
         let transaction = self.database.begin().await?;
         let (account, challenge) = self
-            .lock_challenge_account(&transaction, token, "mfa")
+            .lock_challenge_account(&transaction, token, ChallengePurpose::Mfa)
             .await?;
         if !account.verified {
             return Err(ApplicationError::Unauthenticated);
@@ -153,8 +167,11 @@ impl IdentityService {
         proof: MfaProof,
         trace: TraceContext,
     ) -> ApplicationResult<()> {
-        self.limit_authentication_attempts("mfa", &actor.account_id().to_string())
-            .await?;
+        self.limit_authentication_attempts(
+            AuthenticationOperation::Mfa,
+            &actor.account_id().to_string(),
+        )
+        .await?;
         let transaction = self.database.begin().await?;
         let account = self
             .lock_authenticated_account(&transaction, actor, true)
@@ -185,8 +202,11 @@ impl IdentityService {
         proof: MfaProof,
         trace: TraceContext,
     ) -> ApplicationResult<Vec<String>> {
-        self.limit_authentication_attempts("mfa", &actor.account_id().to_string())
-            .await?;
+        self.limit_authentication_attempts(
+            AuthenticationOperation::Mfa,
+            &actor.account_id().to_string(),
+        )
+        .await?;
         let transaction = self.database.begin().await?;
         let account = self
             .lock_authenticated_account(&transaction, actor, true)

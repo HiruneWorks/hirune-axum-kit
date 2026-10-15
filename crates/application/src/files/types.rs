@@ -1,5 +1,5 @@
 use super::{S3Settings, SearchSettings, entities::file};
-use crate::{ApplicationError, ApplicationResult};
+use crate::{ApplicationError, ApplicationResult, files::FileState};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures_util::stream::BoxStream;
@@ -82,7 +82,7 @@ pub struct FileSummary {
     pub filename: String,
     pub media_type: Option<String>,
     pub byte_size: u64,
-    pub state: String,
+    pub state: FileState,
     pub version: i64,
     pub content_hash: Option<String>,
     pub upload_expires_at: DateTime<Utc>,

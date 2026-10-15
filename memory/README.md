@@ -23,3 +23,7 @@ This index is updated when a milestone is complete.
 - [2026-10-15 — External API keys and shared allocation](2026-10-15-external-api-access.md):
   organization-owned clients, expiring scoped keys, operator allocation, strict
   shared request accounting, usage retention, and multi-instance/runtime evidence.
+- [2026-10-15 — Connected content and typed HTTP structure](2026-10-15-content-and-notifications.md):
+  organization posts/comments, scoped profiles/search, transactional inbox and
+  optional FCM, endpoint organization, existing/new closed-set enums, and full
+  local verification including multi-instance k6 and release-runtime checks.

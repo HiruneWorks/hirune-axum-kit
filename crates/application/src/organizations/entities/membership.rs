@@ -1,3 +1,4 @@
+use crate::organizations::MembershipRole;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -7,7 +8,7 @@ pub struct Model {
     pub id: Uuid,
     pub organization_id: Uuid,
     pub account_id: Uuid,
-    pub role: String,
+    pub role: MembershipRole,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

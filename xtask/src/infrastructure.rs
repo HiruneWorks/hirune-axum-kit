@@ -15,7 +15,7 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
     let infrastructure = if external_database.is_none() {
         Some(Infrastructure::start(
             directory,
-            targets.contains(&"files") || load,
+            targets.contains(&"files") || targets.contains(&"content") || load,
         )?)
     } else {
         None

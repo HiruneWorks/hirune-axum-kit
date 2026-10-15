@@ -33,8 +33,12 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
             failed_job_days: 90,
             audit_days: 180,
             api_usage_days: 90,
+            notification_days: 90,
         },
         files: application::files::FileSettings::default(),
+        post_search: None,
+        profile_search: None,
+        fcm: None,
         oidc: Vec::new(),
         observability: ObservabilitySettings {
             log_filter: "info,sqlx=off,sea_orm=off,reqwest=off,hyper=off".into(),

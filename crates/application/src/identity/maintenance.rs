@@ -4,7 +4,8 @@ use super::{
 };
 use crate::{ApplicationError, ApplicationResult, database::database_time};
 use sea_orm::{
-    ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+    TransactionTrait,
     sea_query::{Expr, Func},
 };
 
@@ -109,5 +110,3 @@ impl IdentityService {
         Ok(deleted)
     }
 }
-
-use sea_orm::QueryTrait;

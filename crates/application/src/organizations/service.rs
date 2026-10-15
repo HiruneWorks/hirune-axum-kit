@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct OrganizationService {
-    identity: IdentityService,
+    pub(super) identity: IdentityService,
 }
 
 pub struct OrganizationSummary {
@@ -59,11 +59,10 @@ impl OrganizationService {
         self.identity
             .lock_authenticated_account(transaction, actor, false)
             .await?;
-        Ok(
-            repository::insert_organization(transaction, name, actor.account_id())
-                .await?
-                .into(),
-        )
+        let organization =
+            repository::insert_organization(transaction, name, actor.account_id()).await?;
+        crate::profiles::membership_changed(transaction, actor.account_id()).await?;
+        Ok(organization.into())
     }
 
     pub async fn get_organization(

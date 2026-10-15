@@ -1,14 +1,17 @@
 use anyhow::{Context, Result, ensure};
 use application::{
     config::{IdentitySettings, SecretKeys, SecretString},
-    files::{FileSettings, S3Settings, SearchSettings},
+    files::{FileSettings, S3Settings},
     identity::oidc::ProviderSettings,
+    notifications::fcm::FcmSettings,
+    search::SearchSettings,
 };
 use jobs::WorkerSettings;
 use mail::SmtpSettings;
 use std::{collections::BTreeMap, net::SocketAddr, str::FromStr};
 use url::Url;
 
+mod environment;
 mod oidc;
 
 #[derive(Clone, Debug)]
@@ -58,6 +61,9 @@ pub struct Settings {
     pub smtp: SmtpSettings,
     pub worker: WorkerSettings,
     pub files: FileSettings,
+    pub post_search: Option<SearchSettings>,
+    pub profile_search: Option<SearchSettings>,
+    pub fcm: Option<FcmSettings>,
     pub oidc: Vec<ProviderSettings>,
     pub observability: ObservabilitySettings,
     pub retention: RetentionSettings,
@@ -70,6 +76,7 @@ pub struct RetentionSettings {
     pub failed_job_days: i64,
     pub audit_days: i64,
     pub api_usage_days: i64,
+    pub notification_days: i64,
 }
 
 impl Settings {
@@ -88,11 +95,9 @@ impl Settings {
                 .cloned()
                 .with_context(|| format!("{name} is required"))
         };
-        let production = get("APP_ENV", "development") == "production";
-        ensure!(
-            ["development", "production", "test"].contains(&get("APP_ENV", "development").as_str()),
-            "invalid APP_ENV"
-        );
+        let environment: environment::ApplicationEnvironment =
+            get("APP_ENV", "development").parse()?;
+        let production = environment == environment::ApplicationEnvironment::Production;
         let public_url = Url::parse(&get("PUBLIC_URL", "http://localhost:3000/"))
             .context("invalid PUBLIC_URL")?;
         validate_web_url(&public_url, production)?;
@@ -231,6 +236,41 @@ impl Settings {
             None
         };
         let defaults = FileSettings::default();
+        let post_search = search.clone().map(|mut search| {
+            search.index = get("MEILISEARCH_POSTS_INDEX", "posts");
+            search
+        });
+        let profile_search = search.clone().map(|mut search| {
+            search.index = get("MEILISEARCH_PROFILES_INDEX", "profiles");
+            search
+        });
+        if let (Some(files), Some(posts), Some(profiles)) = (&search, &post_search, &profile_search)
+        {
+            posts.validate()?;
+            profiles.validate()?;
+            ensure!(
+                files.index != posts.index
+                    && files.index != profiles.index
+                    && posts.index != profiles.index,
+                "search indexes must have distinct names"
+            );
+        }
+        ensure!(
+            search.is_some()
+                || !["MEILISEARCH_POSTS_INDEX", "MEILISEARCH_PROFILES_INDEX"]
+                    .iter()
+                    .any(|name| supplied(name)),
+            "search index names require Meilisearch credentials"
+        );
+        let fcm = if number(values, "FCM_ENABLED", false)? {
+            let fcm = FcmSettings {
+                project_id: required("FCM_PROJECT_ID")?,
+            };
+            fcm.validate()?;
+            Some(fcm)
+        } else {
+            None
+        };
         let files = FileSettings {
             storage,
             search,
@@ -287,13 +327,15 @@ impl Settings {
             failed_job_days: number(values, "FAILED_JOB_RETENTION_DAYS", 90)?,
             audit_days: number(values, "AUDIT_RETENTION_DAYS", 180)?,
             api_usage_days: number(values, "API_USAGE_RETENTION_DAYS", 90)?,
+            notification_days: number(values, "NOTIFICATION_RETENTION_DAYS", 90)?,
         };
         ensure!(
             [
                 retention.succeeded_job_days,
                 retention.failed_job_days,
                 retention.audit_days,
-                retention.api_usage_days
+                retention.api_usage_days,
+                retention.notification_days
             ]
             .into_iter()
             .all(|days| (1..=36500).contains(&days)),
@@ -311,6 +353,9 @@ impl Settings {
             smtp,
             worker,
             files,
+            post_search,
+            profile_search,
+            fcm,
             oidc,
             observability,
             retention,

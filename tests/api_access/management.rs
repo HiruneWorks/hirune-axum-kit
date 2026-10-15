@@ -39,12 +39,12 @@ async fn owner_management_is_scoped_and_new_clients_cannot_allocate_themselves_q
         .await
         .assert_status_not_found();
     server.post(&base).add_header(header::AUTHORIZATION, &owner)
-        .json(&json!({"name":"Cannot self-allocate","scopes":[ORGANIZATIONS_READ],"month_limit":10000}))
+        .json(&json!({"name":"Cannot self-allocate","scopes":[ApiScope::OrganizationsRead],"month_limit":10000}))
         .await.assert_status_bad_request();
     let created = server
         .post(&base)
         .add_header(header::AUTHORIZATION, &owner)
-        .json(&json!({"name":"Unprovisioned","scopes":[ORGANIZATIONS_READ]}))
+        .json(&json!({"name":"Unprovisioned","scopes":[ApiScope::OrganizationsRead]}))
         .await;
     created.assert_status(StatusCode::CREATED);
     let client_id: Uuid = created.json::<Value>()["id"].as_str().unwrap().parse()?;
@@ -126,7 +126,7 @@ async fn key_management_requires_an_owner_and_recent_authentication_but_keys_out
         id: Set(Uuid::now_v7()),
         organization_id: Set(fixture.organization_id),
         account_id: Set(member.account_id()),
-        role: Set("member".into()),
+        role: Set(application::organizations::MembershipRole::Member),
     }
     .insert(&fixture.database.connection)
     .await?;

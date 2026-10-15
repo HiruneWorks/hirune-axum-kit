@@ -64,6 +64,7 @@ sentry = { version = "0.49.3", default-features = false, features = ["reqwest", 
 utoipa = { version = "6.0.0", features = ["axum_extras", "chrono", "uuid"] }
 cookie = "0.18.2"
 reqwest = { version = "0.13.5", features = ["json", "query", "stream"] }
+gcp_auth = "0.12.7"
 tempfile = "3.27.0"
 aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["rt-tokio", "rustls", "default-https-client"] }
 bytes = "1.11.1"

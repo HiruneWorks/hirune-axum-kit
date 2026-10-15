@@ -15,7 +15,20 @@ Do not fetch an unrestricted page and filter it afterward. Mutation services loc
 the actor before the organization, recheck access, and require the expected
 resource version. Stale updates return conflict rather than overwriting changes.
 
+Posts add concrete resource attributes and actions: members create posts and
+read published posts; authors and organization owners can read drafts and
+edit/delete posts. Single-level comment deletion permits the comment author,
+post author, or organization owner while requiring a visible published parent.
+Global administrators gain no implicit content access. External API clients are
+separate Cedar principals restricted to their owning organization's published
+posts, after key/scope/quota admission. See [posts and comments](posts-and-comments.md).
+
+Owners may add/remove an existing account through scoped services with recent
+authentication. They cannot remove the owner membership; the example bounds an
+organization to 1,000 members. User discovery, search hydration, and notification
+visibility repeat the current organization-membership scope in PostgreSQL.
+
 The example deliberately has no general permissions editor, role hierarchy,
-membership invitation flow, or administrator API. Add product operations through
+membership invitation flow, or administrator HTTP API. Add product operations through
 their domain service, policy, scoped queries, and tests together. Never infer
 authorization from UUID possession or from a cached session principal alone.

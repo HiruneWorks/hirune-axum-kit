@@ -106,7 +106,7 @@ impl TestDatabase {
     pub async fn insert_challenge(
         &self,
         account_id: Uuid,
-        purpose: &str,
+        purpose: application::identity::ChallengePurpose,
         token: &str,
     ) -> Result<()> {
         use application::identity::entities::challenge;
@@ -119,7 +119,7 @@ impl TestDatabase {
             id: Set(Uuid::now_v7()),
             account_id: Set(account_id),
             token_hash: Set(auth_core::token::hash_token(token)),
-            purpose: Set(purpose.into()),
+            purpose: Set(purpose),
             security_version: Set(account.security_version),
             expires_at: Set(chrono::Utc::now() + chrono::Duration::minutes(5)),
             ..Default::default()

@@ -10,6 +10,7 @@ use crate::{
     authorization::{Action, Authorization, Principal},
     config::IdentitySettings,
     database::database_time,
+    identity::{ChallengePurpose, authentication_operation::AuthenticationOperation},
 };
 use auth_core::{
     keyed_hash,
@@ -52,7 +53,8 @@ impl IdentityService {
         trace: TraceContext,
     ) -> ApplicationResult<()> {
         let email = normalize_email(email)?;
-        self.limit_authentication_attempts("signup", &email).await?;
+        self.limit_authentication_attempts(AuthenticationOperation::Signup, &email)
+            .await?;
         validate_new_password(&password)?;
         let password_hash = self.passwords.hash(password).await?;
         let transaction = self.database.begin().await?;
@@ -101,7 +103,8 @@ impl IdentityService {
         trace: TraceContext,
     ) -> ApplicationResult<LoginOutcome> {
         let email = normalize_email(email)?;
-        self.limit_authentication_attempts("login", &email).await?;
+        self.limit_authentication_attempts(AuthenticationOperation::Login, &email)
+            .await?;
         let snapshot = accounts::find_by_email(&self.database, &email).await?;
         let password_matches = self
             .passwords
@@ -144,7 +147,7 @@ impl IdentityService {
                 transaction,
                 account.id,
                 hash_token(&challenge),
-                "mfa",
+                ChallengePurpose::Mfa,
                 account.security_version,
                 database_time(transaction).await? + Duration::minutes(5),
                 None,
@@ -228,9 +231,9 @@ impl IdentityService {
         Ok(account)
     }
 
-    pub(crate) async fn limit_authentication_attempts(
+    pub(super) async fn limit_authentication_attempts(
         &self,
-        operation: &str,
+        operation: AuthenticationOperation,
         identity: &str,
     ) -> ApplicationResult<()> {
         // These attempts must survive a later authentication transaction rollback.
@@ -239,7 +242,7 @@ impl IdentityService {
         let key = keyed_hash::hash_hex(
             self.settings.rate_limit_key.expose().as_bytes(),
             "authentication identity rate v1",
-            format!("{operation}:{identity}").as_bytes(),
+            format!("{}:{identity}", operation.as_str()).as_bytes(),
         );
         let attempts = security::consume_rate_limit(&transaction, key, expires_at).await?;
         transaction.commit().await?;
@@ -272,8 +275,11 @@ impl IdentityService {
         new_password: String,
         trace: TraceContext,
     ) -> ApplicationResult<()> {
-        self.limit_authentication_attempts("change_password", &actor.account_id().to_string())
-            .await?;
+        self.limit_authentication_attempts(
+            AuthenticationOperation::ChangePassword,
+            &actor.account_id().to_string(),
+        )
+        .await?;
         validate_new_password(&new_password)?;
         let snapshot = accounts::find_by_id(&self.database, actor.account_id())
             .await?

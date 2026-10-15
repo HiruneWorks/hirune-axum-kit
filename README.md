@@ -29,6 +29,7 @@ just test-db
 just test-api
 just test-process
 just test-files
+just test-content
 just test-deployment
 just test-production
 just load-test
@@ -47,10 +48,26 @@ database restoration fixtures. It does not deploy the application.
 Run `just infra-up-files`, enable the commented S3/Meilisearch settings in
 `.envs/.local/app.env`, and run `just manage initialize-integrations` after
 migrations. The API stores original bytes in the private S3 bucket. PostgreSQL
-controls attachment access; Meilisearch indexes filenames only. Run the worker
+controls attachment access. Separate Meilisearch projections support filename,
+published-post, and organization-user search. Run the worker
 for deletion and indexing, and run `maintenance` for periodic cleanup and search
 repair in deployment. See the
 [file contract](docs/behavior/files-and-search.md) for limits and lifecycle.
+
+## Connected example
+
+Organization posts and single-level comments demonstrate Cedar permissions,
+optimistic updates, private attachments, profiles, and scoped pagination/search.
+A reply creates the post author's in-app notification atomically with the write;
+recipients can manage preferences and read state. Optional FCM delivery uses the
+durable worker queue and is disabled by default. See the
+[content](docs/behavior/posts-and-comments.md),
+[search](docs/behavior/profiles-and-search.md), and
+[notification](docs/behavior/notifications-and-push.md) contracts.
+
+HTTP adapters are organized by version, domain, and named operation under
+`src/http/v1/`. Each domain's `routes.rs` is the route map; operation-specific
+DTOs live beside their handler, and shared DTOs live in `contracts.rs`.
 
 ## External developer API
 

@@ -36,6 +36,7 @@ jobs:
       - run: just test-api
       - run: just test-process
       - run: just test-files
+      - run: just test-content
       - run: just test-deployment
       - run: just load-test
         env:

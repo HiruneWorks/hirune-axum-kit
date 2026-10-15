@@ -22,6 +22,14 @@ mod m20261015_000019_create_api_clients;
 mod m20261015_000020_create_api_keys;
 mod m20261015_000021_create_api_usage;
 mod m20261015_000022_identify_audit_resources;
+mod m20261015_000023_create_profiles;
+mod m20261015_000024_create_posts;
+mod m20261015_000025_create_comments;
+mod m20261015_000026_create_post_attachments;
+mod m20261015_000027_create_notifications;
+mod m20261015_000028_create_notification_preferences;
+mod m20261015_000029_create_push_devices;
+mod m20261015_000030_create_push_deliveries;
 
 pub struct Migrator;
 
@@ -63,6 +71,14 @@ impl MigratorTrait for Migrator {
             Box::new(m20261015_000020_create_api_keys::Migration),
             Box::new(m20261015_000021_create_api_usage::Migration),
             Box::new(m20261015_000022_identify_audit_resources::Migration),
+            Box::new(m20261015_000023_create_profiles::Migration),
+            Box::new(m20261015_000024_create_posts::Migration),
+            Box::new(m20261015_000025_create_comments::Migration),
+            Box::new(m20261015_000026_create_post_attachments::Migration),
+            Box::new(m20261015_000027_create_notifications::Migration),
+            Box::new(m20261015_000028_create_notification_preferences::Migration),
+            Box::new(m20261015_000029_create_push_devices::Migration),
+            Box::new(m20261015_000030_create_push_deliveries::Migration),
         ]
     }
 }

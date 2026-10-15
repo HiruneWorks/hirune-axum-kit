@@ -259,7 +259,7 @@ async fn original_bytes_ranges_and_filename_search_use_the_production_router() -
             .await?
             .unwrap()
             .state,
-        "deleted"
+        application::files::FileState::Deleted
     );
     app.close().await?;
     database.finish().await
@@ -370,7 +370,7 @@ async fn concurrent_members_cannot_overreserve_organization_quota() -> anyhow::R
         id: Set(Uuid::now_v7()),
         organization_id: Set(organization.id),
         account_id: Set(member.account_id()),
-        role: Set("member".into()),
+        role: Set(application::organizations::MembershipRole::Member),
     }
     .insert(&database.connection)
     .await?;
@@ -479,7 +479,7 @@ async fn deletion_defeats_late_upload_completion_and_reconciliation_removes_its_
             .await?
             .unwrap()
             .state
-            == "transferring"
+            == application::files::FileState::Transferring
         {
             break;
         }
@@ -636,7 +636,7 @@ async fn cancellation_removes_temporary_bytes_and_downloads_hold_transfer_slots(
         id: Set(Uuid::now_v7()),
         organization_id: Set(organization.id),
         account_id: Set(actor.account_id()),
-        role: Set("owner".into()),
+        role: Set(application::organizations::MembershipRole::Owner),
     }
     .insert(&database.connection)
     .await?;
@@ -773,7 +773,7 @@ async fn cleanup_prioritizes_unscheduled_uploads_and_advances_between_hourly_bat
                 object_key: Set(format!("originals/{}/{}", organization.id, id)),
                 filename: Set("old.bin".into()),
                 byte_size: Set(0),
-                state: Set("deleted".into()),
+                state: Set(application::files::FileState::Deleted),
                 upload_expires_at: Set(now - chrono::Duration::days(2)),
                 updated_at: Set(now - chrono::Duration::days(1)),
                 created_at: Set(now - chrono::Duration::days(1)),
@@ -806,7 +806,7 @@ async fn cleanup_prioritizes_unscheduled_uploads_and_advances_between_hourly_bat
             .await?
             .unwrap()
             .state,
-        "deleting"
+        application::files::FileState::Deleting
     );
     let old_schedule = now - chrono::Duration::minutes(90);
     use sea_orm::PaginatorTrait;

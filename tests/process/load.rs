@@ -13,7 +13,7 @@ use jobs::{
 use reqwest::Client;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Serialize;
-use std::{collections::BTreeMap, process::Stdio, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 use test_support::{TEST_PASSWORD, TestDatabase};
 use tokio::process::Command;
 use uuid::Uuid;
@@ -22,6 +22,7 @@ use uuid::Uuid;
 struct LoadAccount {
     account_id: Uuid,
     token: String,
+    commenter_token: String,
     revocable_token: String,
     revocable_session_id: Uuid,
     organization_ids: [Uuid; 2],
@@ -49,12 +50,19 @@ async fn seed_accounts(database: &TestDatabase, count: usize) -> Result<Vec<Load
         let second = organizations
             .create_organization(&actor, format!("Load account {} secondary", index + 1))
             .await?;
+        let (commenter, commenter_credentials) = database.verified_account(&identity).await?;
+        organizations
+            .add_member(&actor, first.id, commenter.account_id())
+            .await?;
         let api_client = api_access
             .create_client(
                 &actor,
                 first.id,
                 "Load partner".into(),
-                vec!["organizations:read".into()],
+                vec![
+                    application::api_access::ApiScope::OrganizationsRead,
+                    application::api_access::ApiScope::PostsRead,
+                ],
                 TraceContext::default(),
             )
             .await?;
@@ -84,6 +92,7 @@ async fn seed_accounts(database: &TestDatabase, count: usize) -> Result<Vec<Load
         accounts.push(LoadAccount {
             account_id: actor.account_id(),
             token: credentials.token,
+            commenter_token: commenter_credentials.token,
             revocable_token: revocable.token,
             revocable_session_id: revocable.session_id,
             organization_ids: [first.id, second.id],
@@ -126,6 +135,14 @@ fn configure_file_integrations(environment: &mut ProcessEnvironment) -> Result<(
                 "MEILISEARCH_INDEX",
                 format!("load_files_{}", Uuid::now_v7().simple()),
             ),
+            (
+                "MEILISEARCH_POSTS_INDEX",
+                format!("load_posts_{}", Uuid::now_v7().simple()),
+            ),
+            (
+                "MEILISEARCH_PROFILES_INDEX",
+                format!("load_profiles_{}", Uuid::now_v7().simple()),
+            ),
             ("MEILISEARCH_ALLOW_HTTP", "true".into()),
             ("WORKER_CONCURRENCY", "4".into()),
             ("WORKER_POLL_MILLISECONDS", "50".into()),
@@ -157,18 +174,20 @@ async fn wait_for_file_cleanup(database: &TestDatabase, worker: &mut RunningProc
             );
             ensure!(
                 job::Entity::find()
-                    .filter(job::Column::State.eq("failed"))
+                    .filter(job::Column::State.eq(jobs::JobState::Failed))
                     .count(&database.connection)
                     .await?
                     == 0,
                 "load test left permanently failed background jobs"
             );
             let remaining_files = file::Entity::find()
-                .filter(file::Column::State.ne("deleted"))
+                .filter(file::Column::State.ne(application::files::FileState::Deleted))
                 .count(&database.connection)
                 .await?;
             let remaining_jobs = job::Entity::find()
-                .filter(job::Column::State.is_in(["pending", "running"]))
+                .filter(
+                    job::Column::State.is_in([jobs::JobState::Pending, jobs::JobState::Running]),
+                )
                 .count(&database.connection)
                 .await?;
             if remaining_files == 0 && remaining_jobs == 0 {
@@ -225,21 +244,25 @@ async fn mixed_workload() -> Result<()> {
     configure_file_integrations(&mut environment)?;
     let settings = kit::config::Settings::from_values(&environment.values)?;
     let application = kit::bootstrap::bootstrap(&settings).await?;
-    application.files.initialize_integrations().await?;
+    kit::integrations::initialize(&application).await?;
     application.close().await?;
     let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
     let (mut first, _, first_port) = environment.api(&client, true).await?;
     let (mut second, _, second_port) = environment.api(&client, true).await?;
     let mut worker = environment.start(env!("CARGO_BIN_EXE_worker"), None)?;
     let result = async {
-        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/load/mixed.js");
+        let scripts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/load");
         let status = Command::new("docker")
             .args([
                 "run",
                 "--rm",
                 "--add-host",
                 "host.docker.internal:host-gateway",
-                "-i",
+                "--mount",
+                &format!(
+                    "type=bind,source={},target=/scripts,readonly",
+                    scripts.display()
+                ),
                 "-e",
                 "FIRST_API_URL",
                 "-e",
@@ -250,7 +273,7 @@ async fn mixed_workload() -> Result<()> {
                 "K6_PROFILE",
                 "grafana/k6:2.2.0",
                 "run",
-                "-",
+                "/scripts/mixed.js",
             ])
             .env(
                 "FIRST_API_URL",
@@ -262,7 +285,6 @@ async fn mixed_workload() -> Result<()> {
             )
             .env("LOAD_ACCOUNTS", serde_json::to_string(&accounts)?)
             .env("K6_PROFILE", profile)
-            .stdin(Stdio::from(std::fs::File::open(script)?))
             .kill_on_drop(true)
             .status()
             .await?;
@@ -273,7 +295,7 @@ async fn mixed_workload() -> Result<()> {
                 .count(&database.connection)
                 .await?;
             ensure!(
-                recorded >= 2 && recorded.is_multiple_of(2),
+                recorded >= 4 && recorded.is_multiple_of(4),
                 "load workflow admission history is incomplete"
             );
         }
@@ -284,6 +306,7 @@ async fn mixed_workload() -> Result<()> {
     for account in &accounts {
         secrets.extend([
             account.token.as_str(),
+            account.commenter_token.as_str(),
             account.revocable_token.as_str(),
             account.api_keys[0].as_str(),
             account.api_keys[1].as_str(),

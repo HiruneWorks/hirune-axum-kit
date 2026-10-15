@@ -1,5 +1,5 @@
 use super::entities::{api_client, api_key};
-use crate::{ApplicationError, ApplicationResult, config::SecretString};
+use crate::{ApplicationError, ApplicationResult, api_access::ApiScope, config::SecretString};
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ pub struct ApiClientSummary {
     pub id: Uuid,
     pub organization_id: Uuid,
     pub name: String,
-    pub scopes: Vec<String>,
+    pub scopes: Vec<ApiScope>,
     pub active: bool,
     pub quota: QuotaStatus,
 }
@@ -38,6 +38,29 @@ pub struct ExternalOrganization {
     pub name: String,
     pub version: i64,
     pub quota: QuotaStatus,
+}
+pub struct ApiAdmission {
+    pub(super) organization: crate::organizations::OrganizationSummary,
+    pub(super) client_id: Uuid,
+    pub(super) scope: ApiScope,
+    pub(super) quota: QuotaStatus,
+}
+impl ApiAdmission {
+    pub fn organization_id(&self) -> Uuid {
+        self.organization.id
+    }
+    pub(crate) fn organization_owner_id(&self) -> Uuid {
+        self.organization.owner_id
+    }
+    pub fn client_id(&self) -> Uuid {
+        self.client_id
+    }
+    pub fn scope(&self) -> ApiScope {
+        self.scope
+    }
+    pub fn quota(&self) -> &QuotaStatus {
+        &self.quota
+    }
 }
 pub struct QuotaStatus {
     pub minute_limit: i64,

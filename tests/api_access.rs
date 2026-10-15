@@ -3,8 +3,8 @@ mod support;
 use anyhow::{Context, Result, ensure};
 use application::{
     ApplicationError,
+    api_access::ApiScope,
     api_access::entities::{api_client, api_key, api_usage},
-    api_access::validation::ORGANIZATIONS_READ,
     identity::AuthenticatedSession,
 };
 use axum::http::{StatusCode, header};
@@ -47,7 +47,7 @@ impl Fixture {
                 &actor,
                 organization.id,
                 "Partner application".into(),
-                vec![ORGANIZATIONS_READ.into()],
+                vec![ApiScope::OrganizationsRead],
                 TraceContext::default(),
             )
             .await?;

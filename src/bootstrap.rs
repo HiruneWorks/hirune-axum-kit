@@ -4,7 +4,10 @@ use application::{
     authorization::Authorization,
     files::FileService,
     identity::{IdentityService, oidc::OidcService},
+    notifications::NotificationService,
     organizations::OrganizationService,
+    posts::PostService,
+    profiles::ProfileService,
 };
 use jobs::PostgresQueue;
 use mail::Mailer;
@@ -23,6 +26,9 @@ pub struct Application {
     pub identity: IdentityService,
     pub organizations: OrganizationService,
     pub files: FileService,
+    pub profiles: ProfileService,
+    pub posts: PostService,
+    pub notifications: NotificationService,
     pub oidc: OidcService,
     pub queue: PostgresQueue,
     pub mailer: Mailer,
@@ -60,11 +66,27 @@ pub async fn bootstrap(settings: &Settings) -> anyhow::Result<Application> {
         settings.files.clone(),
     )?;
     let mailer = Mailer::new(&settings.smtp)?;
+    let profiles = ProfileService::new(
+        identity.clone(),
+        organizations.clone(),
+        settings.profile_search.clone(),
+    )?;
+    let notifications = NotificationService::new(identity.clone(), settings.fcm.clone())?;
+    let posts = PostService::new(
+        identity.clone(),
+        organizations.clone(),
+        files.clone(),
+        notifications.clone(),
+        settings.post_search.clone(),
+    )?;
     Ok(Application {
         api_access,
         identity,
         organizations,
         files,
+        profiles,
+        posts,
+        notifications,
         oidc,
         queue: PostgresQueue::new(database.clone()),
         mailer,

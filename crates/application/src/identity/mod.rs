@@ -1,3 +1,8 @@
+mod authentication_operation;
+mod challenge_purpose;
+mod delivery_state;
+pub use challenge_purpose::ChallengePurpose;
+pub use delivery_state::MailDeliveryState;
 mod administration;
 mod audit;
 mod delivery;

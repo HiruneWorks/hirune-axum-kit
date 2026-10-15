@@ -1,11 +1,15 @@
 use super::{
     AuthenticatedSession, IdentityService, LoginOutcome,
     entities::oauth_flow,
+    oidc_provider::Provider,
     repository::{accounts, oauth, security, sessions},
     service::principal,
     validation::normalize_email,
 };
-use crate::{ApplicationError, ApplicationResult, config::SecretString, database::database_time};
+use crate::{
+    ApplicationError, ApplicationResult, config::SecretString, database::database_time,
+    identity::authentication_operation::AuthenticationOperation,
+};
 use auth_core::token::{generate_secure_token, hash_token};
 use jobs::TraceContext;
 use openidconnect::{
@@ -18,8 +22,6 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use url::Url;
 use uuid::Uuid;
-
-use super::oidc_provider::Provider;
 
 #[derive(Clone, Debug)]
 pub struct ProviderSettings {
@@ -124,7 +126,7 @@ impl OidcService {
             .unwrap_or_else(generate_secure_token);
         self.identity
             .limit_authentication_attempts(
-                "oidc_start",
+                AuthenticationOperation::OidcStart,
                 &actor.map_or_else(
                     || hash_token(&browser_binding),
                     |actor| actor.account_id().to_string(),

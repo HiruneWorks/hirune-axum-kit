@@ -1,3 +1,5 @@
+mod scope;
+pub use scope::ApiScope;
 mod admission;
 pub mod entities;
 mod management;
@@ -6,7 +8,10 @@ mod types;
 pub mod validation;
 
 use crate::{identity::IdentityService, organizations::OrganizationService};
-pub use types::{ApiClientSummary, ApiKeySummary, ExternalOrganization, IssuedApiKey, QuotaStatus};
+
+pub use types::{
+    ApiAdmission, ApiClientSummary, ApiKeySummary, ExternalOrganization, IssuedApiKey, QuotaStatus,
+};
 
 #[derive(Clone)]
 pub struct ApiAccessService {

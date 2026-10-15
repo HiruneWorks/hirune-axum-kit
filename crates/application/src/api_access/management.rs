@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     ApplicationError, ApplicationResult,
+    api_access::ApiScope,
     config::SecretString,
     database::database_time,
     identity::AuthenticatedSession,
@@ -48,7 +49,7 @@ impl ApiAccessService {
         actor: &AuthenticatedSession,
         organization_id: Uuid,
         name: String,
-        scopes: Vec<String>,
+        scopes: Vec<ApiScope>,
         trace: TraceContext,
     ) -> ApplicationResult<ApiClientSummary> {
         let name = validation::name(&name)?;
@@ -130,7 +131,7 @@ impl ApiAccessService {
         organization_id: Uuid,
         client_id: Uuid,
         name: String,
-        scopes: Vec<String>,
+        scopes: Vec<ApiScope>,
         trace: TraceContext,
     ) -> ApplicationResult<ApiClientSummary> {
         let name = validation::name(&name)?;

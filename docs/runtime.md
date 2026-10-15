@@ -83,7 +83,8 @@ Authentication budgets are `AUTH_IDENTITY_LIMIT_PER_MINUTE` (default 10 per
 operation/identity) and `AUTH_CLIENT_LIMIT_PER_MINUTE` (default 60 shared across
 authentication routes per client). Both accept 1 through 100000. Retention settings
 are `SUCCEEDED_JOB_RETENTION_DAYS` (30), `FAILED_JOB_RETENTION_DAYS` (90), and
-`AUDIT_RETENTION_DAYS` (180), and `API_USAGE_RETENTION_DAYS` (90), each from 1
+`AUDIT_RETENTION_DAYS` (180), `API_USAGE_RETENTION_DAYS` (90), and
+`NOTIFICATION_RETENTION_DAYS` (90), each from 1
 through 36500 days. API, worker, and
 management settings should agree across replicas; changing a limit does not reset
 shared counters.
@@ -108,6 +109,27 @@ registered on restart. Retention and explicit manual retry cover both queues.
 Behind a proxy, configure exact ALLOWED_ORIGINS and the explicit TRUSTED_PROXY_IPS
 contract in [security](security.md). Protect the backend from direct untrusted
 network access. Do not enable forwarding-header trust globally.
+
+## Optional search and push
+
+The shared `MEILISEARCH_URL` and `MEILISEARCH_API_KEY` enable derived filename,
+post, and profile search. Each has a distinct index: `MEILISEARCH_INDEX` defaults
+to files, `MEILISEARCH_POSTS_INDEX` to posts, and `MEILISEARCH_PROFILES_INDEX`
+to profiles. Duplicate names fail configuration. Run
+`manage initialize-integrations` after migrations; startup never performs
+integration provisioning. `manage repair-search` and scheduled maintenance share
+one explicit coordinator and enqueue at most 100 rows per configured domain per
+run, prioritizing never/least-reconciled rows. Repeated repair eventually visits
+the current dataset; there is no implicit full rebuild at startup.
+
+`FCM_ENABLED=false` is the default. The inbox and comment transactions work
+without Google credentials. Enabling FCM requires `FCM_PROJECT_ID`; workers use
+Application Default Credentials lazily for the Firebase Messaging OAuth scope.
+Use workload identity in hosted deployments, or supply
+`GOOGLE_APPLICATION_CREDENTIALS` and mount its service-account file read-only.
+That path is a Google runtime setting, not an application secret copied into
+the repository or image. A valid project setting alone does not verify provider
+permissions or device receipt. See [notifications and push](behavior/notifications-and-push.md).
 
 ## Telemetry and shutdown
 
