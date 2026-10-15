@@ -12,6 +12,10 @@ pub enum ApplicationError {
     Conflict,
     #[error("too many attempts")]
     RateLimited,
+    #[error("API client request rate exceeded")]
+    ApiRateLimited { retry_after_seconds: u64 },
+    #[error("API client monthly quota exceeded")]
+    ApiQuotaExceeded { retry_after_seconds: u64 },
     #[error("external service unavailable")]
     ExternalUnavailable,
     #[error("integration unavailable")]

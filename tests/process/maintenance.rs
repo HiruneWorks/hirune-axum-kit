@@ -27,6 +27,7 @@ async fn maintenance_replicas_schedule_cleanup_and_leave_application_jobs_for_wo
         event: Set("maintenance_fixture".into()),
         request_id: Set(Uuid::now_v7()),
         created_at: Set(chrono::Utc::now() - chrono::Duration::days(181)),
+        ..Default::default()
     }
     .insert(&database.connection)
     .await?;

@@ -156,6 +156,18 @@ def prepare_account():
     assert account["verified"] is True
     request("POST", "/api/v1/organizations", {"name": "Rejected origin"},
             cookie=cookie, origin=None, expected=403)
+    organization, _ = request("POST", "/api/v1/organizations", {"name": "Production developer"},
+                              cookie=cookie, expected=201)
+    client_path = f"/api/v1/organizations/{organization['id']}/api-clients"
+    api_client, _ = request("POST", client_path,
+                            {"name": "Production partner", "scopes": ["organizations:read"]},
+                            cookie=cookie, expected=201)
+    client_path += "/" + api_client["id"]
+    issued, headers = request("POST", client_path + "/keys",
+                              {"name": "Production key", "expires_in_days": 1}, cookie=cookie, expected=201)
+    assert headers["Cache-Control"] == "no-store"
+    request("GET", "/api/v1/external/organization", expected=403,
+            headers={"Authorization": "Bearer " + issued["credential"]})
     enrollment, _ = request("POST", "/api/v1/account/totp", cookie=cookie)
     secret = urllib.parse.parse_qs(urllib.parse.urlsplit(enrollment["authenticator_url"]).query)["secret"][0]
     step = int(time.time()) // 30
@@ -164,9 +176,29 @@ def prepare_account():
                           cookie=cookie)
     assert recovery["recovery_codes"]
     request("GET", "/api/v1/account", cookie=cookie, expected=401)
-    STATE_FILE.write_text(json.dumps({**credentials, "secret": secret, "step": step}), encoding="utf-8")
+    STATE_FILE.write_text(json.dumps({**credentials, "secret": secret, "step": step,
+                                     "api_client_id": api_client["id"], "api_client_path": client_path,
+                                     "api_credential": issued["credential"], "api_key_id": issued["key"]["id"]}), encoding="utf-8")
     STATE_FILE.chmod(0o600)
     print("Production signup, STARTTLS delivery, host cookie, origin rejection, proxy header replacement, and MFA enrollment passed.")
+
+
+def api_client_id():
+    state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    print(state["api_client_id"])
+
+
+def verify_external_api():
+    state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    authorization = {"Authorization": "bearer " + state["api_credential"]}
+    request("HEAD", "/api/v1/external/organization", headers=authorization, expected=405)
+    for remaining in ["1", "0"]:
+        _, headers = request("GET", "/api/v1/external/organization", headers=authorization)
+        assert headers["X-Quota-Remaining"] == remaining
+    exhausted, headers = request("GET", "/api/v1/external/organization", headers=authorization, expected=429)
+    assert exhausted["error"]["code"] == "api_quota_exceeded" and int(headers["Retry-After"]) >= 1
+    assert sql("runtime", "SELECT count(*) FROM api_usage;") == "2"
+    print("Production API key admission and hard quota passed with restricted runtime credentials.")
 
 
 def verify_rejected_smtp_certificate():
@@ -204,11 +236,19 @@ def verify_restored_account():
     cookie = session_cookie(headers)
     account, _ = request("GET", "/api/v1/account", cookie=cookie)
     assert account["verified"] is True and account["mfa_enabled"] is True
+    authorization = {"Authorization": "Bearer " + state["api_credential"]}
+    exhausted, _ = request("GET", "/api/v1/external/organization", headers=authorization, expected=429)
+    assert exhausted["error"]["code"] == "api_quota_exceeded"
+    api_client, _ = request("GET", state["api_client_path"], cookie=cookie)
+    assert api_client["quota"]["month_used"] == 2
+    request("DELETE", state["api_client_path"] + "/keys/" + state["api_key_id"], cookie=cookie, expected=204)
+    request("GET", "/api/v1/external/organization", headers=authorization, expected=401)
     request("DELETE", "/api/v1/sessions", cookie=cookie, expected=204)
     request("GET", "/api/v1/account", cookie=cookie, expected=401)
     STATE_FILE.unlink()
-    print("Restored password and encrypted TOTP state work with retained keys; session revocation passed.")
+    print("Restored password, encrypted TOTP, API key allocation/history, and revocation passed.")
 
 
 {"prepare": prepare_account, "restored": verify_restored_account,
+ "api-client-id": api_client_id, "external-api": verify_external_api,
  "rejected-certificate": verify_rejected_smtp_certificate}[sys.argv[1]]()

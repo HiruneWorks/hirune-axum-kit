@@ -1,3 +1,5 @@
+mod api_access;
+mod api_access_contracts;
 mod contracts;
 mod cookies;
 mod error;
@@ -124,6 +126,33 @@ pub fn build_router(app: Application, settings: HttpSettings) -> Router {
         .route(
             "/api/v1/organizations/{organization_id}",
             get(organizations::get_organization).put(organizations::rename_organization),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/api-clients",
+            get(api_access::list_clients).post(api_access::create_client),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/api-clients/{client_id}",
+            get(api_access::get_client)
+                .put(api_access::update_client)
+                .delete(api_access::revoke_client),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/api-clients/{client_id}/keys",
+            get(api_access::list_keys).post(api_access::issue_key),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/api-clients/{client_id}/keys/{key_id}",
+            axum::routing::delete(api_access::revoke_key),
+        )
+        .route(
+            "/api/v1/external/organization",
+            get(api_access::external_organization).head(|| async {
+                (
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    [(axum::http::header::ALLOW, "GET")],
+                )
+            }),
         )
         .route("/api/v1/auth/oidc/{provider}", post(oidc::begin_login))
         .route("/api/v1/auth/oidc/{provider}/callback", get(oidc::callback))

@@ -263,6 +263,7 @@ async fn audit_retention_is_bounded_and_preserves_recent_events() -> anyhow::Res
         event: Set("fixture".into()),
         request_id: Set(Uuid::now_v7()),
         created_at: Set(old),
+        ..Default::default()
     }))
     .exec(&database.connection)
     .await?;
@@ -273,6 +274,7 @@ async fn audit_retention_is_bounded_and_preserves_recent_events() -> anyhow::Res
         event: Set("fixture".into()),
         request_id: Set(Uuid::now_v7()),
         created_at: Set(chrono::Utc::now()),
+        ..Default::default()
     }
     .insert(&database.connection)
     .await?;

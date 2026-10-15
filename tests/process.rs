@@ -11,6 +11,8 @@ use uuid::Uuid;
 #[path = "process/load.rs"]
 mod load;
 
+#[path = "process/api_access.rs"]
+mod api_access;
 #[path = "process/maintenance.rs"]
 mod maintenance;
 
@@ -80,9 +82,18 @@ impl ProcessEnvironment {
         })
     }
     fn start(&self, binary: &str, bind: Option<&str>) -> Result<RunningProcess> {
+        self.start_with_arguments(binary, &[], bind)
+    }
+    fn start_with_arguments(
+        &self,
+        binary: &str,
+        arguments: &[&str],
+        bind: Option<&str>,
+    ) -> Result<RunningProcess> {
         let log = NamedTempFile::new()?;
         let mut command = Command::new(binary);
         command
+            .args(arguments)
             .current_dir(self.directory.path())
             .envs(&self.values)
             .env_remove("SENTRY_DSN")

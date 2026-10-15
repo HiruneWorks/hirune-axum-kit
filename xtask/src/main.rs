@@ -20,7 +20,7 @@ fn main() -> Result<()> {
         Some("check") => checks::check(),
         Some("openapi") => checks::openapi(false),
         Some("test-db") => infrastructure::run_tests(&["identity", "jobs"]),
-        Some("test-api") => infrastructure::run_tests(&["api", "oidc"]),
+        Some("test-api") => infrastructure::run_tests(&["api", "oidc", "api_access"]),
         Some("test-process") => infrastructure::run_tests(&["process"]),
         Some("test-files") => infrastructure::run_tests(&["files"]),
         Some("test-deployment") => deployment::verify(),

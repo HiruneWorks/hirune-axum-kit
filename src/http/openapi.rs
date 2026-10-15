@@ -1,4 +1,4 @@
-use super::{files, identity, oidc, organizations};
+use super::{api_access, files, identity, oidc, organizations};
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme},
@@ -13,7 +13,10 @@ use utoipa::{
     organizations::create_organization, organizations::get_organization, organizations::list_organizations, organizations::rename_organization,
     oidc::begin_login, oidc::begin_link, oidc::callback, oidc::list_identities, oidc::unlink_identity,
     files::reserve_file, files::list_files, files::get_file, files::upload_original, files::delete_file,
-    files::search_files, files::download_original, files::head_original
+    files::search_files, files::download_original, files::head_original,
+    api_access::create_client, api_access::list_clients, api_access::get_client,
+    api_access::update_client, api_access::revoke_client, api_access::issue_key,
+    api_access::list_keys, api_access::revoke_key, api_access::external_organization
 ), components(schemas(super::error::ErrorOutput)), modifiers(&SecuritySchemes))]
 struct ApiDocumentation;
 
@@ -21,6 +24,15 @@ struct SecuritySchemes;
 impl Modify for SecuritySchemes {
     fn modify(&self, document: &mut utoipa::openapi::OpenApi) {
         if let Some(components) = document.components.as_mut() {
+            components.add_security_scheme(
+                "apiKeyAuth",
+                SecurityScheme::Http(
+                    HttpBuilder::new()
+                        .scheme(HttpAuthScheme::Bearer)
+                        .bearer_format("API key: hak_v1_<uuid>.<secret>; external routes only")
+                        .build(),
+                ),
+            );
             components.add_security_scheme("cookieAuth", SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description("__Host-session", "Development uses session; production uses __Host-session. Unsafe cookie requests require an allowed Origin."))));
             components.add_security_scheme(
                 "bearerAuth",

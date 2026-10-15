@@ -142,14 +142,32 @@ impl OrganizationService {
     ) -> ApplicationResult<OrganizationSummary> {
         let name = normalize_name(&name)?;
         let transaction = self.identity.database.begin().await?;
+        let organization = self
+            .require_owner_in_transaction(&transaction, actor, organization_id, false)
+            .await?;
+        if organization.version != expected_version {
+            return Err(ApplicationError::Conflict);
+        }
+        let updated = repository::rename_organization(&transaction, organization, name).await?;
+        transaction.commit().await?;
+        Ok(updated.into())
+    }
+
+    pub(crate) async fn require_owner_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        actor: &AuthenticatedSession,
+        organization_id: Uuid,
+        require_recent_authentication: bool,
+    ) -> ApplicationResult<organization::Model> {
         let account = self
             .identity
-            .lock_authenticated_account(&transaction, actor, false)
+            .lock_authenticated_account(transaction, actor, require_recent_authentication)
             .await?;
-        let organization = repository::lock_organization(&transaction, organization_id)
+        let organization = repository::lock_organization(transaction, organization_id)
             .await?
             .ok_or(ApplicationError::NotFound)?;
-        let member = repository::is_member(&transaction, organization.id, account.id).await?;
+        let member = repository::is_member(transaction, organization.id, account.id).await?;
         if !member {
             return Err(ApplicationError::NotFound);
         }
@@ -160,11 +178,17 @@ impl OrganizationService {
             organization.owner_id,
             member,
         )?;
-        if organization.version != expected_version {
-            return Err(ApplicationError::Conflict);
-        }
-        let updated = repository::rename_organization(&transaction, organization, name).await?;
-        transaction.commit().await?;
-        Ok(updated.into())
+        Ok(organization)
+    }
+
+    pub(crate) async fn read_for_api_client(
+        &self,
+        transaction: &DatabaseTransaction,
+        organization_id: Uuid,
+    ) -> ApplicationResult<OrganizationSummary> {
+        repository::find_organization(transaction, organization_id)
+            .await?
+            .map(Into::into)
+            .ok_or(ApplicationError::NotFound)
     }
 }

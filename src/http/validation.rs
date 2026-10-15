@@ -26,3 +26,14 @@ pub fn media_type(value: &str) -> Result<(), ValidationError> {
     application::files::validation::validate_media_type(value)
         .map_err(|_| ValidationError::new("media_type"))
 }
+
+pub fn api_access_name(value: &str) -> Result<(), ValidationError> {
+    application::api_access::validation::name(value)
+        .map(|_| ())
+        .map_err(|_| ValidationError::new("api_name"))
+}
+
+pub fn api_client_scopes(values: &[String]) -> Result<(), ValidationError> {
+    application::api_access::validation::scopes(values)
+        .map_err(|_| ValidationError::new("api_scopes"))
+}

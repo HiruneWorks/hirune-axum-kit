@@ -19,11 +19,16 @@ pub async fn cleanup(app: &Application, retention: &RetentionSettings) -> Applic
         .cleanup_audit_events(retention.audit_days)
         .await?;
     let file_records = app.files.reconcile_files().await?;
+    let api_usage_records = app
+        .api_access
+        .cleanup_usage(retention.api_usage_days)
+        .await?;
     tracing::info!(
         authentication_records,
         completed_jobs,
         audit_events,
         file_records,
+        api_usage_records,
         "expired records removed"
     );
     Ok(())

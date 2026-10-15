@@ -85,21 +85,74 @@ pub fn read_cookie(headers: &HeaderMap, name: &str) -> Result<Option<String>, Ap
 
 fn session_token(headers: &HeaderMap, cookie_name: &str) -> Result<Option<String>, ApiError> {
     let cookie = read_cookie(headers, cookie_name)?;
-    let mut authorization = headers.get_all(axum::http::header::AUTHORIZATION).iter();
-    let bearer = authorization
-        .next()
-        .map(|header| {
-            header
-                .to_str()
-                .ok()
-                .and_then(|value| value.strip_prefix("Bearer "))
-                .filter(|token| !token.is_empty())
-                .map(str::to_owned)
-                .ok_or_else(|| ApiError::from(ApplicationError::Unauthenticated))
-        })
-        .transpose()?;
-    if authorization.next().is_some() || (cookie.is_some() && bearer.is_some()) {
+    let bearer = read_bearer_token(headers)?;
+    if cookie.is_some() && bearer.is_some() {
         return Err(ApiError::invalid_input());
     }
-    Ok(bearer.or(cookie))
+    Ok(bearer.map(str::to_owned).or(cookie))
+}
+
+pub fn read_bearer_token(headers: &HeaderMap) -> Result<Option<&str>, ApiError> {
+    let mut authorization = headers.get_all(axum::http::header::AUTHORIZATION).iter();
+    let first = authorization.next();
+    if authorization.next().is_some() {
+        return Err(ApiError::invalid_input());
+    }
+    first
+        .map(|value| {
+            let (scheme, token) = value
+                .to_str()
+                .ok()
+                .and_then(|value| value.split_once(' '))
+                .ok_or(ApplicationError::Unauthenticated)?;
+            let token = token.trim_start_matches(' ');
+            if !scheme.eq_ignore_ascii_case("Bearer")
+                || token.is_empty()
+                || token.bytes().any(|byte| byte.is_ascii_whitespace())
+            {
+                return Err(ApiError::from(ApplicationError::Unauthenticated));
+            }
+            Ok(token)
+        })
+        .transpose()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderValue, header};
+
+    #[test]
+    fn bearer_scheme_is_case_insensitive_and_ambiguous_credentials_are_rejected() {
+        let mut headers = HeaderMap::new();
+        assert!(read_bearer_token(&headers).unwrap().is_none());
+        for value in ["Bearer token", "bearer token", "bEaReR   token"] {
+            headers.insert(header::AUTHORIZATION, HeaderValue::from_static(value));
+            assert_eq!(read_bearer_token(&headers).unwrap(), Some("token"));
+        }
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("session=cookie-token"),
+        );
+        assert_eq!(
+            session_token(&headers, "session").unwrap_err().status,
+            StatusCode::BAD_REQUEST
+        );
+        headers.remove(header::COOKIE);
+        for value in ["Basic token", "Bearer", "Bearer ", "Bearer two tokens"] {
+            headers.insert(header::AUTHORIZATION, HeaderValue::from_static(value));
+            assert_eq!(
+                read_bearer_token(&headers).unwrap_err().status,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        headers.append(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer another"),
+        );
+        assert_eq!(
+            read_bearer_token(&headers).unwrap_err().status,
+            StatusCode::BAD_REQUEST
+        );
+    }
 }

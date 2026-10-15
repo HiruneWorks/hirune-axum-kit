@@ -57,9 +57,11 @@ def grant_runtime_privileges():
         GRANT USAGE ON SCHEMA public TO runtime, maintenance;
         GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO runtime;
         REVOKE UPDATE, DELETE ON audit_events FROM runtime;
+        REVOKE UPDATE, DELETE ON api_usage FROM runtime;
         REVOKE INSERT, UPDATE, DELETE ON seaql_migrations FROM runtime;
         GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO maintenance;
         REVOKE UPDATE ON audit_events FROM maintenance;
+        REVOKE UPDATE ON api_usage FROM maintenance;
         REVOKE INSERT, UPDATE, DELETE ON seaql_migrations FROM maintenance;
     """)
 
@@ -70,20 +72,26 @@ def verify_privileges():
     sql("runtime", "UPDATE audit_events SET event=event WHERE false;", denied=True)
     sql("runtime", "DELETE FROM audit_events WHERE false;", denied=True)
     sql("runtime", "TRUNCATE audit_events;", denied=True)
+    sql("runtime", "UPDATE api_usage SET operation=operation WHERE false;", denied=True)
+    sql("runtime", "DELETE FROM api_usage WHERE false;", denied=True)
+    sql("runtime", "TRUNCATE api_usage;", denied=True)
     sql("runtime", "DELETE FROM seaql_migrations WHERE false;", denied=True)
     sql("runtime", "SELECT version FROM seaql_migrations LIMIT 1;")
     sql("maintenance", "DELETE FROM audit_events WHERE false;")
+    sql("maintenance", "DELETE FROM api_usage WHERE false;")
+    sql("maintenance", "UPDATE api_usage SET operation=operation WHERE false;", denied=True)
     sql("maintenance", "UPDATE audit_events SET event=event WHERE false;", denied=True)
     sql("maintenance", "CREATE TABLE forbidden_maintenance_ddl (value integer);", denied=True)
     sql("maintenance", "ALTER TABLE accounts ADD COLUMN forbidden_maintenance_column integer;", denied=True)
     sql("maintenance", "TRUNCATE audit_events;", denied=True)
+    sql("maintenance", "TRUNCATE api_usage;", denied=True)
     sql("maintenance", "DELETE FROM seaql_migrations WHERE false;", denied=True)
     assert sql("bootstrap", """
         SELECT count(*) FROM pg_roles WHERE rolname IN ('runtime', 'maintenance')
         AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls);
     """) == "0"
     assert sql("bootstrap", "SELECT count(*) FROM accounts WHERE totp_secret IS NOT NULL;") == "1"
-    print("Runtime DDL and audit mutation rejected; maintenance audit deletion allowed.")
+    print("Runtime DDL and audit/usage mutation rejected; maintenance audit/usage deletion allowed.")
 
 
 def backup():

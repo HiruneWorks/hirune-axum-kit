@@ -32,6 +32,7 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
             succeeded_job_days: 30,
             failed_job_days: 90,
             audit_days: 180,
+            api_usage_days: 90,
         },
         files: application::files::FileSettings::default(),
         oidc: Vec::new(),

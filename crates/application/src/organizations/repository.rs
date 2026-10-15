@@ -42,6 +42,15 @@ pub async fn lock_organization(
         .await
 }
 
+pub async fn find_organization(
+    connection: &impl ConnectionTrait,
+    organization_id: Uuid,
+) -> Result<Option<organization::Model>, DbErr> {
+    organization::Entity::find_by_id(organization_id)
+        .one(connection)
+        .await
+}
+
 pub async fn is_member(
     connection: &impl ConnectionTrait,
     organization_id: Uuid,

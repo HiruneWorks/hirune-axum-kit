@@ -8,6 +8,8 @@ pub struct Model {
     pub account_id: Option<Uuid>,
     pub event: String,
     pub request_id: Uuid,
+    pub resource_id: Option<Uuid>,
+    pub resource_type: Option<String>,
     pub created_at: DateTimeUtc,
 }
 

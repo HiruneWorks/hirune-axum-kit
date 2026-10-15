@@ -18,6 +18,10 @@ mod m20261015_000015_index_audit_retention;
 mod m20261015_000016_index_job_retention;
 mod m20261015_000017_route_scheduled_jobs;
 mod m20261015_000018_allow_notification_deliveries;
+mod m20261015_000019_create_api_clients;
+mod m20261015_000020_create_api_keys;
+mod m20261015_000021_create_api_usage;
+mod m20261015_000022_identify_audit_resources;
 
 pub struct Migrator;
 
@@ -55,6 +59,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20261015_000016_index_job_retention::Migration),
             Box::new(m20261015_000017_route_scheduled_jobs::Migration),
             Box::new(m20261015_000018_allow_notification_deliveries::Migration),
+            Box::new(m20261015_000019_create_api_clients::Migration),
+            Box::new(m20261015_000020_create_api_keys::Migration),
+            Box::new(m20261015_000021_create_api_usage::Migration),
+            Box::new(m20261015_000022_identify_audit_resources::Migration),
         ]
     }
 }

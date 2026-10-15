@@ -69,6 +69,7 @@ pub struct RetentionSettings {
     pub succeeded_job_days: i64,
     pub failed_job_days: i64,
     pub audit_days: i64,
+    pub api_usage_days: i64,
 }
 
 impl Settings {
@@ -285,12 +286,14 @@ impl Settings {
             succeeded_job_days: number(values, "SUCCEEDED_JOB_RETENTION_DAYS", 30)?,
             failed_job_days: number(values, "FAILED_JOB_RETENTION_DAYS", 90)?,
             audit_days: number(values, "AUDIT_RETENTION_DAYS", 180)?,
+            api_usage_days: number(values, "API_USAGE_RETENTION_DAYS", 90)?,
         };
         ensure!(
             [
                 retention.succeeded_job_days,
                 retention.failed_job_days,
-                retention.audit_days
+                retention.audit_days,
+                retention.api_usage_days
             ]
             .into_iter()
             .all(|days| (1..=36500).contains(&days)),

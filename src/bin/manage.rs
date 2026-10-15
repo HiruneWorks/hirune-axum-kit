@@ -43,8 +43,20 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!(%job_id, "failed job scheduled again");
             Ok(())
         }
+        [command, client_id, minute_limit, month_limit] if command == "set-api-client-quota" => {
+            app.api_access
+                .set_quota_by_operator(
+                    client_id.parse()?,
+                    minute_limit.parse()?,
+                    month_limit.parse()?,
+                    jobs::TraceContext::default(),
+                )
+                .await?;
+            tracing::info!(client_id, "API client allocation updated");
+            Ok(())
+        }
         _ => Err(anyhow::anyhow!(
-            "usage: manage cleanup | initialize-integrations | repair-search | retry-job <uuid> | set-administrator <uuid> <true|false>"
+            "usage: manage cleanup | initialize-integrations | repair-search | retry-job <uuid> | set-administrator <uuid> <true|false> | set-api-client-quota <uuid> <per-minute> <per-month>"
         )),
     };
     app.close().await?;

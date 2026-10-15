@@ -114,7 +114,9 @@ pub async fn request_context(
                 HeaderValue::from_static("max-age=31536000"),
             );
         }
-        if status == StatusCode::TOO_MANY_REQUESTS {
+        if status == StatusCode::TOO_MANY_REQUESTS
+            && !response.headers().contains_key(header::RETRY_AFTER)
+        {
             response
                 .headers_mut()
                 .insert(header::RETRY_AFTER, HeaderValue::from_static("60"));

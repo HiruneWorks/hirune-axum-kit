@@ -1,5 +1,6 @@
 use crate::config::{DatabaseSettings, Settings};
 use application::{
+    api_access::ApiAccessService,
     authorization::Authorization,
     files::FileService,
     identity::{IdentityService, oidc::OidcService},
@@ -18,6 +19,7 @@ use std::{
 
 #[derive(Clone)]
 pub struct Application {
+    pub api_access: ApiAccessService,
     pub identity: IdentityService,
     pub organizations: OrganizationService,
     pub files: FileService,
@@ -51,6 +53,7 @@ pub async fn bootstrap(settings: &Settings) -> anyhow::Result<Application> {
         IdentityService::new(database.clone(), settings.identity.clone(), authorization).await?;
     let oidc = OidcService::discover(identity.clone(), settings.oidc.clone()).await?;
     let organizations = OrganizationService::new(identity.clone());
+    let api_access = ApiAccessService::new(identity.clone(), organizations.clone());
     let files = FileService::new(
         identity.clone(),
         organizations.clone(),
@@ -58,6 +61,7 @@ pub async fn bootstrap(settings: &Settings) -> anyhow::Result<Application> {
     )?;
     let mailer = Mailer::new(&settings.smtp)?;
     Ok(Application {
+        api_access,
         identity,
         organizations,
         files,

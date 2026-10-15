@@ -1,7 +1,10 @@
 use super::{ProcessEnvironment, RunningProcess};
 use anyhow::{Context, Result, ensure};
 use application::{
-    files::entities::file, identity::LoginOutcome, organizations::OrganizationService,
+    api_access::{ApiAccessService, entities::api_usage},
+    files::entities::file,
+    identity::LoginOutcome,
+    organizations::OrganizationService,
 };
 use jobs::{
     TraceContext,
@@ -22,11 +25,14 @@ struct LoadAccount {
     revocable_token: String,
     revocable_session_id: Uuid,
     organization_ids: [Uuid; 2],
+    api_client_id: Uuid,
+    api_keys: [String; 2],
 }
 
 async fn seed_accounts(database: &TestDatabase, count: usize) -> Result<Vec<LoadAccount>> {
     let identity = database.identity_service().await?;
     let organizations = OrganizationService::new(identity.clone());
+    let api_access = ApiAccessService::new(identity.clone(), organizations.clone());
     let mut accounts = Vec::with_capacity(count);
     for index in 0..count {
         let (actor, credentials) = database.verified_account(&identity).await?;
@@ -43,12 +49,49 @@ async fn seed_accounts(database: &TestDatabase, count: usize) -> Result<Vec<Load
         let second = organizations
             .create_organization(&actor, format!("Load account {} secondary", index + 1))
             .await?;
+        let api_client = api_access
+            .create_client(
+                &actor,
+                first.id,
+                "Load partner".into(),
+                vec!["organizations:read".into()],
+                TraceContext::default(),
+            )
+            .await?;
+        api_access
+            .set_quota_by_operator(api_client.id, 100_000, 1_000_000, TraceContext::default())
+            .await?;
+        let primary = api_access
+            .issue_key(
+                &actor,
+                first.id,
+                api_client.id,
+                "Primary".into(),
+                1,
+                TraceContext::default(),
+            )
+            .await?;
+        let rotated = api_access
+            .issue_key(
+                &actor,
+                first.id,
+                api_client.id,
+                "Rotation".into(),
+                1,
+                TraceContext::default(),
+            )
+            .await?;
         accounts.push(LoadAccount {
             account_id: actor.account_id(),
             token: credentials.token,
             revocable_token: revocable.token,
             revocable_session_id: revocable.session_id,
             organization_ids: [first.id, second.id],
+            api_client_id: api_client.id,
+            api_keys: [
+                primary.credential.expose().into(),
+                rotated.credential.expose().into(),
+            ],
         });
     }
     Ok(accounts)
@@ -224,12 +267,27 @@ async fn mixed_workload() -> Result<()> {
             .status()
             .await?;
         ensure!(status.success(), "k6 mixed-workload thresholds failed");
+        for account in &accounts {
+            let recorded = api_usage::Entity::find()
+                .filter(api_usage::Column::ClientId.eq(account.api_client_id))
+                .count(&database.connection)
+                .await?;
+            ensure!(
+                recorded >= 2 && recorded.is_multiple_of(2),
+                "load workflow admission history is incomplete"
+            );
+        }
         wait_for_file_cleanup(&database, &mut worker).await
     }
     .await;
     let mut secrets = vec![TEST_PASSWORD];
     for account in &accounts {
-        secrets.extend([account.token.as_str(), account.revocable_token.as_str()]);
+        secrets.extend([
+            account.token.as_str(),
+            account.revocable_token.as_str(),
+            account.api_keys[0].as_str(),
+            account.api_keys[1].as_str(),
+        ]);
     }
     for (name, process) in [
         ("first_api", &mut first),

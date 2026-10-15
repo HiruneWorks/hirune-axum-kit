@@ -22,12 +22,14 @@ pub struct ErrorOutput {
 pub struct ApiError {
     pub status: StatusCode,
     pub description: ErrorDescription,
+    retry_after_seconds: Option<u64>,
 }
 impl ApiError {
     pub fn new(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
             description: ErrorDescription { code, message },
+            retry_after_seconds: None,
         }
     }
     pub fn invalid_input() -> Self {
@@ -69,6 +71,28 @@ impl From<ApplicationError> for ApiError {
                 "rate_limited",
                 "Too many attempts. Try again later.",
             ),
+            ApplicationError::ApiRateLimited {
+                retry_after_seconds,
+            } => {
+                let mut result = Self::new(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "api_rate_limited",
+                    "The API client's minute allowance is exhausted.",
+                );
+                result.retry_after_seconds = Some(retry_after_seconds);
+                result
+            }
+            ApplicationError::ApiQuotaExceeded {
+                retry_after_seconds,
+            } => {
+                let mut result = Self::new(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "api_quota_exceeded",
+                    "The API client's monthly allowance is exhausted.",
+                );
+                result.retry_after_seconds = Some(retry_after_seconds);
+                result
+            }
             ApplicationError::ExternalUnavailable => {
                 tracing::error!(error_code = "provider_unavailable", "request failed");
                 Self::new(
@@ -120,6 +144,18 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut response = self.status.into_response();
         response.extensions_mut().insert(self.description);
+        if self.status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(
+                axum::http::header::WWW_AUTHENTICATE,
+                axum::http::HeaderValue::from_static("Bearer realm=\"api\""),
+            );
+        }
+        if let Some(seconds) = self.retry_after_seconds {
+            response.headers_mut().insert(
+                axum::http::header::RETRY_AFTER,
+                axum::http::HeaderValue::from_str(&seconds.to_string()).expect("integer header"),
+            );
+        }
         response
     }
 }

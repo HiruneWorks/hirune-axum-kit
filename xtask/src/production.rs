@@ -179,6 +179,8 @@ impl ProductionFixture {
         }
         self.compose(&["up", "--detach", "worker"])?;
         self.check("http_checks.py", Some("prepare"))?;
+        self.allocate_external_api_quota()?;
+        self.check("http_checks.py", Some("external-api"))?;
         self.check("database.py", Some("privileges"))?;
         self.compose(&["run", "--rm", "--no-deps", "maintenance"])?;
         self.compose(&["up", "--detach", "maintenance-worker"])?;
@@ -199,6 +201,37 @@ impl ProductionFixture {
         self.check("database.py", Some("privileges"))?;
         self.assert_runtime_environment()?;
         Ok(())
+    }
+
+    fn allocate_external_api_quota(&self) -> Result<()> {
+        let output = self
+            .command()
+            .args([
+                "run",
+                "--rm",
+                "--no-deps",
+                "verifier",
+                "http_checks.py",
+                "api-client-id",
+            ])
+            .output()?;
+        ensure!(
+            output.status.success(),
+            "production API client lookup failed"
+        );
+        let client_id = Uuid::parse_str(String::from_utf8(output.stdout)?.trim())?.to_string();
+        self.compose(&[
+            "run",
+            "--rm",
+            "--no-deps",
+            "--entrypoint",
+            "manage",
+            "api",
+            "set-api-client-quota",
+            &client_id,
+            "100",
+            "2",
+        ])
     }
 
     fn assert_runtime_environment(&self) -> Result<()> {
