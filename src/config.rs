@@ -61,6 +61,7 @@ pub struct Settings {
     pub oidc: Vec<ProviderSettings>,
     pub observability: ObservabilitySettings,
     pub retention: RetentionSettings,
+    pub maintenance_interval_seconds: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -295,6 +296,11 @@ impl Settings {
             .all(|days| (1..=36500).contains(&days)),
             "retention must be between 1 and 36500 days"
         );
+        let maintenance_interval_seconds = number(values, "MAINTENANCE_INTERVAL_SECONDS", 300)?;
+        ensure!(
+            (1..=86400).contains(&maintenance_interval_seconds),
+            "MAINTENANCE_INTERVAL_SECONDS must be between 1 and 86400"
+        );
         Ok(Self {
             database,
             identity,
@@ -305,6 +311,7 @@ impl Settings {
             oidc,
             observability,
             retention,
+            maintenance_interval_seconds,
         })
     }
 }

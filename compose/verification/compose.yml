@@ -76,6 +76,16 @@ services:
     read_only: true
     volumes:
       - certificate_authorities:/certificates:ro
+  maintenance-worker:
+    image: ${PRODUCTION_IMAGE}
+    profiles: [tools]
+    entrypoint: [maintenance]
+    env_file: ${VERIFICATION_APP_ENV}
+    environment:
+      DATABASE_URL: postgresql://maintenance:${VERIFICATION_MAINTENANCE_PASSWORD}@postgres/kit
+    read_only: true
+    volumes:
+      - certificate_authorities:/certificates:ro
   proxy:
     image: nginx:1.31.0-alpine
     network_mode: service:api

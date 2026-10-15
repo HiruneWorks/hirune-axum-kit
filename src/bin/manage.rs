@@ -8,26 +8,7 @@ async fn main() -> anyhow::Result<()> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     let result = match arguments.as_slice() {
         [command] if command == "cleanup" => {
-            let authentication_records = app.identity.cleanup_expired_authentication().await?;
-            let completed_jobs = app
-                .queue
-                .cleanup_finished(
-                    settings.retention.succeeded_job_days,
-                    settings.retention.failed_job_days,
-                )
-                .await?;
-            let audit_events = app
-                .identity
-                .cleanup_audit_events(settings.retention.audit_days)
-                .await?;
-            let file_records = app.files.reconcile_files().await?;
-            tracing::info!(
-                authentication_records,
-                completed_jobs,
-                audit_events,
-                file_records,
-                "expired records removed"
-            );
+            kit::maintenance::cleanup(&app, &settings.retention).await?;
             Ok(())
         }
         [command] if command == "initialize-integrations" => {

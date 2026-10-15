@@ -6,6 +6,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub kind: String,
+    pub queue: String,
+    pub schedule_key: Option<String>,
     pub payload: Json,
     pub request_id: Uuid,
     pub state: String,

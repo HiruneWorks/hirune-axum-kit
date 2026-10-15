@@ -5,11 +5,13 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
     DatabaseTransaction, DbErr, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect,
     QueryTrait, Set,
-    sea_query::{Expr, Func, LockBehavior, LockType, Query},
+    sea_query::{Expr, Func, LockBehavior, LockType, OnConflict, Query},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
+
+const APPLICATION_QUEUE: &str = "application";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct TraceContext {
@@ -61,6 +63,7 @@ pub async fn enqueue<T: Serialize>(
     job::ActiveModel {
         id: Set(job_id),
         kind: Set(job_kind.into()),
+        queue: Set(APPLICATION_QUEUE.into()),
         payload: Set(payload),
         request_id: Set(trace.request_id),
         max_attempts: Set(5),
@@ -74,10 +77,63 @@ pub async fn enqueue<T: Serialize>(
 #[derive(Clone)]
 pub struct PostgresQueue {
     database: DatabaseConnection,
+    queue: String,
 }
 impl PostgresQueue {
     pub fn new(database: DatabaseConnection) -> Self {
-        Self { database }
+        Self {
+            database,
+            queue: APPLICATION_QUEUE.into(),
+        }
+    }
+
+    pub fn for_queue(&self, queue: &str) -> Result<Self, JobError> {
+        if queue.is_empty()
+            || queue.len() > 64
+            || !queue
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(JobError::Invalid);
+        }
+        Ok(Self {
+            database: self.database.clone(),
+            queue: queue.into(),
+        })
+    }
+
+    pub async fn schedule_periodic(
+        &self,
+        job_kind: &str,
+        interval_seconds: i64,
+        trace: TraceContext,
+    ) -> Result<bool, JobError> {
+        // Retention is at least one day, so the current bucket keeps its deduplication row.
+        if !(1..=86400).contains(&interval_seconds) || job_kind.is_empty() || job_kind.len() > 100 {
+            return Err(JobError::Invalid);
+        }
+        let transaction = self.database.begin().await?;
+        let now = database_time(&transaction).await?;
+        let bucket_start = now.timestamp() - now.timestamp().rem_euclid(interval_seconds);
+        let inserted = job::Entity::insert(job::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            kind: Set(job_kind.into()),
+            queue: Set(self.queue.clone()),
+            schedule_key: Set(Some(format!("{job_kind}:{bucket_start}"))),
+            payload: Set(serde_json::json!({})),
+            request_id: Set(trace.request_id),
+            max_attempts: Set(5),
+            ..Default::default()
+        })
+        .on_conflict(
+            OnConflict::columns([job::Column::Queue, job::Column::ScheduleKey])
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(&transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(inserted == 1)
     }
 
     #[tracing::instrument(skip_all)]
@@ -91,6 +147,7 @@ impl PostgresQueue {
         }
         let transaction = self.database.begin().await?;
         let candidate = job::Entity::find()
+            .filter(job::Column::Queue.eq(&self.queue))
             .filter(
                 Condition::any()
                     .add(Condition::all().add(job::Column::State.eq("pending")).add(

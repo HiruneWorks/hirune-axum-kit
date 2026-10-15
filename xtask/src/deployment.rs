@@ -83,6 +83,12 @@ pub fn verify() -> Result<()> {
         "maintenance received schema-owner credentials"
     );
     ensure!(
+        services["maintenance"]["entrypoint"][0] == "maintenance"
+            && services["maintenance"]["restart"] == "unless-stopped"
+            && services["maintenance"].get("profiles").is_none(),
+        "periodic maintenance must run as a portable managed process"
+    );
+    ensure!(
         services["migration"]["environment"]
             .get("DATABASE_URL")
             .is_none(),

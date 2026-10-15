@@ -10,10 +10,11 @@ check environment="production":
 pull environment="production":
     docker compose --env-file {{environment}}.env -f compose.yml pull
 
-# Migration must succeed before replacing API or worker processes.
+# Apply schema and drain the old generation before starting new producers.
 up environment="production":
     docker compose --env-file {{environment}}.env -f compose.yml run --rm migration
-    docker compose --env-file {{environment}}.env -f compose.yml up -d api worker
+    docker compose --env-file {{environment}}.env -f compose.yml stop api worker maintenance
+    docker compose --env-file {{environment}}.env -f compose.yml up -d api worker maintenance
 
 down environment="production":
     docker compose --env-file {{environment}}.env -f compose.yml down
@@ -28,4 +29,4 @@ manage environment +arguments:
     docker compose --env-file {{environment}}.env -f compose.yml run --rm manage {{arguments}}
 
 cleanup environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml run --rm maintenance
+    docker compose --env-file {{environment}}.env -f compose.yml run --rm --entrypoint manage maintenance cleanup

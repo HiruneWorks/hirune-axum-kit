@@ -12,6 +12,12 @@ use uuid::Uuid;
 #[path = "jobs/retention.rs"]
 mod retention;
 
+#[path = "jobs/workers.rs"]
+mod workers;
+
+#[path = "jobs/scheduling.rs"]
+mod scheduling;
+
 async fn queued_job(database: &TestDatabase) -> anyhow::Result<Uuid> {
     let transaction = database.connection.begin().await?;
     let job_id = Uuid::now_v7();

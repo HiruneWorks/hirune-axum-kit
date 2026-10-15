@@ -11,6 +11,9 @@ use uuid::Uuid;
 #[path = "process/load.rs"]
 mod load;
 
+#[path = "process/maintenance.rs"]
+mod maintenance;
+
 struct RunningProcess {
     child: Child,
     log: NamedTempFile,

@@ -27,6 +27,7 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
             sender: "Test <noreply@example.test>".into(),
         },
         worker: jobs::WorkerSettings::default(),
+        maintenance_interval_seconds: 300,
         retention: kit::config::RetentionSettings {
             succeeded_job_days: 30,
             failed_job_days: 90,

@@ -16,6 +16,7 @@ mod m20261013_000013_create_audit_events;
 mod m20261013_000014_create_files;
 mod m20261015_000015_index_audit_retention;
 mod m20261015_000016_index_job_retention;
+mod m20261015_000017_route_scheduled_jobs;
 
 pub struct Migrator;
 
@@ -51,6 +52,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000014_create_files::Migration),
             Box::new(m20261015_000015_index_audit_retention::Migration),
             Box::new(m20261015_000016_index_job_retention::Migration),
+            Box::new(m20261015_000017_route_scheduled_jobs::Migration),
         ]
     }
 }

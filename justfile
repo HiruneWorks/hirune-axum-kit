@@ -27,6 +27,9 @@ api:
 worker:
     cargo run --locked --bin worker
 
+maintenance:
+    cargo run --locked --bin maintenance
+
 manage *arguments:
     cargo run --locked --bin manage -- {{arguments}}
 

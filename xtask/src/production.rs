@@ -17,6 +17,7 @@ pub fn verify() -> Result<()> {
             "worker",
             "worker-untrusted",
             "worker-hostname",
+            "maintenance-worker",
             "proxy",
             "mailpit",
         ]);
@@ -180,10 +181,20 @@ impl ProductionFixture {
         self.check("http_checks.py", Some("prepare"))?;
         self.check("database.py", Some("privileges"))?;
         self.compose(&["run", "--rm", "--no-deps", "maintenance"])?;
-        self.compose(&["stop", "--timeout", "40", "proxy", "api", "worker"])?;
+        self.compose(&["up", "--detach", "maintenance-worker"])?;
+        self.check("database.py", Some("maintenance"))?;
+        self.compose(&[
+            "stop",
+            "--timeout",
+            "40",
+            "proxy",
+            "api",
+            "worker",
+            "maintenance-worker",
+        ])?;
         self.check("database.py", Some("backup"))?;
         self.check("database.py", Some("restore"))?;
-        self.compose(&["start", "api", "worker", "proxy"])?;
+        self.compose(&["start", "api", "worker", "proxy", "maintenance-worker"])?;
         self.check("http_checks.py", Some("restored"))?;
         self.check("database.py", Some("privileges"))?;
         self.assert_runtime_environment()?;

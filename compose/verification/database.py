@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import time
 
 
 def connection_environment(role):
@@ -95,6 +96,20 @@ def backup():
     print("PostgreSQL backup saved with encrypted MFA state.")
 
 
+def verify_maintenance_worker():
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if sql("runtime", "SELECT count(*) FROM jobs WHERE queue='maintenance' AND state='succeeded';") != "0":
+            assert sql("runtime", """
+                SELECT count(*) FROM job_attempts attempt JOIN jobs job ON attempt.job_id=job.id
+                WHERE job.queue='maintenance' AND attempt.error_code IS NOT NULL;
+            """) == "0"
+            print("Portable maintenance worker completed its scheduled job with restricted credentials.")
+            return
+        time.sleep(0.2)
+    raise RuntimeError("Scheduled maintenance did not complete")
+
+
 def restore():
     sql("bootstrap", "DROP DATABASE kit;", "postgres")
     create_database()
@@ -112,6 +127,7 @@ commands = {
     "grants": grant_runtime_privileges,
     "privileges": verify_privileges,
     "backup": backup,
+    "maintenance": verify_maintenance_worker,
     "restore": restore,
 }
 if __name__ == "__main__":

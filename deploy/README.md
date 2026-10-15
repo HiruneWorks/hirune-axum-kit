@@ -15,9 +15,10 @@ deployment responsibilities.
    independently generated encryption/rate-limit keys. Put the schema-owner URL
    only in `migration.env`; put the restricted maintenance URL in `maintenance.env`.
 4. From this directory run `just check production`, then `just up production`.
-   The latter runs migrations before starting/replacing API and worker.
-5. Configure the host TLS proxy and readiness probe, verify mail/provider behavior,
-   and arrange `just cleanup production` through the deployment scheduler.
+   The latter runs migrations, drains the old processes, and starts API, worker,
+   and maintenance.
+5. Configure the TLS proxy and readiness probe, verify mail/provider behavior,
+   and confirm the maintenance service is running with its restricted role.
 
 A staging environment uses its own selector, project name, ports, database, and
 `.envs/.<environment>/` directory. Production APP_ENV also applies to HTTPS staging.
@@ -26,6 +27,12 @@ The API binds to host loopback; configure a host reverse proxy and explicit prox
 trust before accepting public traffic. Workers can scale independently. Multiple
 API replicas need deployment-level routing/port allocation; this single-host
 example is not a load-balancer implementation.
+
+The single-host `up` recipe applies migrations, stops and drains the old API,
+worker, and maintenance processes, then starts the new generation. This causes a
+brief interruption. Other deployment systems must stop old workers that do not
+filter queues before starting new queue or notification producers. Rolling
+deployment requires compatible versioned job and payload contracts.
 
 `just down` preserves database data because this Compose project does not own the
 database. Cleanup and retry operations are explicit. No deployment, image push,
@@ -59,7 +66,8 @@ database grants as part of deployment acceptance.
 
 API, worker, and the ordinary `manage` service read `app.env`. The `maintenance`
 service reads `app.env` followed by `maintenance.env`, overriding `DATABASE_URL`
-only for explicit cleanup. `just cleanup production` invokes that service. Avoid
+for its periodic scheduler/worker. `just cleanup production` invokes a one-off
+`manage cleanup` with those same credentials. Avoid
 running audit cleanup through the runtime `manage` service or giving runtime
 processes broader permissions to make it succeed.
 
@@ -69,13 +77,14 @@ and `AUDIT_RETENTION_DAYS` in `app.env`; each supports 1 through 36500 days. Del
 a failed job removes its attempt history and retry ability. Bounded cleanup may
 need repeated runs to clear a backlog.
 
-The optional [systemd service](systemd/hirune-maintenance.service) and
-[timer](systemd/hirune-maintenance.timer) run cleanup followed by `repair-search`
-every five minutes, with up to 30 seconds of randomized delay. The templates use
-`/opt/hirune/deploy`, `/usr/bin/docker`, and `production.env`; adapt these paths
-and the environment selector before installing them. The timer is persistent and
-can run after a missed scheduled execution. Neither local checks nor deployment
-startup installs or enables these host units.
+The portable `maintenance` executable schedules cleanup followed by search repair
+using the shared job runtime. `just up production` starts it with API and worker.
+Set `MAINTENANCE_INTERVAL_SECONDS` in `app.env` (default 300, range 1–86400). Multiple
+maintenance replicas must use the same interval. The database deduplicates each
+interval's job; different intervals or retries may overlap, and handlers tolerate
+repetition. The supervisor restarts the process if scheduling or claiming fails.
+No host cron or systemd timer is required. Existing failed maintenance jobs can
+be inspected and retried explicitly with `manage retry-job <uuid>`.
 
 Grant global administrator status with
 `just manage production set-administrator <uuid> true` only after the account is
@@ -93,8 +102,8 @@ API/worker startup does not create buckets or search indexes.
 Meilisearch is an optional private derived index. Provision the file index using
 `manage initialize-integrations` with appropriate operator permissions, then use
 an index-limited server key. Never send the master/runtime key to browsers.
-Schedule `manage repair-search` as well as `manage cleanup`; file deletion and
-indexing jobs require a running worker. Back up PostgreSQL and file originals;
+The maintenance service registers search repair as well as cleanup; file deletion
+and indexing jobs use the application queue and require a normal worker. Back up PostgreSQL and file originals;
 rebuild the search index from DB metadata when needed.
 
 The container has a 512 MiB temporary filesystem for bounded upload spooling.

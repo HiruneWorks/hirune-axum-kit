@@ -43,10 +43,7 @@ services:
     restart: "no"
   maintenance:
     <<: *runtime
-    profiles: [maintenance]
     env_file:
       - ../.envs/.${DEPLOY_ENV:?Set DEPLOY_ENV}/app.env
       - ../.envs/.${DEPLOY_ENV:?Set DEPLOY_ENV}/maintenance.env
-    entrypoint: [manage]
-    command: [cleanup]
-    restart: "no"
+    entrypoint: [maintenance]
