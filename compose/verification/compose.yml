@@ -77,7 +77,7 @@ services:
     volumes:
       - certificate_authorities:/certificates:ro
   proxy:
-    image: nginx:1.30.6-alpine
+    image: nginx:1.31.0-alpine
     network_mode: service:api
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
