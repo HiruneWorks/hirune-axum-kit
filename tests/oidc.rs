@@ -1,3 +1,8 @@
+mod support;
+
+#[path = "oidc/providers.rs"]
+mod providers;
+
 use anyhow::{Context, Result, ensure};
 use application::{
     ApplicationError,

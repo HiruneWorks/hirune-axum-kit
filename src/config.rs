@@ -9,6 +9,8 @@ use mail::SmtpSettings;
 use std::{collections::BTreeMap, net::SocketAddr, str::FromStr};
 use url::Url;
 
+mod oidc;
+
 #[derive(Clone, Debug)]
 pub struct DatabaseSettings {
     pub url: SecretString,
@@ -261,21 +263,7 @@ impl Settings {
                 .unwrap_or(defaults.temporary_directory),
         };
         files.validate()?;
-        let mut oidc = Vec::new();
-        if let Some(issuer) = values.get("OIDC_ISSUER").filter(|value| !value.is_empty()) {
-            let issuer = Url::parse(issuer).context("invalid OIDC_ISSUER")?;
-            let redirect_url =
-                Url::parse(&required("OIDC_REDIRECT_URL")?).context("invalid OIDC_REDIRECT_URL")?;
-            validate_web_url(&issuer, production)?;
-            validate_web_url(&redirect_url, production)?;
-            oidc.push(ProviderSettings {
-                name: get("OIDC_PROVIDER", "default"),
-                issuer: required("OIDC_ISSUER")?,
-                client_id: required("OIDC_CLIENT_ID")?,
-                client_secret: SecretString::new(required("OIDC_CLIENT_SECRET")?),
-                redirect_url,
-            });
-        }
+        let oidc = oidc::parse_providers(values, production)?;
         let observability = ObservabilitySettings {
             log_filter: get(
                 "RUST_LOG",

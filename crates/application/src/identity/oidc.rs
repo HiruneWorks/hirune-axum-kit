@@ -30,6 +30,26 @@ pub struct ProviderSettings {
     pub redirect_url: Url,
 }
 
+impl ProviderSettings {
+    pub fn validate(&self) -> ApplicationResult<()> {
+        if self.name.is_empty()
+            || self.name.len() > 64
+            || !self
+                .name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            return Err(ApplicationError::InvalidInput("invalid OIDC provider name"));
+        }
+        if self.client_id.trim().is_empty() || self.client_secret.expose().trim().is_empty() {
+            return Err(ApplicationError::InvalidInput(
+                "OIDC provider credentials are required",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 pub struct OidcService {
     identity: IdentityService,
@@ -69,15 +89,7 @@ impl OidcService {
             .map_err(ApplicationError::internal)?;
         let mut providers = BTreeMap::new();
         for settings in settings {
-            if settings.name.is_empty()
-                || settings.name.len() > 64
-                || !settings
-                    .name
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-            {
-                return Err(ApplicationError::InvalidInput("invalid OIDC provider name"));
-            }
+            settings.validate()?;
             let name = settings.name.clone();
             if providers
                 .insert(name, Provider::discover(settings, &http).await?)
