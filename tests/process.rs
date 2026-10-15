@@ -86,15 +86,15 @@ impl ProcessEnvironment {
             .current_dir(self.directory.path())
             .envs(&self.values)
             .env_remove("SENTRY_DSN")
-            .env_remove("OIDC_ISSUER")
-            .env_remove("SMTP_USERNAME")
-            .env_remove("SMTP_PASSWORD")
             .env_remove("OIDC_PROVIDERS")
             .env_remove("OIDC_PROVIDER")
-            .env_remove("SMTP_CA_CERTIFICATE")
+            .env_remove("OIDC_ISSUER")
             .env_remove("OIDC_CLIENT_ID")
             .env_remove("OIDC_CLIENT_SECRET")
             .env_remove("OIDC_REDIRECT_URL")
+            .env_remove("SMTP_USERNAME")
+            .env_remove("SMTP_PASSWORD")
+            .env_remove("SMTP_CA_CERTIFICATE")
             .env_remove("TRUSTED_PROXY_IPS")
             .kill_on_drop(true)
             .stdout(Stdio::from(log.reopen()?))
@@ -141,6 +141,22 @@ impl ProcessEnvironment {
 }
 
 async fn verification_token(client: &Client, email: &str, subject: &str) -> Result<String> {
+    let detail = received_mail(client, email, subject).await?;
+    let text = detail["Text"]
+        .as_str()
+        .context("plain text mail body missing")?;
+    let token = text
+        .split("#token=")
+        .nth(1)
+        .context("mail action token missing")?
+        .chars()
+        .take(43)
+        .collect::<String>();
+    ensure!(token.len() == 43, "invalid action token length");
+    Ok(token)
+}
+
+async fn received_mail(client: &Client, email: &str, subject: &str) -> Result<Value> {
     let mailpit = std::env::var("TEST_MAILPIT_URL").context("TEST_MAILPIT_URL required")?;
     tokio::time::timeout(Duration::from_secs(35), async {
         loop {
@@ -171,24 +187,17 @@ async fn verification_token(client: &Client, email: &str, subject: &str) -> Resu
                         .error_for_status()?
                         .json()
                         .await?;
-                    let text = detail["Text"]
-                        .as_str()
-                        .context("plain text mail body missing")?;
-                    let token = text
-                        .split("#token=")
-                        .nth(1)
-                        .context("mail action token missing")?
-                        .chars()
-                        .take(43)
-                        .collect::<String>();
-                    ensure!(token.len() == 43, "invalid action token length");
+                    ensure!(
+                        detail["Text"].as_str().is_some_and(|text| !text.is_empty()),
+                        "plain text mail body missing"
+                    );
                     ensure!(
                         detail["HTML"]
                             .as_str()
                             .is_some_and(|html| html.contains("<html")),
                         "MJML HTML missing"
                     );
-                    return Ok::<_, anyhow::Error>(token);
+                    return Ok::<_, anyhow::Error>(detail);
                 }
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
@@ -224,6 +233,11 @@ async fn signup_mail_login_cross_process_revocation_and_worker_restart() -> Resu
             .await?
             .status(),
         StatusCode::NO_CONTENT
+    );
+    let welcome = received_mail(&client, &email, "Welcome").await?;
+    ensure!(
+        !welcome["Text"].as_str().unwrap().contains("#token="),
+        "welcome mail must not carry an action token"
     );
     let login: Value = client
         .post(format!("{first_url}/api/v1/auth/login"))
@@ -296,13 +310,25 @@ async fn signup_mail_login_cross_process_revocation_and_worker_restart() -> Resu
         StatusCode::UNAUTHORIZED
     );
     use application::identity::entities::mail_delivery;
-    assert_eq!(
-        mail_delivery::Entity::find()
-            .filter(mail_delivery::Column::Ciphertext.is_not_null())
-            .count(&database.connection)
-            .await?,
-        0
+    let changed = received_mail(&client, &email, "Your password was changed").await?;
+    ensure!(
+        !changed["Text"].as_str().unwrap().contains(next_password),
+        "notification included a password"
     );
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if mail_delivery::Entity::find()
+                .filter(mail_delivery::Column::Ciphertext.is_not_null())
+                .count(&database.connection)
+                .await?
+                == 0
+            {
+                return Ok::<(), anyhow::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await??;
     tokio::time::sleep(Duration::from_millis(300)).await;
     for process in [&mut first, &mut second, &mut worker, &mut replacement] {
         process.stop().await?;

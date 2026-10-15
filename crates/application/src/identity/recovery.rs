@@ -50,6 +50,11 @@ impl IdentityService {
                 mail::MailPurpose::ResetPassword => {
                     account.verified && account.password_hash.is_some()
                 }
+                _ => {
+                    return Err(ApplicationError::InvalidInput(
+                        "invalid action mail purpose",
+                    ));
+                }
             };
         if eligible {
             self.register_authentication_mail(&transaction, &account, purpose, trace)
@@ -73,6 +78,13 @@ impl IdentityService {
             return Err(ApplicationError::Unauthenticated);
         }
         let account = accounts::mark_verified(&transaction, account).await?;
+        self.register_account_notification(
+            &transaction,
+            &account,
+            mail::MailPurpose::Welcome,
+            trace,
+        )
+        .await?;
         security::append_audit(
             &transaction,
             Some(account.id),
@@ -106,6 +118,13 @@ impl IdentityService {
         let account = accounts::replace_password(&transaction, account, password_hash).await?;
         self.revoke_account_credentials(&transaction, account.id)
             .await?;
+        self.register_account_notification(
+            &transaction,
+            &account,
+            mail::MailPurpose::PasswordChanged,
+            trace,
+        )
+        .await?;
         security::append_audit(
             &transaction,
             Some(account.id),

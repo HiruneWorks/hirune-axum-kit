@@ -10,7 +10,7 @@ pub async fn insert_delivery(
     transaction: &DatabaseTransaction,
     delivery_id: Uuid,
     account_id: Uuid,
-    challenge_hash: String,
+    challenge_hash: Option<String>,
     ciphertext: String,
     expires_at: DateTime<Utc>,
 ) -> Result<(), DbErr> {

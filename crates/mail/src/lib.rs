@@ -45,12 +45,25 @@ pub struct AuthenticationMail {
 pub enum MailPurpose {
     VerifyEmail,
     ResetPassword,
+    Welcome,
+    PasswordChanged,
 }
 impl MailPurpose {
     pub fn heading(self) -> &'static str {
         match self {
             Self::VerifyEmail => "Verify your email",
             Self::ResetPassword => "Reset your password",
+            Self::Welcome => "Welcome",
+            Self::PasswordChanged => "Your password was changed",
+        }
+    }
+
+    fn template_name(self) -> &'static str {
+        match self {
+            Self::VerifyEmail => "verify-email",
+            Self::ResetPassword => "reset-password",
+            Self::Welcome => "welcome",
+            Self::PasswordChanged => "password-changed",
         }
     }
 }
@@ -121,23 +134,42 @@ impl Mailer {
                 ));
             }
         }
-        let mjml = mrml::parse(include_str!("../templates/authentication.mjml"))
-            .map_err(|error| MailError::Template(error.to_string()))?;
-        let html = mjml
-            .element
-            .render(&Default::default())
-            .map_err(|error| MailError::Template(error.to_string()))?;
         let mut templates = Environment::new();
         templates.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
-        templates
-            .add_template_owned("authentication.html", html)
-            .map_err(|error| MailError::Template(error.to_string()))?;
-        templates
-            .add_template(
-                "authentication.txt",
-                include_str!("../templates/authentication.txt"),
-            )
-            .map_err(|error| MailError::Template(error.to_string()))?;
+        for (name, mjml, text) in [
+            (
+                "verify-email",
+                include_str!("../templates/verify-email.mjml"),
+                include_str!("../templates/verify-email.txt"),
+            ),
+            (
+                "reset-password",
+                include_str!("../templates/reset-password.mjml"),
+                include_str!("../templates/reset-password.txt"),
+            ),
+            (
+                "welcome",
+                include_str!("../templates/welcome.mjml"),
+                include_str!("../templates/welcome.txt"),
+            ),
+            (
+                "password-changed",
+                include_str!("../templates/password-changed.mjml"),
+                include_str!("../templates/password-changed.txt"),
+            ),
+        ] {
+            let html = mrml::parse(mjml)
+                .map_err(|error| MailError::Template(error.to_string()))?
+                .element
+                .render(&Default::default())
+                .map_err(|error| MailError::Template(error.to_string()))?;
+            templates
+                .add_template_owned(format!("{name}.html"), html)
+                .map_err(|error| MailError::Template(error.to_string()))?;
+            templates
+                .add_template_owned(format!("{name}.txt"), text.to_owned())
+                .map_err(|error| MailError::Template(error.to_string()))?;
+        }
         Ok(Self {
             message_id_domain: sender.email.domain().into(),
             sender,
@@ -170,8 +202,8 @@ impl Mailer {
             ))
             .message_id(Some(format!("<{delivery_id}@{}>", self.message_id_domain)))
             .multipart(MultiPart::alternative_plain_html(
-                render("authentication.txt")?,
-                render("authentication.html")?,
+                render(&format!("{}.txt", mail.purpose.template_name()))?,
+                render(&format!("{}.html", mail.purpose.template_name()))?,
             ))?)
     }
 
@@ -210,10 +242,19 @@ mod tests {
             purpose: MailPurpose::VerifyEmail,
             action_url: "https://example.test/verify#token=public-test-token".into(),
         };
-        let html = mailer.templates.get_template("authentication.html").unwrap().render(minijinja::context! {application_name=>message.application_name,heading=>"Verify",action_url=>message.action_url}).unwrap();
+        let html = mailer.templates.get_template("verify-email.html").unwrap().render(minijinja::context! {application_name=>message.application_name,heading=>"Verify",action_url=>message.action_url}).unwrap();
         assert!(!html.contains("<script>"));
         assert!(html.contains("&lt;script&gt;"));
-        for _ in 0..2 {
+        for purpose in [
+            MailPurpose::VerifyEmail,
+            MailPurpose::ResetPassword,
+            MailPurpose::Welcome,
+            MailPurpose::PasswordChanged,
+        ] {
+            let message = AuthenticationMail {
+                purpose,
+                ..message.clone()
+            };
             let rendered =
                 String::from_utf8(mailer.render(delivery_id, &message).unwrap().formatted())
                     .unwrap();
@@ -222,6 +263,24 @@ mod tests {
                 rendered.contains("multipart/alternative")
                     && rendered.contains("text/plain")
                     && rendered.contains("text/html")
+            );
+            let html = mailer
+                .templates
+                .get_template(&format!("{}.html", purpose.template_name()))
+                .unwrap()
+                .render(
+                    minijinja::context! { application_name=>message.application_name,
+                    heading=>purpose.heading(), action_url=>message.action_url },
+                )
+                .unwrap();
+            assert!(!html.contains("<script>"));
+            assert!(html.contains("&lt;script&gt;"));
+            assert_eq!(
+                html.contains("30 minutes"),
+                matches!(
+                    purpose,
+                    MailPurpose::VerifyEmail | MailPurpose::ResetPassword
+                )
             );
         }
     }

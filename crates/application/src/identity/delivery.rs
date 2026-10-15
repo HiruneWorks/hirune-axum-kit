@@ -30,7 +30,9 @@ impl IdentityService {
     ) -> ApplicationResult<()> {
         let token = generate_secure_token();
         let token_hash = hash_token(&token);
-        let challenge_purpose = challenge_purpose(purpose);
+        let challenge_purpose = challenge_purpose(purpose).ok_or(
+            ApplicationError::InvalidInput("mail purpose requires no action token"),
+        )?;
         let expires_at = database_time(transaction).await? + Duration::minutes(30);
         challenges::delete_for_account(transaction, account.id, Some(challenge_purpose)).await?;
         challenges::insert_challenge(
@@ -50,6 +52,11 @@ impl IdentityService {
             .join(match purpose {
                 MailPurpose::VerifyEmail => "verify-email",
                 MailPurpose::ResetPassword => "reset-password",
+                _ => {
+                    return Err(ApplicationError::InvalidInput(
+                        "invalid action mail purpose",
+                    ));
+                }
             })
             .map_err(ApplicationError::internal)?;
         action_url.set_fragment(Some(&format!("token={token}")));
@@ -68,9 +75,52 @@ impl IdentityService {
             transaction,
             delivery_id,
             account.id,
-            token_hash,
+            Some(token_hash),
             ciphertext,
             expires_at,
+        )
+        .await?;
+        jobs::enqueue(
+            transaction,
+            Uuid::now_v7(),
+            AUTHENTICATION_MAIL_JOB,
+            &MailDeliveryJob { delivery_id },
+            trace,
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn register_account_notification(
+        &self,
+        transaction: &DatabaseTransaction,
+        account: &account::Model,
+        purpose: MailPurpose,
+        trace: TraceContext,
+    ) -> ApplicationResult<()> {
+        if !matches!(purpose, MailPurpose::Welcome | MailPurpose::PasswordChanged) {
+            return Err(ApplicationError::InvalidInput(
+                "invalid account notification purpose",
+            ));
+        }
+        let delivery_id = Uuid::now_v7();
+        let mail = AuthenticationMail {
+            recipient: account.email.clone(),
+            application_name: self.settings.application_name.clone(),
+            purpose,
+            action_url: self.settings.public_url.to_string(),
+        };
+        let ciphertext = self.settings.secret_keys.encrypt(
+            &delivery_context(delivery_id),
+            &serde_json::to_vec(&mail).map_err(ApplicationError::internal)?,
+        )?;
+        deliveries::insert_delivery(
+            transaction,
+            delivery_id,
+            account.id,
+            None,
+            ciphertext,
+            database_time(transaction).await? + Duration::hours(24),
         )
         .await?;
         jobs::enqueue(
@@ -152,9 +202,7 @@ impl IdentityService {
         let ciphertext = delivery.ciphertext.as_deref().ok_or_else(|| {
             ApplicationError::internal(anyhow::anyhow!("pending mail payload missing"))
         })?;
-        if delivery.expires_at <= database_time(&transaction).await?
-            || account.as_ref().is_none_or(|account| !account.active)
-        {
+        if delivery.expires_at <= database_time(&transaction).await? || account.is_none() {
             deliveries::finish_delivery(&transaction, delivery_id, None).await?;
             transaction.commit().await?;
             return Ok(None);
@@ -165,17 +213,25 @@ impl IdentityService {
             .decrypt(&delivery_context(delivery_id), ciphertext)?;
         let mail: AuthenticationMail =
             serde_json::from_slice(&plaintext).map_err(ApplicationError::internal)?;
-        let challenge = challenges::find_valid(
-            &transaction,
-            &delivery.challenge_hash,
-            challenge_purpose(mail.purpose),
-        )
-        .await?;
-        if challenge.is_none_or(|challenge| {
-            account
-                .as_ref()
-                .is_none_or(|account| challenge.security_version != account.security_version)
-        }) {
+        let valid = if let Some(purpose) = challenge_purpose(mail.purpose) {
+            let hash = delivery.challenge_hash.as_deref().ok_or_else(|| {
+                ApplicationError::internal(anyhow::anyhow!("action mail challenge missing"))
+            })?;
+            challenges::find_valid(&transaction, hash, purpose)
+                .await?
+                .is_some_and(|challenge| {
+                    account.as_ref().is_some_and(|account| {
+                        account.active && challenge.security_version == account.security_version
+                    })
+                })
+        } else {
+            delivery.challenge_hash.is_none()
+                && account.as_ref().is_some_and(|account| {
+                    account.verified
+                        && (account.active || matches!(mail.purpose, MailPurpose::PasswordChanged))
+                })
+        };
+        if !valid {
             deliveries::finish_delivery(&transaction, delivery_id, None).await?;
             transaction.commit().await?;
             return Ok(None);
@@ -188,9 +244,10 @@ impl IdentityService {
 fn delivery_context(delivery_id: Uuid) -> String {
     format!("authentication mail v1:{delivery_id}")
 }
-fn challenge_purpose(purpose: MailPurpose) -> &'static str {
+fn challenge_purpose(purpose: MailPurpose) -> Option<&'static str> {
     match purpose {
-        MailPurpose::VerifyEmail => "verify_email",
-        MailPurpose::ResetPassword => "reset_password",
+        MailPurpose::VerifyEmail => Some("verify_email"),
+        MailPurpose::ResetPassword => Some("reset_password"),
+        MailPurpose::Welcome | MailPurpose::PasswordChanged => None,
     }
 }

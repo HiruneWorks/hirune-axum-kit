@@ -6,7 +6,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub account_id: Uuid,
-    pub challenge_hash: String,
+    pub challenge_hash: Option<String>,
     pub ciphertext: Option<String>,
     pub state: String,
     pub expires_at: DateTimeUtc,

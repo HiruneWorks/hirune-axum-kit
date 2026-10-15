@@ -294,9 +294,16 @@ impl IdentityService {
         if account.password_hash != snapshot.password_hash {
             return Err(ApplicationError::Unauthenticated);
         }
-        accounts::replace_password(&transaction, account, password_hash).await?;
+        let account = accounts::replace_password(&transaction, account, password_hash).await?;
         self.revoke_account_credentials(&transaction, actor.account_id())
             .await?;
+        self.register_account_notification(
+            &transaction,
+            &account,
+            mail::MailPurpose::PasswordChanged,
+            trace,
+        )
+        .await?;
         security::append_audit(
             &transaction,
             Some(actor.account_id()),

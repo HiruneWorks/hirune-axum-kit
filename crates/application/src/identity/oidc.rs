@@ -359,6 +359,14 @@ impl OidcService {
                 let account = accounts::insert_account(&transaction, email, None, true)
                     .await
                     .map_err(identity_conflict)?;
+                self.identity
+                    .register_account_notification(
+                        &transaction,
+                        &account,
+                        mail::MailPurpose::Welcome,
+                        trace,
+                    )
+                    .await?;
                 oauth::insert_identity(
                     &transaction,
                     account.id,

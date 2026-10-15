@@ -1,8 +1,0 @@
-{{ application_name }}
-
-{{ heading }}
-
-Continue: {{ action_url }}
-
-This link expires in 30 minutes and can be used once.
-If you did not request this, you can ignore this message.

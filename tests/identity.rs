@@ -15,6 +15,9 @@ use uuid::Uuid;
 #[path = "identity/hardening.rs"]
 mod hardening;
 
+#[path = "identity/notifications.rs"]
+mod notifications;
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL; run just test-db"]
 async fn registration_persists_encrypted_mail_and_durable_job() -> anyhow::Result<()> {
