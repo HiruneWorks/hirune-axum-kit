@@ -1,6 +1,7 @@
 mod checks;
 mod deployment;
 mod infrastructure;
+mod production;
 mod template;
 
 use anyhow::{Context, Result, ensure};
@@ -23,10 +24,11 @@ fn main() -> Result<()> {
         Some("test-process") => infrastructure::run_tests(&["process"]),
         Some("test-files") => infrastructure::run_tests(&["files"]),
         Some("test-deployment") => deployment::verify(),
+        Some("test-production") => production::verify(),
         Some("load-test") => infrastructure::run_load_test(),
         Some("template-check") => template::verify(root),
         _ => anyhow::bail!(
-            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-deployment|load-test|template-check>"
+            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-deployment|test-production|load-test|template-check>"
         ),
     }
 }

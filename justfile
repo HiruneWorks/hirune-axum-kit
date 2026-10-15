@@ -51,6 +51,9 @@ test-files:
 test-deployment:
     cargo xtask test-deployment
 
+test-production:
+    cargo xtask test-production
+
 load-test:
     cargo xtask load-test
 

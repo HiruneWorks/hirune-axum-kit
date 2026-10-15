@@ -15,7 +15,7 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
     let infrastructure = if external_database.is_none() {
         Some(Infrastructure::start(
             directory,
-            targets.contains(&"files"),
+            targets.contains(&"files") || load,
         )?)
     } else {
         None
@@ -34,9 +34,11 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
     }
     command.arg("--").args(["--ignored", "--test-threads=2"]);
     if load {
-        command.arg("load_smoke").env("RUN_K6", "true");
+        command
+            .args(["load::mixed_workload", "--nocapture"])
+            .env("RUN_K6", "true");
     } else {
-        command.args(["--skip", "load_smoke"]);
+        command.args(["--skip", "load::mixed_workload"]);
     }
     if let Some(infrastructure) = &infrastructure {
         command
@@ -68,6 +70,13 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
             std::env::var_os("TEST_SMTP_PORT").is_some()
                 && std::env::var_os("TEST_MAILPIT_URL").is_some(),
             "external process tests require TEST_SMTP_PORT and TEST_MAILPIT_URL"
+        );
+    }
+    if infrastructure.is_none() && load {
+        ensure!(
+            std::env::var_os("TEST_S3_ENDPOINT").is_some()
+                && std::env::var_os("TEST_MEILISEARCH_URL").is_some(),
+            "external load tests require TEST_S3_ENDPOINT and TEST_MEILISEARCH_URL"
         );
     }
     let result = run(&mut command);

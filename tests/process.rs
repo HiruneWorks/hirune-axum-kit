@@ -8,6 +8,9 @@ use test_support::{TEST_PASSWORD, TestDatabase};
 use tokio::process::{Child, Command};
 use uuid::Uuid;
 
+#[path = "process/load.rs"]
+mod load;
+
 struct RunningProcess {
     child: Child,
     log: NamedTempFile,
@@ -83,6 +86,7 @@ impl ProcessEnvironment {
             .env_remove("OIDC_ISSUER")
             .env_remove("SMTP_USERNAME")
             .env_remove("SMTP_PASSWORD")
+            .env_remove("SMTP_CA_CERTIFICATE")
             .env_remove("TRUSTED_PROXY_IPS")
             .kill_on_drop(true)
             .stdout(Stdio::from(log.reopen()?))
@@ -308,53 +312,4 @@ async fn signup_mail_login_cross_process_revocation_and_worker_restart() -> Resu
         "request correlation did not reach worker logs"
     );
     database.finish().await
-}
-
-#[tokio::test]
-#[ignore = "requires Docker k6, PostgreSQL and Mailpit; run just load-test"]
-async fn load_smoke() -> Result<()> {
-    ensure!(
-        std::env::var("RUN_K6").as_deref() == Ok("true"),
-        "use just load-test"
-    );
-    let database = TestDatabase::create().await?;
-    let identity = database.identity_service().await?;
-    let (_, credentials) = database.verified_account(&identity).await?;
-    let environment = ProcessEnvironment::new(&database)?;
-    let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
-    let (mut api, _, port) = environment.api(&client, true).await?;
-    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/load/smoke.js")
-        .canonicalize()?;
-    let status = Command::new("docker")
-        .args([
-            "run",
-            "--rm",
-            "--add-host",
-            "host.docker.internal:host-gateway",
-            "-i",
-            "-e",
-            "BASE_URL",
-            "-e",
-            "AUTH_TOKEN",
-            "-e",
-            "K6_PROFILE",
-            "grafana/k6:2.2.0",
-            "run",
-            "-",
-        ])
-        .env("BASE_URL", format!("http://host.docker.internal:{port}"))
-        .env("AUTH_TOKEN", &credentials.token)
-        .env(
-            "K6_PROFILE",
-            std::env::var("K6_PROFILE").unwrap_or_else(|_| "smoke".into()),
-        )
-        .stdin(Stdio::from(std::fs::File::open(script)?))
-        .kill_on_drop(true)
-        .status()
-        .await?;
-    api.stop().await?;
-    database.finish().await?;
-    ensure!(status.success(), "k6 thresholds failed");
-    Ok(())
 }

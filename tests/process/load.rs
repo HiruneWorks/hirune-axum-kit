@@ -1,0 +1,247 @@
+use super::{ProcessEnvironment, RunningProcess};
+use anyhow::{Context, Result, ensure};
+use application::{
+    files::entities::file, identity::LoginOutcome, organizations::OrganizationService,
+};
+use jobs::{
+    TraceContext,
+    entities::{job, job_attempt},
+};
+use reqwest::Client;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use serde::Serialize;
+use std::{collections::BTreeMap, process::Stdio, time::Duration};
+use test_support::{TEST_PASSWORD, TestDatabase};
+use tokio::process::Command;
+use uuid::Uuid;
+
+#[derive(Serialize)]
+struct LoadAccount {
+    account_id: Uuid,
+    token: String,
+    revocable_token: String,
+    revocable_session_id: Uuid,
+    organization_ids: [Uuid; 2],
+}
+
+async fn seed_accounts(database: &TestDatabase, count: usize) -> Result<Vec<LoadAccount>> {
+    let identity = database.identity_service().await?;
+    let organizations = OrganizationService::new(identity.clone());
+    let mut accounts = Vec::with_capacity(count);
+    for index in 0..count {
+        let (actor, credentials) = database.verified_account(&identity).await?;
+        let email = identity.get_account(&actor).await?.email;
+        let LoginOutcome::Session(revocable) = identity
+            .login_with_password(&email, TEST_PASSWORD.into(), TraceContext::default())
+            .await?
+        else {
+            anyhow::bail!("load fixture unexpectedly required MFA");
+        };
+        let first = organizations
+            .create_organization(&actor, format!("Load account {} primary", index + 1))
+            .await?;
+        let second = organizations
+            .create_organization(&actor, format!("Load account {} secondary", index + 1))
+            .await?;
+        accounts.push(LoadAccount {
+            account_id: actor.account_id(),
+            token: credentials.token,
+            revocable_token: revocable.token,
+            revocable_session_id: revocable.session_id,
+            organization_ids: [first.id, second.id],
+        });
+    }
+    Ok(accounts)
+}
+
+fn configure_file_integrations(environment: &mut ProcessEnvironment) -> Result<()> {
+    let storage_endpoint = std::env::var("TEST_S3_ENDPOINT")
+        .context("load tests require TEST_S3_ENDPOINT; run just load-test")?;
+    let search_endpoint = std::env::var("TEST_MEILISEARCH_URL")
+        .context("load tests require TEST_MEILISEARCH_URL; run just load-test")?;
+    for endpoint in [&storage_endpoint, &search_endpoint] {
+        let url: url::Url = endpoint.parse()?;
+        ensure!(
+            matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")),
+            "load test file integrations must be local"
+        );
+    }
+    environment.values.extend(
+        [
+            ("S3_ENDPOINT", storage_endpoint),
+            ("S3_BUCKET", "kit-files".into()),
+            ("S3_REGION", "us-east-1".into()),
+            ("S3_ACCESS_KEY", "kit-local-access".into()),
+            ("S3_SECRET_KEY", "kit-local-development-secret-only".into()),
+            ("S3_ALLOW_HTTP", "true".into()),
+            ("MEILISEARCH_URL", search_endpoint),
+            (
+                "MEILISEARCH_API_KEY",
+                "kit-local-meilisearch-key-development-only".into(),
+            ),
+            (
+                "MEILISEARCH_INDEX",
+                format!("load_files_{}", Uuid::now_v7().simple()),
+            ),
+            ("MEILISEARCH_ALLOW_HTTP", "true".into()),
+            ("WORKER_CONCURRENCY", "4".into()),
+            ("WORKER_POLL_MILLISECONDS", "50".into()),
+            (
+                "FILE_TEMPORARY_DIRECTORY",
+                environment.directory.path().to_string_lossy().into_owned(),
+            ),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value)),
+    );
+    Ok(())
+}
+
+async fn wait_for_file_cleanup(database: &TestDatabase, worker: &mut RunningProcess) -> Result<()> {
+    tokio::time::timeout(Duration::from_secs(40), async {
+        loop {
+            ensure!(
+                worker.child.try_wait()?.is_none(),
+                "load test worker exited before file cleanup"
+            );
+            ensure!(
+                job_attempt::Entity::find()
+                    .filter(job_attempt::Column::ErrorCode.is_not_null())
+                    .count(&database.connection)
+                    .await?
+                    == 0,
+                "load test background work required retries or failed attempts"
+            );
+            ensure!(
+                job::Entity::find()
+                    .filter(job::Column::State.eq("failed"))
+                    .count(&database.connection)
+                    .await?
+                    == 0,
+                "load test left permanently failed background jobs"
+            );
+            let remaining_files = file::Entity::find()
+                .filter(file::Column::State.ne("deleted"))
+                .count(&database.connection)
+                .await?;
+            let remaining_jobs = job::Entity::find()
+                .filter(job::Column::State.is_in(["pending", "running"]))
+                .count(&database.connection)
+                .await?;
+            if remaining_files == 0 && remaining_jobs == 0 {
+                return Ok::<(), anyhow::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .context("load file deletion and background jobs did not finish")?
+}
+
+fn report_failure_diagnostics(process: &RunningProcess, name: &str) -> Result<()> {
+    let mut error_counts = BTreeMap::<String, usize>::new();
+    let mut server_status_counts = BTreeMap::<u64, usize>::new();
+    for line in std::fs::read_to_string(process.log.path())?.lines() {
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if let Some(code) = event["fields"]["error_code"].as_str()
+            && code.len() <= 64
+            && code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        {
+            *error_counts.entry(code.to_owned()).or_default() += 1;
+        }
+        if let Some(status) = event["span"]["status"].as_u64()
+            && status >= 500
+        {
+            *server_status_counts.entry(status).or_default() += 1;
+        }
+    }
+    eprintln!("{name}: error_codes={error_counts:?}, server_statuses={server_status_counts:?}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires Docker k6, PostgreSQL, Mailpit, SeaweedFS and Meilisearch; run just load-test"]
+async fn mixed_workload() -> Result<()> {
+    ensure!(
+        std::env::var("RUN_K6").as_deref() == Ok("true"),
+        "use just load-test"
+    );
+    let profile = std::env::var("K6_PROFILE").unwrap_or_else(|_| "smoke".into());
+    let account_count = match profile.as_str() {
+        "smoke" => 2,
+        "extended" => 20,
+        _ => anyhow::bail!("K6_PROFILE must be smoke or extended"),
+    };
+    let database = TestDatabase::create().await?;
+    let accounts = seed_accounts(&database, account_count).await?;
+    let mut environment = ProcessEnvironment::new(&database)?;
+    configure_file_integrations(&mut environment)?;
+    let settings = kit::config::Settings::from_values(&environment.values)?;
+    let application = kit::bootstrap::bootstrap(&settings).await?;
+    application.files.initialize_integrations().await?;
+    application.close().await?;
+    let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
+    let (mut first, _, first_port) = environment.api(&client, true).await?;
+    let (mut second, _, second_port) = environment.api(&client, true).await?;
+    let mut worker = environment.start(env!("CARGO_BIN_EXE_worker"), None)?;
+    let result = async {
+        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/load/mixed.js");
+        let status = Command::new("docker")
+            .args([
+                "run",
+                "--rm",
+                "--add-host",
+                "host.docker.internal:host-gateway",
+                "-i",
+                "-e",
+                "FIRST_API_URL",
+                "-e",
+                "SECOND_API_URL",
+                "-e",
+                "LOAD_ACCOUNTS",
+                "-e",
+                "K6_PROFILE",
+                "grafana/k6:2.2.0",
+                "run",
+                "-",
+            ])
+            .env(
+                "FIRST_API_URL",
+                format!("http://host.docker.internal:{first_port}"),
+            )
+            .env(
+                "SECOND_API_URL",
+                format!("http://host.docker.internal:{second_port}"),
+            )
+            .env("LOAD_ACCOUNTS", serde_json::to_string(&accounts)?)
+            .env("K6_PROFILE", profile)
+            .stdin(Stdio::from(std::fs::File::open(script)?))
+            .kill_on_drop(true)
+            .status()
+            .await?;
+        ensure!(status.success(), "k6 mixed-workload thresholds failed");
+        wait_for_file_cleanup(&database, &mut worker).await
+    }
+    .await;
+    let mut secrets = vec![TEST_PASSWORD];
+    for account in &accounts {
+        secrets.extend([account.token.as_str(), account.revocable_token.as_str()]);
+    }
+    for (name, process) in [
+        ("first_api", &mut first),
+        ("second_api", &mut second),
+        ("worker", &mut worker),
+    ] {
+        process.stop().await?;
+        process.assert_secrets_absent(&secrets)?;
+        if result.is_err() {
+            report_failure_diagnostics(process, name)?;
+        }
+    }
+    database.finish().await?;
+    result
+}
