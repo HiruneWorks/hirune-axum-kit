@@ -1,9 +1,9 @@
 # Regression inventory
 
-Every reviewed reference E2E test is listed below. A replacement preserves the stated
-invariant in the current domain; an exclusion is a scope decision, not a passing
-test. There is no claim that excluded product features were ported. Test execution
-and limitations are recorded in [milestones](../memory/README.md).
+The table lists every reviewed reference E2E test. A replacement preserves the
+stated invariant in the current domain. An exclusion records a scope decision.
+It does not indicate a passing test or an implemented feature. Record test
+execution and limitations in [milestones](../memory/README.md).
 
 Current suites: [identity](../tests/identity.rs), [API](../tests/api.rs),
 [OIDC](../tests/oidc.rs), [jobs](../tests/jobs.rs),

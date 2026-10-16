@@ -30,3 +30,6 @@ This index is updated when a milestone is complete.
 - [2026-10-16 — Worker dispatch](2026-10-16-worker-dispatch.md): immediate execution
   slot refill, idle-only polling, recovery progress, independent 1/2/4-pool
   regressions, and local database/process/k6 verification boundaries.
+- [2026-10-17 — Technical writing](2026-10-17-technical-writing.md): practical
+  ASD-STE100 clarity guidance, revised existing documentation and comments, and
+  preserved technical contracts.

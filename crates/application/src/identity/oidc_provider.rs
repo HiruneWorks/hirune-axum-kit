@@ -32,7 +32,7 @@ struct ClientRefresh<'a>(&'a mut ClientCache);
 
 impl Drop for ClientRefresh<'_> {
     fn drop(&mut self) {
-        // Failure and cancellation both wait from completion, even after a slow fetch.
+        // Start the cooldown when refresh ends, including failure or cancellation.
         self.0.refresh_retry_after = Some(Instant::now() + Duration::from_secs(5));
     }
 }

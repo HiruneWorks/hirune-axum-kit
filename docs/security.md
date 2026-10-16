@@ -1,8 +1,8 @@
 # Security controls
 
 This template uses OWASP guidance as a review baseline. It does not claim ASVS
-certification or completeness for every application's threat model. Review the
-actual source and tests when changing authentication. UUIDv7 is an entity identity,
+certification. Review the controls against your application's threat model.
+Check the actual source and tests when changing authentication. UUIDv7 is an entity identity,
 not a secret or an access-control mechanism.
 
 ## Required review checks
@@ -26,16 +26,16 @@ not a secret or an access-control mechanism.
 
 See [identity behavior](behavior/identity.md), [transactions](transaction-boundaries.md),
 and the [regression inventory](regressions.md) for executable coverage. A test name
-documents coverage intent; milestone notes record whether it was actually run.
+describes intended coverage. Milestone notes record whether the test actually ran.
 
 ## Proxy and cache trust
 
-Use the actual socket peer for client limits by default. Forwarding headers are
-ignored unless the peer appears in `TRUSTED_PROXY_IPS`. A trusted proxy must overwrite
+Use the actual socket peer for client limits by default. The API ignores forwarding
+headers unless the peer appears in `TRUSTED_PROXY_IPS`. A trusted proxy must overwrite
 `X-Forwarded-For` with exactly one client IP. Multiple values, lists, missing values,
-and invalid addresses from a trusted proxy are rejected. Restrict direct backend
-network access when using a trusted proxy. NAT users share a client budget; tune
-the application's policy deliberately for its audience. Network/WAF limits are
+and invalid addresses from a trusted proxy cause the API to reject the request.
+Restrict direct backend network access when using a trusted proxy. NAT users share
+a client budget. Tune the application's policy for its audience. Network/WAF limits are
 still needed for volumetric attacks before traffic reaches the database.
 
 PostgreSQL is authoritative for authentication state. Redis is not required. The
@@ -48,7 +48,7 @@ add cached allow decisions without an explicit revocation contract.
 for each client. Both accept 1 through 100000. Counters are shared across processes
 and use a common saturation ceiling above every supported budget, so a lower-limit
 instance cannot reset or truncate a higher-limit instance's counter. Keep instance
-settings consistent; changing a budget does not reset the active counter window.
+settings consistent. Changing a budget does not reset the active counter window.
 
 ## Administrator and recovery policy
 
@@ -56,7 +56,7 @@ Only the operator command `manage set-administrator <uuid> <true|false>` changes
 the global administrator flag. Promotion requires an active, verified account
 with confirmed TOTP enrollment. A changed flag advances the security version,
 revokes sessions/challenges, and appends an audit event in one transaction. Access
-to this command must be controlled by the deployment; there is no public role
+to this command must be controlled by the deployment. There is no public role
 administration endpoint. Organization ownership does not imply global administrator
 status.
 
@@ -71,16 +71,16 @@ Support-assisted factor reset remains a separate product policy.
 
 Add a new 32-byte encryption key under a new key ID and set it active. Retain old
 keys while rows encrypted with them remain, including enrolled TOTP secrets.
-Removing an old key early makes those rows unreadable; automatic re-encryption is
-not provided. Rotate database, SMTP, and provider credentials using their own
-deployment procedures. Use separate migration, runtime, and maintenance database
+Removing an old key early makes those rows unreadable. The application does not
+re-encrypt them automatically. Rotate database, SMTP, and provider credentials
+using their own deployment procedures. Use separate migration, runtime, and maintenance database
 roles. Runtime must not update or delete audit events or API-usage records;
 maintenance adds deletion for retention, without UPDATE, TRUNCATE, or schema-owner
 privileges on those records. Development Compose
 credentials are public local fixtures.
 
 External password-screening services are excluded by owner decision. A local
-common/breached-password blocklist is deferred and is not implemented; current
+common/breached-password blocklist is deferred and is not implemented. Current
 password validation enforces the length contract above. Do not add a network
 dependency or describe this as breach screening.
 

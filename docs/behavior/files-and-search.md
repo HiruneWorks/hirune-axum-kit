@@ -1,24 +1,24 @@
 # Files and search
 
 Files are organization attachments. Original bytes live in a private SeaweedFS
-S3 bucket; PostgreSQL owns UUIDv7 metadata, uploader identity, organization scope,
+S3 bucket. PostgreSQL owns UUIDv7 metadata, uploader identity, organization scope,
 quota reservations, and state. A filename is display metadata, never an object
 key or filesystem path. Uploads do not execute, unpack, sanitize, scan, or convert
-content. `ready` means storage completed, not that the content is harmless.
+content. `ready` means storage completed. It does not establish that the content is harmless.
 
 ## Upload and access
 
 Reserve a file through the authenticated organization API, then PUT its raw bytes
 once. Current membership is required for reservation, finalization, reads, and
-deletion. Only the uploader may send the bytes; the uploader or organization owner
+deletion. Only the uploader may send the bytes. The uploader or organization owner
 may delete an attachment while still a member. A file UUID does not grant access.
 
 The service reserves declared bytes under the organization lock before accepting
 the body. It checks actual streamed bytes, deadlines, and quota independently of
 client headers. A bounded temporary file permits a streaming S3 PutObject without
 buffering the file in memory or leaving incomplete multipart uploads. Transfer
-slots bound temporary disk use; temporary files are removed on normal completion
-and request cancellation. Operators must budget temporary disk and clean stale
+slots bound temporary disk use. The service removes temporary files on normal
+completion and request cancellation. Operators must budget temporary disk and clean stale
 temporary files after process crashes.
 Byte and live-file quotas, a pending-reservation cap, and a per-uploader reservation
 rate apply under the same locks, including for zero-byte files. Defaults are
@@ -31,28 +31,27 @@ locks. Finalization rechecks session, membership, deadline, and state under the
 same account -> organization -> file lock order. Follow the
 [transaction boundaries](../transaction-boundaries.md): parent
 business locks allow foreign-key existence checks from background file updates.
-Expired/failed transfers remain inaccessible and are reconciled by maintenance.
-Deletion immediately denies new
-reads; durable jobs remove bytes. Retained tombstones permit repeated cleanup of
+Expired/failed transfers remain inaccessible. Maintenance reconciles them.
+Deletion immediately denies new reads. Durable jobs remove bytes.
+Retained tombstones permit repeated cleanup of
 late uploads. Cleanup schedules repeat deletion at most once per hour per
 tombstone. After the configured retention (30 days), metadata can be purged only
 after recent successful storage deletion and satisfaction of any persisted
-index-deletion obligation. Disabling search does not erase that obligation;
-re-enable the configured index and repair it before purging affected metadata.
-Existing streams authorize at their start; already delivered bytes
-cannot be revoked.
+index-deletion obligation. Disabling search does not erase that obligation.
+Re-enable the configured index and repair it before purging affected metadata.
+Existing streams authorize at their start. Already delivered bytes cannot be revoked.
 
 Original downloads use `application/octet-stream`, attachment disposition,
 `nosniff`, and no-store. GET/HEAD support a single byte range, including suffix and
 open-ended ranges. Multiple ranges are rejected. This baseline provides original
-retrieval; a consuming app can define a separate inline media policy. Never trust
+retrieval. A consuming app can define a separate inline media policy. Never trust
 the uploader's declared media type to enable HTML/SVG execution on the app origin.
 
 ## Derived filename search
 
 Meilisearch indexes file IDs, organization IDs, and filenames, not file contents.
 Keys stay server-side. Organization filters come from the authorized route scope.
-Search returns candidate IDs; the service hydrates current ready rows from
+Search returns candidate IDs. The service hydrates current ready rows from
 PostgreSQL and checks membership again before returning metadata. Index totals
 and snippets are not exposed. Membership removal and file deletion take effect
 even when the index is stale.
@@ -62,7 +61,7 @@ wait for each asynchronous Meilisearch task to complete, then recheck current
 state/revision and repeat reconciliation when necessary. An ambiguous network
 failure is retryable. Maintenance can enqueue a bounded repair batch to correct
 late writes or an index rebuilt after data loss. Searches are eventually
-consistent; PostgreSQL is always authoritative for access.
+consistent. PostgreSQL is always authoritative for access.
 
 ## Integration boundary
 

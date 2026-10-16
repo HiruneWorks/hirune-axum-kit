@@ -46,12 +46,12 @@ retry, and attempt-history implementation as ordinary workers.
 The application crate has no Axum dependency. Its feature modules contain their
 own service, repository, model, and types. HTTP DTOs stay with their versioned
 feature adapter. Each named operation has its own file with its exclusive DTOs;
-shared DTOs stay in `contracts.rs`, URL/method assembly in `routes.rs`, and module
-indexes only declare/re-export modules. Nested comment and OIDC folders keep
-related endpoints together. The top-level HTTP router owns health/OpenAPI routes and nests
-the version router; a version router only composes feature routers. Add a new
-version directory when a real HTTP contract needs one. Business services are not
-duplicated for each API version.
+shared DTOs stay in `contracts.rs`. `routes.rs` assembles URLs and methods. Module
+indexes only declare or re-export modules. Nested comment and OIDC folders keep
+related endpoints together. The top-level HTTP router owns health and OpenAPI
+routes and nests the version router. A version router only composes feature
+routers. Add a version directory when an HTTP contract needs a new version.
+Reuse business services across API versions.
 Notifications separate service assembly, inbox reads/writes, preferences, comment
 recipient registration, devices, and push execution. Post API-client reads do not
 live in search; profile module indexes contain no queries or job registration.
@@ -64,12 +64,12 @@ Keeping each feature's service, repository, entities, and internal types togethe
 makes a business change local. Jobs and mail have independent execution and
 failure contracts; auth-core has no database or async runtime dependency.
 Migration history and development/test tools do not belong in request handling.
-API, worker, and management are binaries of the same assembled application;
-separate process deployment does not require separate service crates.
+API, worker, and management are binaries of the same assembled application.
+Separate process deployment does not require separate service crates.
 
 `bootstrap(settings)` prepares dependencies. `build_router(app, http_settings)`
 only constructs the production router. `serve(listener, router, shutdown)` owns
-listening and shutdown. Tests use these same functions; router construction must
+listening and shutdown. Tests use these same functions. Router construction must
 not start a listener, consumer, scheduler, or detached task.
 
 ## Extending the template
@@ -79,8 +79,8 @@ Expose it through thin HTTP handlers and typed input/output contracts. Add the
 operation's behavior, transaction boundary, authorization, pagination, and tests
 together. Workers call those same operations when the business behavior is shared.
 
-The initial worker backend is PostgreSQL. Changing a backend is a deliberate
-adapter and transaction decision: a broker needs an outbox when a domain write
+The initial worker backend is PostgreSQL. Before changing the backend, review the
+adapter and transaction boundaries. A broker needs an outbox when a domain write
 must commit with publication. A common function signature cannot create a
 distributed transaction.
 

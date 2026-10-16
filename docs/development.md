@@ -2,8 +2,8 @@
 
 Use Rust 1.98.1, just 1.52 or newer, Docker, and Docker Compose. Commit Cargo.lock.
 On Windows, Rust MSVC builds require the Visual Studio C++ build tools. All
-development commands are Rust xtask or direct executable calls; no Bash-only test
-wrapper is required. Start by reading [conventions](conventions.md).
+development commands use Rust xtask or call executables directly. They do not
+require a Bash-only test wrapper. Start by reading [conventions](conventions.md).
 
 GitHub Actions use version tags or maintained channels. The
 [Dependabot configuration](../.github/dependabot.yml) checks Cargo, Actions,
@@ -43,8 +43,8 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 Integration commands create a unique Compose project with dynamic local ports,
 then remove only that project's containers and volumes. Each test creates its own
 UUID-named database and applies migrations. Test cleanup drops only those generated
-databases. Plain `cargo test --workspace` leaves infrastructure tests ignored;
-the explicit integration commands select them with `--ignored`.
+databases. Plain `cargo test --workspace` leaves infrastructure tests ignored.
+The explicit integration commands select them with `--ignored`.
 
 For an existing local disposable PostgreSQL server, set `TEST_DATABASE_URL`.
 The role must be allowed to create and drop test databases. Non-loopback database
@@ -53,14 +53,14 @@ hosts are rejected. Process/load tests additionally require `TEST_SMTP_PORT` and
 File tests additionally require loopback `TEST_S3_ENDPOINT` and
 `TEST_MEILISEARCH_URL` using the local Compose credentials. `just test-files`
 starts these services automatically in its disposable Compose project.
-Test databases from a panic may remain in external infrastructure; inspect their
+Test databases from a panic may remain in external infrastructure. Inspect their
 generated `kit_test_` names before explicit cleanup.
 
 ## Load evidence
 
-The k6 entry point is `tests/load/mixed.js`; shared HTTP assertions live in
-`helpers.js`, and organization/session/file/external/content workflows own their
-respective modules. The process fixture mounts this script directory read-only
+The k6 entry point is `tests/load/mixed.js`. Shared HTTP assertions live in
+`helpers.js`. Organization, session, file, external API, and content workflows
+each have their own module. The process fixture mounts this script directory read-only
 into the k6 container.
 
 The default k6 profile uses two virtual users for ten seconds, each with its own
@@ -72,17 +72,20 @@ posts plus a private draft, traverses user/post/comment/inbox cursors, reads
 notifications, searches current post/profile revisions with numbered pages,
 and deletes the content. Two API keys per client also exercise the external
 organization and published-post routes across both instances and verify their
-shared monthly counter; PostgreSQL admission records are checked after the run.
+shared monthly counter. The fixture checks PostgreSQL admission records after the run.
 These fixture clients receive explicit operator allocation, independent of the
-ordinary session and file limits. Search visibility waits are
-bounded. Expected rejection probes have explicit allowed statuses; unexpected
-HTTP failures and failed business checks fail the run. It also rejects p95
-latency at/above two seconds. Thresholds require `http_req_failed: rate==0`,
-`checks: rate==1`, and `workflow_failures: count==0`; every virtual user must
-complete a full workflow and revoke its separate session once. Search visibility
-must remain below ten seconds for each workflow, with a matching p95 threshold.
+ordinary session and file limits.
+
+Search visibility waits are bounded. Expected rejection probes have explicit
+allowed statuses. Unexpected HTTP failures and failed business checks fail the
+run. The check also rejects p95 latency at or above two seconds. Thresholds require
+`http_req_failed: rate==0`, `checks: rate==1`, and `workflow_failures: count==0`.
+Every virtual user must complete a full workflow and revoke its separate session
+once. Search visibility must remain below ten seconds for each workflow, with a
+matching p95 threshold.
 After k6 exits, originals must reach the deleted state and pending work must drain.
 Any failed background attempt also fails the check, even if a later retry succeeds.
+
 `K6_PROFILE=extended` uses twenty users for two minutes. Set the environment in
 your shell before `just load-test`. The workflow dispatch input selects that
 profile in CI. Thresholds are regression gates, not a production capacity promise.
@@ -93,9 +96,9 @@ network paths, and intended concurrency before a capacity decision.
 
 `just test-production` builds the canonical release image and runs it with
 `APP_ENV=production` inside a uniquely named local Compose project. Set
-`PRODUCTION_TEST_IMAGE` only when deliberately verifying an existing local image;
-that supplied image is preserved during cleanup. The fixture uses an internal
-Docker network, an ephemeral private CA, an HTTPS proxy, and Mailpit requiring
+`PRODUCTION_TEST_IMAGE` only when deliberately verifying an existing local image.
+Cleanup preserves that image. The fixture uses an internal Docker network, an
+ephemeral private CA, an HTTPS proxy, and Mailpit requiring
 STARTTLS. It checks secure cookies, origins, proxy header replacement, and actual
 Rust-worker mail delivery, including rejection of an untrusted SMTP certificate
 and a certificate whose hostname does not match. Runtime containers use a
@@ -110,21 +113,21 @@ the restored password and encrypted TOTP state using retained encryption keys.
 It also checks that API credentials, exhausted allocation, and usage survive the
 restore, then revokes the restored key through an authenticated owner session.
 Only fixture containers, volumes, and generated images are removed. These checks
-cover local release-image behavior; they do not publish or deploy the image,
+cover local release-image behavior. They do not publish or deploy the image,
 verify a real SMTP/OIDC provider, or test S3 original-file backup and restoration.
-Record actual execution results in [milestones](../memory/README.md); the presence
-of this command or its CI step is not evidence that it passed.
+Record actual execution results in [milestones](../memory/README.md). The presence
+of this command or its CI step does not establish that it passed.
 
 ## Editing and diagnostics
 
 Read a feature's behavior contract before changing service rules. Add tests at the
 boundary affected: pure policy/input logic, database atomicity, HTTP extraction,
 or actual process/external effects. Avoid tests that merely repeat a field setter.
-Use axum-test on `build_router`; do not create alternate test-only routes. Tests
+Use axum-test on `build_router`. Do not create alternate test-only routes. Tests
 may create persistence fixtures, but runtime requests use real authentication.
 
 Do not suppress internal errors or broadly disable warnings. An infrastructure
 failure is not a passing test. Record actual commands and limitations in a
 milestone, separately from CI, release, deployment, and live provider acceptance.
-OpenAPI consumers regenerate through their own pipelines; never hand-edit a
+OpenAPI consumers regenerate through their own pipelines. Never hand-edit a
 generated client. Keep release metadata consistent when adding a release pipeline.

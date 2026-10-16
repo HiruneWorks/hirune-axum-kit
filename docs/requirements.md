@@ -1,10 +1,10 @@
 # Confirmed requirements
 
 This document records the owner's explicit constraints and accepted choices.
-Reference material informs design; it does not override these requirements.
-Changing a requirement materially requires a new decision, followed by an update
-here and in the relevant behavior contract. This is a requirements record, not a
-claim that every verification step has already passed.
+Use reference material to inform design. It does not override these requirements.
+Before materially changing a requirement, agree on a new decision. Then update
+this document and the relevant behavior contract. This document records
+requirements. It does not establish that verification steps passed.
 
 | Area | Required direction |
 | --- | --- |
@@ -14,6 +14,7 @@ claim that every verification step has already passed.
 | Operational layout | `.envs/` owns environment examples and ignored secrets; `compose/` owns container/local configuration; `deploy/` owns deployment wiring and commands. |
 | Design | Independently reasoned crate and file boundaries. References demonstrate useful behavior, not a prescribed crate diagram. |
 | Code quality | Clarity and maintainability first; explicit descriptive names, even when longer; concise English comments only where needed. |
+| Technical writing | "Write this 80% of the way to ASD-STE100." Apply this clarity target to specifications, runbooks, developer documentation, docstrings, and comments. Use short sentences, active voice, clear steps, and consistent terms. Preserve technical terms and meaning. |
 | Closed value sets | Existing and new internal states, purposes, roles, platforms, scopes, ordering, and environment modes use enums. String conversion belongs at protocol/configuration/storage boundaries; preserve explicit wire spellings and reject unknown values. |
 | Persistence | Prefer SeaORM and SeaQuery, including migrations. Application-generated UUIDv7 entity primary keys and UUID references. |
 | Migrations | One table with its own indexes and constraints per baseline migration. Subsequent migrations have a clear schema responsibility. |
@@ -39,11 +40,11 @@ claim that every verification step has already passed.
 
 ## Accepted architecture
 
-The initial architecture is a modular monolith, with separate API and worker
-executables using the same application services and PostgreSQL database. It is
+The initial architecture is a modular monolith. Separate API and worker
+executables use the same application services and PostgreSQL database. It is
 not a fleet of microservices. Shared storage makes instances replaceable without
-sticky routing. The source layout follows feature ownership and real dependency
-boundaries; it is not a framework or a generic abstraction over every backend.
+sticky routing. Organize source code by feature ownership and dependency
+boundaries. Do not build a framework or a generic abstraction over every backend.
 
 Redis is not a baseline dependency. PostgreSQL owns sessions, challenges, OIDC
 flows, rate limits, and jobs. A future cache must have explicit consistency and
@@ -55,7 +56,7 @@ and mandatory for global administrators. Once enabled it applies to every suppor
 primary login method. Recovery-code regeneration requires recent authentication
 and a fresh factor proof, replaces all codes, and invalidates existing credentials.
 New-device email verification is intentionally excluded. OIDC linking requires an
-authenticated account; matching email addresses alone do not merge accounts.
+authenticated account. Matching email addresses alone do not merge accounts.
 
 ## Scope boundaries
 
@@ -65,10 +66,11 @@ pagination, durable background work, and transactional mail.
 The file example demonstrates organization attachments and filename search.
 Post/user search and notification behavior are defined in their owning contracts.
 The external API example demonstrates scoped server-to-server access with shared
-minute and calendar-month allocations; see [API access](behavior/api-access.md).
+minute and calendar-month allocations. See [API access](behavior/api-access.md).
 Conversation-specific attachment permissions belong to the owning conversation
-service in a consuming project. Arbitrary file contents are not parsed or executed;
-`ready` describes completed storage, not a malware or content-safety verdict.
+service in a consuming project. The template does not parse or execute arbitrary
+file contents. `ready` means storage is complete. It does not establish that a
+file is free of malware or safe to use.
 Storage, search, and FCM are separately optional integrations. User profiles are
 discoverable only within current shared organization membership. Wiki engines,
 campaign email, public social graphs, and application-specific permission models

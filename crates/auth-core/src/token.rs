@@ -3,8 +3,8 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngExt;
 
-/// Generate a cryptographically secure token (32 bytes = 256 bits),
-/// returned URL-safe Base64 encoded (43 chars).
+/// Generate a cryptographically secure token from 32 random bytes (256 bits).
+/// Return it as 43 URL-safe Base64 characters.
 pub fn generate_secure_token() -> String {
     let token_bytes: [u8; 32] = rand::rng().random();
     URL_SAFE_NO_PAD.encode(token_bytes)

@@ -1,8 +1,8 @@
 # Agent Instructions
 
 - Work autonomously within the user's requested scope. Ask only when requirements are genuinely ambiguous or a decision would materially change behavior, architecture, or scope.
-- Read [project conventions](docs/conventions.md) and [confirmed requirements](docs/requirements.md), then inspect the relevant architecture and code before making changes.
-- Organize code by responsibility. Use explicit names that describe purpose, even when longer; every function, type, module, and file should have a clear role.
+- Read [project conventions](docs/conventions.md) and [confirmed requirements](docs/requirements.md). Inspect the relevant architecture and code before making changes.
+- Organize code by responsibility. Use explicit names that describe purpose, even when longer. Give every function, type, module, and file a clear role.
 - Prefer direct implementations over unnecessary abstractions, compatibility layers, configuration, or cleverness. Fix root causes.
 - Do not modify, revert, reformat, or clean up unrelated user changes.
 - Validate changes with relevant tests, checks, formatting, and builds. Never claim validation that was not performed.
@@ -13,6 +13,7 @@
 
 - Follow existing conventions where appropriate, but do not assume the existing design is correct. Explain materially different designs and their tradeoffs before implementing changes outside the agreed direction.
 - Treat clarity, maintainability, and file organization as completion requirements. Add concise English comments only for invariants or non-obvious decisions.
+- For specifications, runbooks, developer documentation, docstrings, and comments: "Write this 80% of the way to ASD-STE100." Use short sentences, active voice, clear steps, and consistent terms. Preserve exact technical terms and meaning. See [writing rules](docs/conventions.md#technical-writing).
 
 ## Backend Essentials
 

@@ -23,15 +23,15 @@ Keep file lifecycle locks and final authority checks in place.
 
 Current parent mutations change flags, credentials, names, and versions. Adding
 parent deletion or changes to a foreign-key-eligible unique key, including the
-unique account email, requires a new lock-order review: PostgreSQL can acquire
+unique account email, requires a new lock-order review. PostgreSQL can acquire
 `FOR UPDATE` for those writes even when all actual references use UUIDs. See
 [PostgreSQL row locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS).
 
-Email and MFA challenges are discovered before locking their account, then
-re-read and consumed conditionally under the account lock. Expiry is checked at
-consumption. TOTP replay state belongs to the account, not an individual challenge;
-recovery code consumption is conditional and single use. OIDC callback state is
-bound to a browser and consumed before exchanging the code with the provider.
+Find an email or MFA challenge before locking its account. Under the account
+lock, re-read the challenge, check expiry, and consume it conditionally. TOTP
+replay state belongs to the account, not an individual challenge. Recovery code
+consumption is conditional and single use. Bind OIDC callback state to a browser.
+Consume that state before exchanging the code with the provider.
 An ambiguous exchange failure requires a new authorization flow.
 
 Password verification and hashing run on bounded blocking tasks before database
@@ -47,8 +47,8 @@ or mail body. The worker renders and sends after the transaction commits.
 
 SMTP acceptance and a database commit cannot be atomic. A crash between them can
 send the same mail again. Preserve the delivery's Message-ID and describe this as
-at-least-once delivery; a stable identifier does not prove recipient deduplication.
-The action itself remains single use and authority is checked when it is consumed.
+at-least-once delivery. A stable identifier does not prove recipient deduplication.
+The action itself remains single use. Check authority when consuming it.
 
 Rate-limit counters commit in their own short transaction. A later invalid
 password, challenge, or rolled-back business change must not refund the attempt.
@@ -60,7 +60,7 @@ incorrect secret without authority locks, then locks client and key in that
 order and repeats mutable checks using database time. Both request counters and
 one admission record commit together. A committed admission remains charged if
 response delivery subsequently fails. Human management locks account,
-organization, client, then key; external organization reads take no subsequent
+organization, client, then key. External organization reads take no subsequent
 organization lock. See [API access](behavior/api-access.md) before adding external
 writes, organization deletion/suspension, or new billing semantics.
 

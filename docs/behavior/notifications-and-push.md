@@ -12,14 +12,14 @@ The inbox stores actor, recipient, organization, post, and comment UUIDs rather
 than copied content. Inbox list/detail, unread count, and read operations share a
 current-visibility query: recipient ownership, current membership, published
 parent, and nondeleted comment. Unpublishing/deletion or membership removal hides
-the notification and removes it from the unread count immediately. Old read state
-is preserved if the target becomes visible again.
+the notification and removes it from the unread count immediately. The inbox
+preserves old read state if the target becomes visible again.
 
-`post_comments` defaults true; `push_enabled` defaults false. Disabling comment
-notifications suppresses new inbox and push records; existing inbox rows remain.
+`post_comments` defaults true. `push_enabled` defaults false. Disabling comment
+notifications suppresses new inbox and push records. Existing inbox rows remain.
 Push preferences are checked again before sending. Reading an item is idempotent.
 `POST /api/v1/notifications/read-batch` marks at most 1,000 currently visible
-unread items and returns `updated`; repeat until zero to clear a large inbox.
+unread items and returns `updated`. Repeat until zero to clear a large inbox.
 
 ## Optional provider and devices
 
@@ -29,8 +29,8 @@ Application Default Credentials through `gcp_auth`. Use a workload's metadata
 identity where available, or mount a service-account credential file and set
 `GOOGLE_APPLICATION_CREDENTIALS`. No provider token is fetched during application
 bootstrap. Disabled FCM requires no Google credentials and does not enqueue push
-jobs. An enabled API and disabled worker is a deployment mismatch; pending push
-jobs fail with `fcm_disabled` and can be retried after configuration is corrected.
+jobs. An enabled API and disabled worker is a deployment mismatch. Pending push
+jobs fail with `fcm_disabled`. Correct the configuration, then retry those jobs.
 
 Authenticated clients register an FCM token and platform (`android`, `ios`,
 `web`). Registration represents that exact account and login session. Tokens are
@@ -53,23 +53,23 @@ locks another recipient account after its organization lock.
 
 FCM HTTP v1 receives only generic notification text plus notification/delivery
 UUIDs. The client must authenticate and fetch the current notification/target
-before showing private content. Authorization or logout can race network delivery;
-the generic payload avoids sending copied private text in that window.
+before showing private content. Authorization or logout can race network delivery.
+The generic payload avoids sending copied private text in that window.
 
 Per-device success is durable. FCM acceptance and the database update cannot be
-atomic; a crash between them can produce a duplicate. Clients deduplicate stable
+atomic. A crash between them can produce a duplicate. Clients deduplicate stable
 delivery IDs. Do not interpret job fencing as provider exactly-once delivery.
 
 `UNREGISTERED` removes only the still-matching device generation. Generic
 `INVALID_ARGUMENT` does not delete a token. Provider 429 and server errors are
-retryable; Retry-After is retained across ordinary retries and crashed-worker
-recovery, bounded to one day. A 429 without a header waits at least 60 seconds.
+retryable. Push delivery preserves Retry-After across ordinary retries and
+crashed-worker recovery, bounded to one day. A 429 without a header waits at least 60 seconds.
 Other provider rejections remain visible as failed jobs for operator correction.
 The existing five-attempt budget and manual retry command apply.
 
 Maintenance removes up to 1,000 expired device registrations and 1,000 old inbox
-rows per run. `NOTIFICATION_RETENTION_DAYS` defaults to 90; associated delivery
-rows cascade. These are separate from job/audit retention.
+rows per run. `NOTIFICATION_RETENTION_DAYS` defaults to 90. Deleting inbox rows
+cascades to their delivery rows. These limits are separate from job/audit retention.
 
 ## References
 

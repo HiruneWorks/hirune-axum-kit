@@ -2,7 +2,7 @@
 
 A Rust source template for a maintainable Axum service. It uses SeaORM,
 PostgreSQL, Tokio, structured tracing, Cedar authorization, and MJML email.
-API and worker processes scale independently while sharing durable authority.
+API and worker processes scale independently. PostgreSQL stores their shared state.
 
 ## Start locally
 
@@ -15,11 +15,11 @@ just migrate
 just api
 ```
 
-Run `just worker` in another terminal. The API listens on localhost:3000,
-Mailpit on localhost:8029, and OpenAPI is served at `/openapi.json`.
+Run `just worker` in another terminal. The API listens on localhost:3000.
+Mailpit listens on localhost:8029. The API serves OpenAPI at `/openapi.json`.
 `just init` creates independent local keys and never overwrites an existing `.envs/.local/app.env`.
-Email action links expect a consuming frontend to read the fragment and submit
-the token to the documented confirmation endpoint; this template has no frontend.
+This template has no frontend. Your frontend must read the token from an email
+link's fragment and submit it to the documented confirmation endpoint.
 
 ## Verify
 
@@ -36,10 +36,10 @@ just load-test
 just template-check
 ```
 
-Database and process commands create disposable, uniquely named Compose projects
-and isolated test databases. See [development](docs/development.md) for external
+Database and process checks use temporary Compose projects with unique names and
+separate test databases. See [development](docs/development.md) for external
 local infrastructure, test prerequisites, and load-test profiles. CI uses the same
-commands; checked-in workflows are not evidence of a successful remote run.
+commands. Check the remote result before reporting that CI passed.
 The production check builds a release image and uses local HTTPS, STARTTLS, and
 database restoration fixtures. It does not deploy the application.
 
@@ -58,9 +58,9 @@ repair in deployment. See the
 
 Organization posts and single-level comments demonstrate Cedar permissions,
 optimistic updates, private attachments, profiles, and scoped pagination/search.
-A reply creates the post author's in-app notification atomically with the write;
-recipients can manage preferences and read state. Optional FCM delivery uses the
-durable worker queue and is disabled by default. See the
+A reply and the post author's in-app notification commit in the same transaction.
+Recipients can manage preferences and read state. Optional FCM delivery uses the
+durable worker queue. It is disabled by default. See the
 [content](docs/behavior/posts-and-comments.md),
 [search](docs/behavior/profiles-and-search.md), and
 [notification](docs/behavior/notifications-and-push.md) contracts.
@@ -83,8 +83,8 @@ rotation, request accounting, and extension boundaries.
 Copy the repository and change the root Cargo package name, README/NOTICE,
 Compose project name, and application settings for your project. Keep the library
 name `kit` unless you also change Rust imports. Regenerate Cargo.lock and OpenAPI,
-then run the checks. Internal crates are source organization, not separate products
-or an automatic template-upgrade mechanism.
+then run the checks. Internal crates organize the source code. They are not
+separate products. Template updates do not automatically update your copy.
 
 - [Architecture](docs/architecture.md) and [runtime](docs/runtime.md)
 - [Environment layout](.envs/README.md), [container files](compose/README.md), and [deployment](deploy/README.md)

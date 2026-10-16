@@ -1,7 +1,7 @@
 # Behavior contracts
 
 These documents describe supported behavior and the invariants tests must preserve.
-They are updated with the implementation, not used as a completion checklist.
+Update them with the implementation. Use milestone records for validation results.
 
 - [Identity](identity.md): account, credential, session, OAuth, and MFA lifecycle.
 - [Jobs and mail](jobs-and-mail.md): atomic registration, delivery, recovery, and retries.

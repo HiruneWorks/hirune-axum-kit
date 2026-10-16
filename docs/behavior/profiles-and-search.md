@@ -4,7 +4,7 @@
 
 `PUT /api/v1/account/profile` creates a profile with `expected_version: 0`, or
 updates it with the current version. A missing own profile returns 404 on GET.
-Display names contain 1–80 characters; bio contains up to 1,000. Profiles have
+Display names contain 1–80 characters. Bio contains up to 1,000. Profiles have
 their own UUIDv7 primary key and a unique account UUID.
 
 Organization user lists, detail, and search expose account UUID, display name,
@@ -25,7 +25,7 @@ completion, and index initialization. Each domain owns its projection:
 
 Configure distinct `MEILISEARCH_INDEX` (files), `MEILISEARCH_POSTS_INDEX` (default
 `posts`), and `MEILISEARCH_PROFILES_INDEX` (default `profiles`). Search uses
-`MEILISEARCH_URL` and `MEILISEARCH_API_KEY`; browser/native clients never receive
+`MEILISEARCH_URL` and `MEILISEARCH_API_KEY`. Browser/native clients never receive
 the engine credential. Run `just manage initialize-integrations` explicitly.
 Startup does not provision or mutate integration schemas.
 
@@ -44,10 +44,10 @@ than 1,000. Lists use cursors separately.
 
 The engine returns at most 1,000 ranked candidate IDs/revisions. Before page
 selection the API deduplicates IDs and hydrates current authorized rows in one
-PostgreSQL query. Posts must still be published in the requested organization;
-profiles must still belong to an active, verified current member. Engine
-revision must equal current PostgreSQL revision, preventing an old search term
-from revealing a renamed or edited row.
+PostgreSQL query. Posts must still be published in the requested organization.
+Profiles must still belong to an active, verified current member. The engine
+revision must equal the current PostgreSQL revision. This check prevents an old
+search term from revealing a renamed or edited row.
 
 The response contains `items`, `page`, `per_page`, `total_in_window`,
 `search_window_limit: 1000`, and `has_next_page`. Counts refer only to the

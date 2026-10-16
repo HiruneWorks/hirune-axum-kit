@@ -59,7 +59,7 @@ pub async fn run_one<F: Future<Output = Result<(), HandlerFailure>>>(
         let mut heartbeat =
             tokio::time::interval(Duration::from_secs((settings.lease_seconds / 3) as u64));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        // A blocked heartbeat is subject to the same monotonic execution deadline.
+        // The monotonic execution deadline also limits a heartbeat that waits.
         let execution = async {
             tokio::pin!(handler);
             loop {

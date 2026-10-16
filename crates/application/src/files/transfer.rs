@@ -110,7 +110,8 @@ pub(super) fn bounded_download(
         drop(body);
         drop(sender);
         let _ = outcome_sender.send(outcome);
-        // The lease ends on consumption/drop or the independent deadline, even if unpolled.
+        // Release the lease on consumption/drop or at the independent deadline.
+        // The deadline applies even if the stream is not polled.
         tokio::select! { _ = cancellation.cancelled() => {}, _ = tokio::time::sleep_until(deadline) => {} }
         shared_permit.lock().expect("transfer lease lock").take();
     }.instrument(tracing::Span::current()));

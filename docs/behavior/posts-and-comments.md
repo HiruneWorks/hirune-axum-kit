@@ -10,7 +10,7 @@ Only current active, verified session actors can enter organization operations.
 Owners can add an existing verified account by UUID through
 `PUT /api/v1/organizations/{organization_id}/members/{account_id}` and remove a
 member through DELETE. Both require recent authentication. Adding an existing
-member is idempotent; owners cannot remove themselves. Each organization allows
+member is idempotent. Owners cannot remove themselves. Each organization allows
 at most 1,000 members. This small direct membership API does not implement
 email invitations, self-join, or ownership transfer.
 
@@ -29,7 +29,7 @@ checked under the organization lock before Cedar evaluates content facts.
 | External posts:read | Admitted API client; same organization; published, nondeleted post only |
 
 Global administrator status does not bypass organization membership. Hidden
-resources return 404; an accessible resource with a forbidden mutation returns
+resources return 404. An accessible resource with a forbidden mutation returns
 403. Deleted posts and comments disappear from normal queries.
 
 ## Writes and attachments
@@ -39,10 +39,10 @@ Title is 1–200 characters, body 1–8,000 characters and at most 12,000 UTF-8 
 Comments contain 1–2,000 characters and at most 8,000 UTF-8 bytes. The shared 16 KiB
 HTTP body limit still applies. Clients render these fields as text.
 
-Creating a post requires `expected_version: 0`; full updates require the current
+Creating a post requires `expected_version: 0`. Full updates require the current
 version. Post and comment deletion require `expected_version` in the query.
 Conflicts return 409. Deletion leaves a tombstone and clears the deleted row's
-text; no wiki revision history or restoration contract is implied.
+text. The baseline does not provide wiki revision history or restoration.
 
 Up to ten distinct ready files from the same organization may be attached.
 The owning file service validates and locks them before replacing associations.
@@ -55,14 +55,14 @@ only its associations and cannot delete the post.
 
 Post, comment, profile, and notification lists use descending immutable
 `(created_at, id)` keyset ordering. Cursors bind the actor, organization/resource,
-state filter, and ordering. Page size defaults to 25 and is limited to 100;
-limit+1 determines whether another page exists. New insertions do not shift older
-pages; visibility changes can still remove rows between requests.
+state filter, and ordering. Page size defaults to 25 and is limited to 100.
+Queries fetch limit+1 rows to determine whether another page exists. New insertions
+do not shift older pages. Visibility changes can still remove rows between requests.
 
 The existing session/organization/file/API-client lists retain ascending UUID
 cursors. See [API pagination](../api.md) for the separate contracts.
 
 Published post changes commit a search job in the same transaction. Search never
-grants access; see [profiles and search](profiles-and-search.md). A comment by
+grants access. See [profiles and search](profiles-and-search.md). A comment by
 someone else commits the author's notification and eligible push jobs with the
-comment; see [notifications and push](notifications-and-push.md).
+comment. See [notifications and push](notifications-and-push.md).

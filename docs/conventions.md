@@ -1,8 +1,9 @@
 # Project conventions
 
-These are project rules, not optional suggestions. Read them with [AGENTS.md](../AGENTS.md)
-and the [confirmed requirements](requirements.md). Keep rules here and behavior in
-the owning contract; milestone notes record evidence and do not replace either.
+Follow these project rules. Read them with [AGENTS.md](../AGENTS.md) and the
+[confirmed requirements](requirements.md). Keep rules here and behavior in the
+owning contract. Milestone notes record evidence. They do not replace the rules
+or behavior contracts.
 
 ## Clarity and ownership
 
@@ -19,9 +20,9 @@ errors, cookies, and middleware at the HTTP root. Each operation has a file name
 for its purpose, containing its handler and exclusive input/output DTOs.
 `routes.rs` declares URLs and methods; `contracts.rs` holds DTOs genuinely shared
 by multiple operations. Module indexes declare/re-export modules and contain no
-business logic or database queries. Version HTTP contracts rather
-than application services. Split files when
-responsibilities differ, not to meet an arbitrary line count. Crate boundaries
+business logic or database queries. Version HTTP contracts. Keep application
+services unversioned. Split files when responsibilities differ. Do not split them
+to meet an arbitrary line count. Crate boundaries
 must clarify ownership or enforce an actual dependency boundary.
 
 Prefer concrete, direct code. Do not add a trait, generic repository, compatibility
@@ -30,18 +31,35 @@ owning service and policy instead of copying a rule into an endpoint or worker.
 Discuss a materially different architecture before implementing it; routine
 implementation choices within the agreed architecture do not need approval.
 
-Write comments in English, briefly, only where a reason or invariant is not clear
-from the code. Describe why a lock, boundary, or exception matters. Do not narrate
+Write concise English comments only where the code does not explain a reason or
+invariant. Describe why a lock, boundary, or exception matters. Do not narrate
 obvious statements. Keep public code and documentation independent of private
 reference projects. This project is authored as Hirune Axum Kit, copyright 2026
 Levi Laine, under Apache-2.0; do not add template-origin attribution to its prose.
 Preserve any legally required third-party notices when adding third-party code.
 
+## Technical writing
+
+For specifications, runbooks, developer documentation, docstrings, and code comments:
+
+> Write this 80% of the way to ASD-STE100.
+
+Use this as a practical clarity target. Write short, direct sentences in the active
+voice. State who does each action and when it applies. Give one instruction per
+step. Use the same term for the same concept. Explain an unfamiliar term when the
+reader needs it.
+
+Keep technical names, identifiers, commands, API fields, units, and protocol terms
+exact. Preserve requirements, security conditions, and verification limits when
+you simplify text. Keep comments concise and necessary. Apply these rules when
+you edit existing prose. Historical milestone records retain their original facts.
+See the [official STE overview](https://www.asd-ste100.org/about_STE.html).
+
 ## Persistence and API contracts
 
 Use Axum, SeaORM, and Tokio. Prefer SeaORM for persistence and SeaORM migrations
-with SeaQuery for schema operations. Raw SQL is an exception for a specifically
-unsupported operation and needs a short explanation beside that operation.
+with SeaQuery for schema operations. Use raw SQL only for an operation these tools
+do not support. Explain the reason briefly beside that operation.
 
 Generate entity primary keys in the application with `Uuid::now_v7()`. References
 to those entities are UUIDs as well. Do not introduce integer or sequence entity
@@ -81,11 +99,11 @@ open identifiers, such as caller-defined job kinds, queue names, OIDC provider
 names, and opaque protocol state tokens, as validated strings.
 
 Deserialize configuration and protocol values at the boundary. Preserve existing
-wire spellings with explicit Serde mappings; HTTP enums belong to their versioned
-adapter and convert into domain enums. Unknown closed values are errors, not
-defaults. Map persisted closed sets through SeaORM ActiveEnum using the existing
-string columns and constraints; a Rust type change does not require replacing
-those columns with PostgreSQL native enums. Never rewrite applied migrations to
+wire spellings with explicit Serde mappings. HTTP enums belong to their versioned
+adapter and convert into domain enums. Reject unknown closed values. Do not map
+them to defaults. Map persisted closed sets through SeaORM ActiveEnum using the
+existing string columns and constraints. A Rust type change does not require
+PostgreSQL native enums. Never rewrite applied migrations to
 change a Rust representation. See [SeaORM ActiveEnum](https://www.sea-ql.org/SeaORM/docs/generate-entity/enumeration/).
 
 ## Runtime and operations
@@ -98,8 +116,8 @@ executables read that environment. Do not add implicit root-dotenv discovery or
 pass schema-owner credentials to API/worker processes.
 
 Keep runtime audit access append-only. Retention cleanup uses a separate restricted
-maintenance role with audit deletion, not migration credentials. The explicit
-maintenance executable schedules bounded cleanup through the shared queue; do not
+maintenance role with audit deletion. Do not use migration credentials. The
+maintenance executable schedules bounded cleanup through the shared queue. Do not
 start schedulers during application bootstrap or require an operating-system timer.
 
 API and worker processes are independently replaceable instances of one modular
