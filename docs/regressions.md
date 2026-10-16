@@ -10,7 +10,8 @@ Current suites: [identity](../tests/identity.rs), [API](../tests/api.rs),
 [files/search](../tests/files.rs), [connected content](../tests/content.rs), and
 [process/SMTP/load](../tests/process.rs).
 Identity includes [privileged authentication and retention](../tests/identity/hardening.rs);
-jobs include [retention races](../tests/jobs/retention.rs).
+jobs include [retention races](../tests/jobs/retention.rs) and
+[dispatch capacity and idle polling](../tests/jobs/dispatch.rs) across independent worker pools.
 Core policy, encryption, mail rendering,
 pagination, proxy trust, and Sentry controls also have workspace unit tests.
 

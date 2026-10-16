@@ -11,6 +11,15 @@ the current token, running state, and a live lease. A stale worker cannot overwr
 a replacement's result. Database time governs lease authority; a corresponding
 Tokio monotonic deadline bounds the complete handler/heartbeat operation.
 
+Workers claim ready work immediately while execution slots are available and
+refill capacity as running jobs finish. `WORKER_POLL_MILLISECONDS` defaults to
+250 and delays another lookup only after no eligible job is found; it does not
+pace ready work. An absolute retry deadline prevents task completions from
+continually postponing that lookup. A full worker does not claim extra jobs.
+Expired-lease recovery continues looking for ready work instead of reporting an
+empty queue after recovering one row. Claim transactions remain short and never
+hold database locks while a handler runs.
+
 Ordinary registrations use the `application` queue. The maintenance executable
 uses the separate `maintenance` queue; claim and expired-lease recovery both
 filter the selected queue. Periodic registration uses database time and a unique

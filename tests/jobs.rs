@@ -15,6 +15,9 @@ mod retention;
 #[path = "jobs/workers.rs"]
 mod workers;
 
+#[path = "jobs/dispatch.rs"]
+mod dispatch;
+
 #[path = "jobs/scheduling.rs"]
 mod scheduling;
 

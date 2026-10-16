@@ -27,7 +27,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just manage repair-search` | Queue up to 100 current records per configured filename/post/profile index for reconciliation. |
 | `just fmt` | Format the workspace. |
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, OpenAPI drift. |
-| `just test-db` | Real PostgreSQL identity and queue tests, including transaction and concurrency failures. |
+| `just test-db` | Real PostgreSQL identity and queue tests, including transaction/concurrency failures, immediate slot refill across 1/2/4 worker pools, and empty-queue polling bounds. |
 | `just test-api` | Production-router API and local signed OIDC tests; external API scope, shared quota concurrency, window rollover, authority races, transaction rollback, and retention. |
 | `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |

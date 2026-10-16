@@ -10,6 +10,7 @@ pub struct WorkerSettings {
     pub lease_seconds: i32,
     pub execution_seconds: i32,
     pub drain_seconds: u64,
+    /// Delay between lookups after no eligible work is found.
     pub poll_milliseconds: u64,
 }
 
@@ -97,8 +98,8 @@ where
 {
     settings.validate()?;
     let mut tasks = JoinSet::new();
-    let mut poll = tokio::time::interval(Duration::from_millis(settings.poll_milliseconds));
-    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let empty_queue_poll_delay = Duration::from_millis(settings.poll_milliseconds);
+    let mut next_claim_at = tokio::time::Instant::now();
     loop {
         tokio::select! {
             biased;
@@ -111,7 +112,7 @@ where
                     None => {},
                 }
             },
-            _ = poll.tick(), if tasks.len() < settings.concurrency => {
+            _ = tokio::time::sleep_until(next_claim_at), if tasks.len() < settings.concurrency => {
                 let claim = tokio::select! {
                     biased;
                     _ = shutdown.cancelled() => break,
@@ -121,6 +122,9 @@ where
                     let queue = queue.clone();
                     let execution = handler(claim.clone());
                     tasks.spawn(async move { run_one(&queue, claim, settings, execution).await });
+                    next_claim_at = tokio::time::Instant::now();
+                } else {
+                    next_claim_at = tokio::time::Instant::now() + empty_queue_poll_delay;
                 }
             },
         }

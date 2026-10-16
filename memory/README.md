@@ -27,3 +27,6 @@ This index is updated when a milestone is complete.
   organization posts/comments, scoped profiles/search, transactional inbox and
   optional FCM, endpoint organization, existing/new closed-set enums, and full
   local verification including multi-instance k6 and release-runtime checks.
+- [2026-10-16 — Worker dispatch](2026-10-16-worker-dispatch.md): immediate execution
+  slot refill, idle-only polling, recovery progress, independent 1/2/4-pool
+  regressions, and local database/process/k6 verification boundaries.

@@ -17,6 +17,11 @@ and fencing remain authoritative across them. In-process semaphores only bound
 local CPU/request capacity. Redis, a broker, and provider credentials are not
 baseline startup dependencies.
 
+Workers fill available execution slots without an inter-job delay. The
+`WORKER_POLL_MILLISECONDS` setting (default 250) controls only the delay after
+an empty queue lookup. Worker concurrency and database/provider limits bound
+active work; this polling setting is not a throughput limit.
+
 Database connections have bounded connection/acquisition times and configured
 pool size. Budget the sum across API and worker replicas against PostgreSQL's
 connection limit. Run migrations first. Bootstrap checks migration history using

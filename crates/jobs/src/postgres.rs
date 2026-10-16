@@ -147,127 +147,129 @@ impl PostgresQueue {
         if lease_seconds < 1 || execution_seconds < lease_seconds {
             return Err(JobError::Invalid);
         }
-        let transaction = self.database.begin().await?;
-        let candidate = job::Entity::find()
-            .filter(job::Column::Queue.eq(&self.queue))
-            .filter(
-                Condition::any()
-                    .add(
-                        Condition::all()
-                            .add(job::Column::State.eq(JobState::Pending))
-                            .add(
-                                Expr::col(job::Column::AvailableAt)
-                                    .lte(Func::cust("clock_timestamp")),
-                            ),
-                    )
-                    .add(
-                        Condition::all()
-                            .add(job::Column::State.eq(JobState::Running))
-                            .add(
-                                Expr::col(job::Column::LeaseUntil)
-                                    .lte(Func::cust("clock_timestamp")),
-                            ),
-                    ),
-            )
-            .order_by_asc(job::Column::AvailableAt)
-            .order_by_asc(job::Column::Id)
-            .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
-            .one(&transaction)
-            .await?;
-        let Some(candidate) = candidate else {
-            transaction.commit().await?;
-            return Ok(None);
-        };
-        let execution_started = tokio::time::Instant::now();
-        let database_now = database_time(&transaction).await?;
-        if let Some(expired_attempt_id) = candidate.claim_token {
-            let error_code = if candidate
-                .deadline_at
-                .is_some_and(|deadline| deadline <= database_now)
-            {
-                "execution_timeout"
-            } else {
-                "lease_expired"
-            };
-            job_attempt::Entity::update_many()
-                .col_expr(job_attempt::Column::FinishedAt, Expr::value(database_now))
-                .col_expr(
-                    job_attempt::Column::Outcome,
-                    Expr::value(AttemptOutcome::LeaseExpired),
+        loop {
+            let transaction = self.database.begin().await?;
+            let candidate = job::Entity::find()
+                .filter(job::Column::Queue.eq(&self.queue))
+                .filter(
+                    Condition::any()
+                        .add(
+                            Condition::all()
+                                .add(job::Column::State.eq(JobState::Pending))
+                                .add(
+                                    Expr::col(job::Column::AvailableAt)
+                                        .lte(Func::cust("clock_timestamp")),
+                                ),
+                        )
+                        .add(
+                            Condition::all()
+                                .add(job::Column::State.eq(JobState::Running))
+                                .add(
+                                    Expr::col(job::Column::LeaseUntil)
+                                        .lte(Func::cust("clock_timestamp")),
+                                ),
+                        ),
                 )
-                .col_expr(job_attempt::Column::ErrorCode, Expr::value(error_code))
-                .filter(job_attempt::Column::Id.eq(expired_attempt_id))
-                .filter(job_attempt::Column::FinishedAt.is_null())
-                .exec(&transaction)
+                .order_by_asc(job::Column::AvailableAt)
+                .order_by_asc(job::Column::Id)
+                .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+                .one(&transaction)
                 .await?;
-        }
-        let mut next_state = candidate.clone().into_active_model();
-        if candidate.attempts >= candidate.max_attempts {
-            next_state.state = Set(JobState::Failed);
-            next_state.finished_at = Set(Some(database_now));
-            next_state.last_error = Set(Some("attempts_exhausted".into()));
-            next_state.claim_token = Set(None);
-            next_state.lease_until = Set(None);
-            next_state.deadline_at = Set(None);
-            next_state.update(&transaction).await?;
-            transaction.commit().await?;
-            return Ok(None);
-        }
-        if candidate.state == JobState::Running {
-            next_state.state = Set(JobState::Pending);
-            next_state.available_at = Set(std::cmp::max(
-                candidate.available_at,
-                database_now + Duration::seconds(retry_delay_seconds(candidate.attempts)),
-            ));
-            next_state.last_error = Set(Some(
-                if candidate
+            let Some(candidate) = candidate else {
+                transaction.commit().await?;
+                return Ok(None);
+            };
+            let execution_started = tokio::time::Instant::now();
+            let database_now = database_time(&transaction).await?;
+            if let Some(expired_attempt_id) = candidate.claim_token {
+                let error_code = if candidate
                     .deadline_at
                     .is_some_and(|deadline| deadline <= database_now)
                 {
                     "execution_timeout"
                 } else {
                     "lease_expired"
-                }
-                .into(),
+                };
+                job_attempt::Entity::update_many()
+                    .col_expr(job_attempt::Column::FinishedAt, Expr::value(database_now))
+                    .col_expr(
+                        job_attempt::Column::Outcome,
+                        Expr::value(AttemptOutcome::LeaseExpired),
+                    )
+                    .col_expr(job_attempt::Column::ErrorCode, Expr::value(error_code))
+                    .filter(job_attempt::Column::Id.eq(expired_attempt_id))
+                    .filter(job_attempt::Column::FinishedAt.is_null())
+                    .exec(&transaction)
+                    .await?;
+            }
+            let mut next_state = candidate.clone().into_active_model();
+            if candidate.attempts >= candidate.max_attempts {
+                next_state.state = Set(JobState::Failed);
+                next_state.finished_at = Set(Some(database_now));
+                next_state.last_error = Set(Some("attempts_exhausted".into()));
+                next_state.claim_token = Set(None);
+                next_state.lease_until = Set(None);
+                next_state.deadline_at = Set(None);
+                next_state.update(&transaction).await?;
+                transaction.commit().await?;
+                continue;
+            }
+            if candidate.state == JobState::Running {
+                next_state.state = Set(JobState::Pending);
+                next_state.available_at = Set(std::cmp::max(
+                    candidate.available_at,
+                    database_now + Duration::seconds(retry_delay_seconds(candidate.attempts)),
+                ));
+                next_state.last_error = Set(Some(
+                    if candidate
+                        .deadline_at
+                        .is_some_and(|deadline| deadline <= database_now)
+                    {
+                        "execution_timeout"
+                    } else {
+                        "lease_expired"
+                    }
+                    .into(),
+                ));
+                next_state.claim_token = Set(None);
+                next_state.lease_until = Set(None);
+                next_state.deadline_at = Set(None);
+                next_state.update(&transaction).await?;
+                transaction.commit().await?;
+                continue;
+            }
+            let attempt_id = Uuid::now_v7();
+            let deadline_at = database_now + Duration::seconds(i64::from(execution_seconds));
+            next_state.state = Set(JobState::Running);
+            next_state.attempts = Set(candidate.attempts + 1);
+            next_state.claim_token = Set(Some(attempt_id));
+            next_state.lease_until = Set(Some(
+                database_now + Duration::seconds(i64::from(lease_seconds)),
             ));
-            next_state.claim_token = Set(None);
-            next_state.lease_until = Set(None);
-            next_state.deadline_at = Set(None);
+            next_state.deadline_at = Set(Some(deadline_at));
             next_state.update(&transaction).await?;
+            job_attempt::ActiveModel {
+                id: Set(attempt_id),
+                job_id: Set(candidate.id),
+                attempt: Set(candidate.attempts + 1),
+                ..Default::default()
+            }
+            .insert(&transaction)
+            .await?;
             transaction.commit().await?;
-            return Ok(None);
+            return Ok(Some(Claim {
+                id: candidate.id,
+                kind: candidate.kind,
+                payload: candidate.payload,
+                request_id: candidate.request_id,
+                attempts: candidate.attempts + 1,
+                max_attempts: candidate.max_attempts,
+                claim_token: attempt_id,
+                deadline_at,
+                execution_deadline: execution_started
+                    + std::time::Duration::from_secs(execution_seconds as u64),
+            }));
         }
-        let attempt_id = Uuid::now_v7();
-        let deadline_at = database_now + Duration::seconds(i64::from(execution_seconds));
-        next_state.state = Set(JobState::Running);
-        next_state.attempts = Set(candidate.attempts + 1);
-        next_state.claim_token = Set(Some(attempt_id));
-        next_state.lease_until = Set(Some(
-            database_now + Duration::seconds(i64::from(lease_seconds)),
-        ));
-        next_state.deadline_at = Set(Some(deadline_at));
-        next_state.update(&transaction).await?;
-        job_attempt::ActiveModel {
-            id: Set(attempt_id),
-            job_id: Set(candidate.id),
-            attempt: Set(candidate.attempts + 1),
-            ..Default::default()
-        }
-        .insert(&transaction)
-        .await?;
-        transaction.commit().await?;
-        Ok(Some(Claim {
-            id: candidate.id,
-            kind: candidate.kind,
-            payload: candidate.payload,
-            request_id: candidate.request_id,
-            attempts: candidate.attempts + 1,
-            max_attempts: candidate.max_attempts,
-            claim_token: attempt_id,
-            deadline_at,
-            execution_deadline: execution_started
-                + std::time::Duration::from_secs(execution_seconds as u64),
-        }))
     }
 
     pub async fn heartbeat(&self, claim: &Claim, lease_seconds: i32) -> Result<(), JobError> {
