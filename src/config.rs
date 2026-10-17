@@ -135,8 +135,8 @@ impl Settings {
                 "AUTH_CLIENT_LIMIT_PER_MINUTE",
                 60,
             )?,
-            session_idle_seconds: number(values, "SESSION_IDLE_SECONDS", 1800)?,
-            session_absolute_seconds: number(values, "SESSION_ABSOLUTE_SECONDS", 43_200)?,
+            session_idle_seconds: number(values, "SESSION_IDLE_SECONDS", 1_209_600)?,
+            session_absolute_seconds: number(values, "SESSION_ABSOLUTE_SECONDS", 7_776_000)?,
         };
         identity.validate()?;
         let database_url = required("DATABASE_URL")?;

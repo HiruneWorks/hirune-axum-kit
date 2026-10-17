@@ -85,6 +85,12 @@ Configured providers must be reachable for initial discovery. SENTRY_DSN is opti
 SENTRY_SAMPLE_RATE controls performance sampling when enabled. The SMTP server
 need not be reachable at API startup. Delivery failures follow the queue contract.
 
+Session lifetimes are `SESSION_IDLE_SECONDS` (default 1209600, 14 days) and
+`SESSION_ABSOLUTE_SECONDS` (default 7776000, 90 days). Idle expiry must be at
+least 60 seconds. Absolute expiry must be at least the idle expiry. The same
+values apply to cookie and bearer sessions. Lower both values for deployments
+that need shorter unattended sessions.
+
 Authentication budgets are `AUTH_IDENTITY_LIMIT_PER_MINUTE` (default 10 per
 operation/identity) and `AUTH_CLIENT_LIMIT_PER_MINUTE` (default 60 shared across
 authentication routes per client). Both accept 1 through 100000. Retention settings

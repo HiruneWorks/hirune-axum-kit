@@ -22,7 +22,10 @@ uses a random salt. There is no external password-screening service or local
 common/breached-password blocklist.
 
 Sessions are opaque credentials backed by PostgreSQL, with idle and absolute
-expiry. Activity extends idle expiry at most once per minute and never beyond the
+expiry. The defaults are 14 days idle and 90 days absolute for both cookie and
+bearer sessions, so native clients stay signed in between uses. Recent
+authentication is a separate five-minute window from the last primary login.
+Activity extends idle expiry at most once per minute and never beyond the
 absolute deadline. Rotation replaces the credential. The old token stops working
 across instances. Lists and revocation are owner-scoped. Account deactivation,
 password reset/change, and MFA configuration changes invalidate existing sessions
