@@ -18,6 +18,7 @@ pub(in crate::http::v1) mod revoke_session;
 pub(in crate::http::v1) mod rotate_session;
 mod routes;
 mod session_responses;
+pub(in crate::http::v1) mod set_initial_password;
 pub(in crate::http::v1) mod signup;
 pub(in crate::http::v1) mod verify_email;
 

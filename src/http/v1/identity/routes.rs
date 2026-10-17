@@ -2,7 +2,7 @@ use super::{
     begin_totp, change_password, complete_mfa, confirm_totp, deactivate_account, disable_totp,
     get_account, list_sessions, login, oidc, regenerate_recovery_codes, request_reset,
     request_verification, reset_password, revoke_all_sessions, revoke_session, rotate_session,
-    signup, verify_email,
+    set_initial_password, signup, verify_email,
 };
 use crate::http::HttpState;
 
@@ -35,6 +35,10 @@ pub(in crate::http::v1) fn routes() -> axum::Router<HttpState> {
         .route(
             "/account/password",
             axum::routing::put(change_password::change_password),
+        )
+        .route(
+            "/account/password/initial",
+            axum::routing::post(set_initial_password::set_initial_password),
         )
         .route(
             "/account/totp",

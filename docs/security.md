@@ -15,7 +15,7 @@ not a secret or an access-control mechanism.
 | Sessions | Random 256-bit opaque credentials; only hashes stored. Shared database authority, idle and absolute expiry, rotation, per-session and all-session revocation. Credential changes increment account security version and revoke existing sessions/challenges. |
 | External API keys | Organization-owned principals, explicit scopes, expiring 256-bit random secrets with domain-separated hashes, one-time issuance, revocation, and atomic shared request accounting. New clients have zero allocation; only trusted operators grant quotas. See [API access](behavior/api-access.md). |
 | MFA | TOTP is optional for ordinary accounts and required for global administrators. Secrets are encrypted; accepted TOTP steps and hashed recovery codes are single use. Password and OIDC login share the gate, which is also checked at session issuance, session authentication, and final service authorization. New-device email challenges are excluded. |
-| Sensitive actions | Require a valid session and recent full authentication (within 5 minutes), with final checks under account lock. Password changes require the current password. MFA removal and recovery-code regeneration additionally require an unused TOTP step or recovery code; administrators cannot remove MFA. |
+| Sensitive actions | Require a valid session and recent full authentication (within 5 minutes), with final checks under account lock. Password changes require the current password. An OIDC-only account can add a first password with recent authentication; an existing password returns 409. MFA removal and recovery-code regeneration additionally require an unused TOTP step or recovery code; administrators cannot remove MFA. |
 | OIDC | Maintained protocol library; authorization code flow, PKCE S256, state, browser binding, nonce, issuer, audience, signature, expiry, and access-token hash validation. Explicit linking only; matching email does not merge accounts. |
 | Mail secrets | Challenge hashes in authority tables; encrypted short-lived pending mail payloads with key IDs and row-specific context. Clear ciphertext after acceptance or expiry. Links use fragments; never log them. |
 | Authorization | Cedar schema and policies validated at startup. Evaluation diagnostics fail closed. Membership-scoped list queries and explicit actor/resource checks. |
@@ -90,12 +90,13 @@ acceptance tests. The baseline does not include passkeys, account email changes,
 administrator UI, or an email delivery guarantee. Do not describe these as
 implemented merely because they appear in OWASP guidance.
 
-Successful password changes and resets register an encrypted, tokenless security
-notification in the same transaction as the credential change. It contains no
-password. Existing sessions remain revoked and a normal login is required. The
-notification remains eligible after account deactivation so deactivation cannot
-suppress a pending password-change alert. Signup welcome messages require a
-verified, active account; action mail still requires its live challenge/version.
+Successful password changes, initial passwords for OIDC-only accounts, and resets
+register an encrypted, tokenless security notification in the same transaction
+as the credential change. It contains no password. Existing sessions remain
+revoked and a normal login is required. The notification remains eligible after
+account deactivation so deactivation cannot suppress a pending password-change
+alert. Signup welcome messages require a verified, active account; action mail
+still requires its live challenge/version.
 
 ## Sources
 
