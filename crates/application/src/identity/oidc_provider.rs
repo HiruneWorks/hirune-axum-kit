@@ -2,7 +2,7 @@ use super::oidc::ProviderSettings;
 use crate::{ApplicationError, ApplicationResult};
 use openidconnect::{
     ClientId, ClientSecret, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, RedirectUrl,
-    core::{CoreClient, CoreProviderMetadata},
+    core::{CoreClient, CoreIdTokenClaims, CoreProviderMetadata},
     reqwest,
 };
 use std::time::{Duration, Instant};
@@ -53,6 +53,30 @@ impl Provider {
                 refresh_failed: false,
             }),
         })
+    }
+
+    pub fn supports_native_login(&self) -> bool {
+        !self.settings.native_client_ids.is_empty()
+    }
+
+    /// Native SDK tokens can name the web client or a configured native client. Every
+    /// audience and any authorized party must be one of them. Multiple audiences require
+    /// an authorized party.
+    pub fn accepts_native_audiences(&self, claims: &CoreIdTokenClaims) -> bool {
+        let configured = |client_id: &str| {
+            client_id == self.settings.client_id
+                || self
+                    .settings
+                    .native_client_ids
+                    .iter()
+                    .any(|native_client_id| native_client_id == client_id)
+        };
+        let audiences = claims.audiences();
+        !audiences.is_empty()
+            && audiences.iter().all(|audience| configured(audience))
+            && claims
+                .authorized_party()
+                .map_or(audiences.len() == 1, |party| configured(party))
     }
 
     pub async fn client(

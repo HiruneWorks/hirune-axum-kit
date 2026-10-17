@@ -143,7 +143,8 @@ async fn run_validated_request(state: &HttpState, request: Request, next: Next) 
             .map(|peer| peer.0.ip());
         let client =
             match client_address(peer, request.headers(), &state.settings.trusted_proxy_ips) {
-                Ok(client) => client,
+                // Requests without a socket peer, such as in-process tests, share one budget.
+                Ok(client) => client.map_or_else(|| "in-process".to_owned(), |ip| ip.to_string()),
                 Err(error) => return error.into_response(),
             };
         if let Err(error) = state
@@ -158,16 +159,16 @@ async fn run_validated_request(state: &HttpState, request: Request, next: Next) 
     next.run(request).await
 }
 
-fn client_address(
+pub(super) fn client_address(
     peer: Option<std::net::IpAddr>,
     headers: &HeaderMap,
     trusted_proxies: &[std::net::IpAddr],
-) -> Result<String, ApiError> {
+) -> Result<Option<std::net::IpAddr>, ApiError> {
     let Some(peer) = peer else {
-        return Ok("in-process".into());
+        return Ok(None);
     };
     if !trusted_proxies.contains(&peer) {
-        return Ok(peer.to_string());
+        return Ok(Some(peer));
     }
     let mut forwarded = headers.get_all("x-forwarded-for").iter();
     let address = forwarded
@@ -177,9 +178,7 @@ fn client_address(
     if forwarded.next().is_some() {
         return Err(ApiError::invalid_input());
     }
-    address
-        .map(|address| address.to_string())
-        .ok_or_else(ApiError::invalid_input)
+    address.map(Some).ok_or_else(ApiError::invalid_input)
 }
 
 fn validate_origin(
@@ -235,12 +234,13 @@ mod tests {
         headers.insert("x-forwarded-for", HeaderValue::from_static("192.0.2.10"));
         assert_eq!(
             client_address(Some(proxy), &headers, &[]).unwrap(),
-            "127.0.0.1"
+            Some(proxy)
         );
         assert_eq!(
             client_address(Some(proxy), &headers, &[proxy]).unwrap(),
-            "192.0.2.10"
+            Some("192.0.2.10".parse().unwrap())
         );
+        assert_eq!(client_address(None, &headers, &[proxy]).unwrap(), None);
         headers.insert(
             "x-forwarded-for",
             HeaderValue::from_static("192.0.2.10, 192.0.2.11"),

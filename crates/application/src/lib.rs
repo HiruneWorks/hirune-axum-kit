@@ -4,6 +4,7 @@ pub mod config;
 mod database;
 pub mod error;
 pub mod files;
+pub mod human_verification;
 pub mod identity;
 pub mod notifications;
 pub mod organizations;

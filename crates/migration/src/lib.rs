@@ -30,6 +30,7 @@ mod m20261015_000027_create_notifications;
 mod m20261015_000028_create_notification_preferences;
 mod m20261015_000029_create_push_devices;
 mod m20261015_000030_create_push_deliveries;
+mod m20261018_000031_create_oauth_native_flows;
 
 pub struct Migrator;
 
@@ -79,6 +80,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261015_000028_create_notification_preferences::Migration),
             Box::new(m20261015_000029_create_push_devices::Migration),
             Box::new(m20261015_000030_create_push_deliveries::Migration),
+            Box::new(m20261018_000031_create_oauth_native_flows::Migration),
         ]
     }
 }

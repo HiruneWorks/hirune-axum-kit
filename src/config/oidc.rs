@@ -13,6 +13,8 @@ struct ConfiguredProvider {
     client_id: String,
     client_secret: String,
     redirect_url: String,
+    #[serde(default)]
+    native_client_ids: Vec<String>,
 }
 
 pub(super) fn parse_providers(
@@ -55,6 +57,7 @@ pub(super) fn parse_providers(
                 client_id: provider.client_id,
                 client_secret: SecretString::new(provider.client_secret),
                 redirect_url,
+                native_client_ids: provider.native_client_ids,
             };
             settings.validate()?;
             ensure!(
@@ -100,6 +103,14 @@ mod tests {
             "/api/v1/auth/oidc/second/callback"
         );
         assert!(!format!("{settings:?}").contains("private-provider-test-secret"));
+        assert!(settings[0].native_client_ids.is_empty());
+        let mut native = provider("native");
+        native["native_client_ids"] = json!(["com.example.ios", "android-client"]);
+        let settings = parse_providers(&values(json!([native])), true).unwrap();
+        assert_eq!(
+            settings[0].native_client_ids,
+            ["com.example.ios", "android-client"]
+        );
         assert!(parse_providers(&BTreeMap::new(), true).unwrap().is_empty());
         assert!(
             parse_providers(&values(json!([])), true)
@@ -127,6 +138,10 @@ mod tests {
         invalid_issuer["issuer"] = json!("http://provider.example.test");
         let mut invalid_redirect = provider("first");
         invalid_redirect["redirect_url"] = json!("https://app.example.test/callback?secret=value");
+        let mut empty_native_client_id = provider("first");
+        empty_native_client_id["native_client_ids"] = json!([" "]);
+        let mut duplicate_native_client_id = provider("first");
+        duplicate_native_client_id["native_client_ids"] = json!(["native", "native"]);
         for providers in [
             json!([provider("first"), provider("first")]),
             json!([missing_secret]),
@@ -136,6 +151,8 @@ mod tests {
             json!([unknown_field]),
             json!([invalid_issuer]),
             json!([invalid_redirect]),
+            json!([empty_native_client_id]),
+            json!([duplicate_native_client_id]),
             json!({"private-provider-test-secret": true}),
         ] {
             let error = parse_providers(&values(providers), true).unwrap_err();

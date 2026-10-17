@@ -3,6 +3,7 @@ use application::{
     api_access::ApiAccessService,
     authorization::Authorization,
     files::FileService,
+    human_verification::HumanVerificationService,
     identity::{IdentityService, oidc::OidcService},
     notifications::NotificationService,
     organizations::OrganizationService,
@@ -30,6 +31,7 @@ pub struct Application {
     pub posts: PostService,
     pub notifications: NotificationService,
     pub oidc: OidcService,
+    pub human_verification: HumanVerificationService,
     pub queue: PostgresQueue,
     pub mailer: Mailer,
     database: DatabaseConnection,
@@ -58,6 +60,7 @@ pub async fn bootstrap(settings: &Settings) -> anyhow::Result<Application> {
     let identity =
         IdentityService::new(database.clone(), settings.identity.clone(), authorization).await?;
     let oidc = OidcService::discover(identity.clone(), settings.oidc.clone()).await?;
+    let human_verification = HumanVerificationService::new(settings.human_verification.clone())?;
     let organizations = OrganizationService::new(identity.clone());
     let api_access = ApiAccessService::new(identity.clone(), organizations.clone());
     let files = FileService::new(
@@ -88,6 +91,7 @@ pub async fn bootstrap(settings: &Settings) -> anyhow::Result<Application> {
         posts,
         notifications,
         oidc,
+        human_verification,
         queue: PostgresQueue::new(database.clone()),
         mailer,
         database,

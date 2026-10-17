@@ -1,6 +1,8 @@
 use super::{
     IdentityService,
-    entities::{audit_event, challenge, mail_delivery, oauth_flow, rate_limit, session},
+    entities::{
+        audit_event, challenge, mail_delivery, oauth_flow, oauth_native_flow, rate_limit, session,
+    },
 };
 use crate::{ApplicationError, ApplicationResult, database::database_time};
 use sea_orm::{
@@ -80,6 +82,17 @@ impl IdentityService {
             .into_query();
         deleted += oauth_flow::Entity::delete_many()
             .filter(oauth_flow::Column::Id.in_subquery(flows))
+            .exec(&transaction)
+            .await?
+            .rows_affected;
+        let native_flows = oauth_native_flow::Entity::find()
+            .select_only()
+            .column(oauth_native_flow::Column::Id)
+            .filter(oauth_native_flow::Column::ExpiresAt.lte(now))
+            .limit(1000)
+            .into_query();
+        deleted += oauth_native_flow::Entity::delete_many()
+            .filter(oauth_native_flow::Column::Id.in_subquery(native_flows))
             .exec(&transaction)
             .await?
             .rows_affected;
