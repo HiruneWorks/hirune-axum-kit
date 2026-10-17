@@ -9,7 +9,15 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-const INITIAL_PASSWORD: &str = "initial oidc account passphrase";
+/// Creates a valid password at runtime, so tests keep credentials out of source literals.
+fn generated_password() -> String {
+    auth_core::token::generate_secure_token()
+}
+
+/// Creates a password below the 15-character minimum.
+fn generated_short_password() -> String {
+    generated_password()[..9].to_owned()
+}
 
 async fn oidc_session(
     oidc: &OidcService,
@@ -99,6 +107,7 @@ async fn oidc_only_account_sets_one_initial_password_and_revokes_credentials() -
     let provider = MockProvider::start().await?;
     let oidc = OidcService::discover(identity.clone(), vec![provider.settings()]).await?;
     let email = "initial-password@example.test";
+    let initial_password = generated_password();
     let credentials = oidc_session(&oidc, &provider, email, "initial-subject").await?;
     let other_credentials = oidc_session(&oidc, &provider, email, "initial-subject").await?;
     let actor = identity.authenticate_session(&credentials.token).await?;
@@ -108,13 +117,13 @@ async fn oidc_only_account_sets_one_initial_password_and_revokes_credentials() -
     let account_id = actor.account_id();
     assert!(!identity.get_account(&actor).await?.has_password);
     assert!(matches!(
-        login_with_password(&identity, email, INITIAL_PASSWORD).await,
+        login_with_password(&identity, email, &initial_password).await,
         Err(ApplicationError::Unauthenticated)
     ));
 
     assert!(matches!(
         identity
-            .set_initial_password(&actor, "too short".into(), TraceContext::default())
+            .set_initial_password(&actor, generated_short_password(), TraceContext::default())
             .await,
         Err(ApplicationError::InvalidInput(_))
     ));
@@ -129,7 +138,7 @@ async fn oidc_only_account_sets_one_initial_password_and_revokes_credentials() -
         identity
             .set_initial_password(
                 &other_actor,
-                INITIAL_PASSWORD.into(),
+                initial_password.clone(),
                 TraceContext::default()
             )
             .await,
@@ -143,7 +152,7 @@ async fn oidc_only_account_sets_one_initial_password_and_revokes_credentials() -
     );
 
     identity
-        .set_initial_password(&actor, INITIAL_PASSWORD.into(), TraceContext::default())
+        .set_initial_password(&actor, initial_password.clone(), TraceContext::default())
         .await?;
     let after = stored_account(&database, account_id).await?;
     assert!(after.password_hash.is_some());
@@ -163,7 +172,7 @@ async fn oidc_only_account_sets_one_initial_password_and_revokes_credentials() -
         1
     );
 
-    let password_session = login_with_password(&identity, email, INITIAL_PASSWORD).await?;
+    let password_session = login_with_password(&identity, email, &initial_password).await?;
     let password_actor = identity
         .authenticate_session(&password_session.token)
         .await?;
@@ -172,7 +181,7 @@ async fn oidc_only_account_sets_one_initial_password_and_revokes_credentials() -
         identity
             .set_initial_password(
                 &password_actor,
-                "replacement initial passphrase".into(),
+                generated_password(),
                 TraceContext::default()
             )
             .await,
@@ -203,11 +212,12 @@ async fn existing_and_concurrent_passwords_are_never_replaced_by_initial_passwor
     let identity = database.identity_service().await?;
     let (password_actor, password_credentials) = database.verified_account(&identity).await?;
     let password_email = identity.get_account(&password_actor).await?.email;
+    let rejected_password = generated_password();
     assert!(matches!(
         identity
             .set_initial_password(
                 &password_actor,
-                INITIAL_PASSWORD.into(),
+                rejected_password.clone(),
                 TraceContext::default()
             )
             .await,
@@ -218,7 +228,7 @@ async fn existing_and_concurrent_passwords_are_never_replaced_by_initial_passwor
         .await?;
     login_with_password(&identity, &password_email, test_support::TEST_PASSWORD).await?;
     assert!(matches!(
-        login_with_password(&identity, &password_email, INITIAL_PASSWORD).await,
+        login_with_password(&identity, &password_email, &rejected_password).await,
         Err(ApplicationError::Unauthenticated)
     ));
 
@@ -228,21 +238,18 @@ async fn existing_and_concurrent_passwords_are_never_replaced_by_initial_passwor
     let credentials = oidc_session(&oidc, &provider, email, "concurrent-subject").await?;
     let actor = identity.authenticate_session(&credentials.token).await?;
     let before = stored_account(&database, actor.account_id()).await?;
-    let candidates = [
-        "first concurrent passphrase",
-        "second concurrent passphrase",
-    ];
-    let attempts = candidates.map(|password| {
+    let candidates = [generated_password(), generated_password()];
+    let attempts = candidates.clone().map(|password| {
         let identity = identity.clone();
         let actor = actor.clone();
         tokio::spawn(async move {
             identity
-                .set_initial_password(&actor, password.into(), TraceContext::default())
+                .set_initial_password(&actor, password, TraceContext::default())
                 .await
         })
     });
     let mut succeeded = Vec::new();
-    for (password, attempt) in candidates.into_iter().zip(attempts) {
+    for (password, attempt) in candidates.iter().zip(attempts) {
         match attempt.await? {
             Ok(()) => succeeded.push(password),
             Err(ApplicationError::Conflict | ApplicationError::Unauthenticated) => {}
@@ -260,7 +267,7 @@ async fn existing_and_concurrent_passwords_are_never_replaced_by_initial_passwor
         initial_password_audit_events(&database, actor.account_id()).await?,
         1
     );
-    for password in candidates {
+    for password in &candidates {
         let login = login_with_password(&identity, email, password).await;
         if password == succeeded[0] {
             login?;
@@ -285,6 +292,7 @@ async fn initial_password_endpoint_validates_input_and_clears_the_session() -> R
     let app = bootstrap(&settings).await?;
     let server = TestServer::new(build_router(app.clone(), settings.http));
     let email = "initial-endpoint@example.test";
+    let initial_password = generated_password();
 
     let response = server
         .post("/api/v1/auth/oidc/test")
@@ -338,10 +346,10 @@ async fn initial_password_endpoint_validates_input_and_clears_the_session() -> R
     assert_eq!(account.json::<serde_json::Value>()["has_password"], false);
     server
         .post("/api/v1/account/password/initial")
-        .json(&json!({"new_password": INITIAL_PASSWORD}))
+        .json(&json!({"new_password": initial_password}))
         .await
         .assert_status_unauthorized();
-    let short_password = "too short";
+    let short_password = generated_short_password();
     let response = server
         .post("/api/v1/account/password/initial")
         .add_header(header::COOKIE, &session_cookie)
@@ -349,12 +357,12 @@ async fn initial_password_endpoint_validates_input_and_clears_the_session() -> R
         .json(&json!({"new_password": short_password}))
         .await;
     response.assert_status_bad_request();
-    assert!(!response.text().contains(short_password));
+    assert!(!response.text().contains(&short_password));
     server
         .post("/api/v1/account/password/initial")
         .add_header(header::COOKIE, &session_cookie)
         .add_header(header::ORIGIN, "http://localhost:3000")
-        .json(&json!({"new_password": INITIAL_PASSWORD, "current_password": "unused"}))
+        .json(&json!({"new_password": initial_password, "current_password": generated_password()}))
         .await
         .assert_status_bad_request();
 
@@ -362,7 +370,7 @@ async fn initial_password_endpoint_validates_input_and_clears_the_session() -> R
         .post("/api/v1/account/password/initial")
         .add_header(header::COOKIE, &session_cookie)
         .add_header(header::ORIGIN, "http://localhost:3000")
-        .json(&json!({"new_password": INITIAL_PASSWORD}))
+        .json(&json!({"new_password": initial_password}))
         .await;
     response.assert_status(StatusCode::NO_CONTENT);
     assert!(
@@ -378,7 +386,7 @@ async fn initial_password_endpoint_validates_input_and_clears_the_session() -> R
 
     let login = server
         .post("/api/v1/auth/login")
-        .json(&json!({"email": email, "password": INITIAL_PASSWORD, "transport": "bearer"}))
+        .json(&json!({"email": email, "password": initial_password, "transport": "bearer"}))
         .await;
     login.assert_status_ok();
     let authorization = format!(
@@ -396,7 +404,7 @@ async fn initial_password_endpoint_validates_input_and_clears_the_session() -> R
     let conflict = server
         .post("/api/v1/account/password/initial")
         .add_header(header::AUTHORIZATION, &authorization)
-        .json(&json!({"new_password": "another initial passphrase"}))
+        .json(&json!({"new_password": generated_password()}))
         .await;
     conflict.assert_status(StatusCode::CONFLICT);
     assert_eq!(

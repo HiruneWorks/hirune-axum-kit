@@ -47,6 +47,9 @@ All checks ran locally on Windows with Docker, on 2026-10-17.
 - `just test-process`, `just test-files`, `just test-content`, k6, deployment,
   release-image, and copied-template checks were not run for this change. No
   remote CI run or live OIDC provider was verified.
+- GitHub CodeQL flagged the literal test passwords (alerts 22-25). The tests
+  now generate passwords at runtime. `just check` and `just test-api` passed
+  again with the same counts.
 
 ## Remaining work
 
