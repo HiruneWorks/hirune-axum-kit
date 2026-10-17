@@ -6,7 +6,10 @@ verification email in the same transaction. Verification consumes one expiring
 challenge and registers a welcome email in the same transaction.
 Resending replaces the previous verification challenge and only sends for pending
 accounts. Duplicate signup and ineligible resend/reset requests return accepted
-without disclosing whether an account exists.
+without disclosing whether an account exists. When Turnstile is configured,
+signup, verification resend, password-reset requests, and password login first
+require a valid `human_verification_token`. See
+[human verification](../security.md#human-verification).
 
 Password login verifies credentials before locking, then rechecks the account and
 credential snapshot under lock. An account must be active and verified. If TOTP

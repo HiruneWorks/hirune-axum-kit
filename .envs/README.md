@@ -41,3 +41,8 @@ default. Store it as a single quoted line in `app.env` or inject it through secr
 management. Each configured provider has its own client secret. The
 [runtime example](../docs/runtime.md) shows two providers; no separate per-provider
 environment variable scheme is needed.
+
+`TURNSTILE_SECRET_KEY` enables optional Cloudflare Turnstile human verification.
+Leave it empty to disable the check. Store the real secret only in `.<environment>/`
+or secret management. Cloudflare's public test secrets belong only in local files;
+production configuration rejects them. See [runtime settings](../docs/runtime.md).

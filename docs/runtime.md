@@ -115,6 +115,37 @@ Behind a proxy, configure exact ALLOWED_ORIGINS and the explicit TRUSTED_PROXY_I
 contract in [security](security.md). Protect the backend from direct untrusted
 network access. Do not enable forwarding-header trust globally.
 
+## Optional human verification
+
+Set `TURNSTILE_SECRET_KEY` to enable Cloudflare Turnstile on signup,
+verification resend, password-reset requests, and password login. Leave it
+empty or unset to disable the check. The API then requires no Turnstile
+configuration and does not contact Cloudflare. Keep the secret in secret
+management. It is a server credential; only the sitekey belongs in the client.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `TURNSTILE_SECRET_KEY` | unset | Widget secret key. Its presence enables verification. |
+| `TURNSTILE_EXPECTED_HOSTNAMES` | unset | Comma-separated hostnames that may serve the widget. Unset skips the hostname check. |
+| `TURNSTILE_VERIFY_ACTION` | `true` | Requires the widget action to match the operation. |
+
+The other Turnstile settings require the secret. The server always calls
+`https://challenges.cloudflare.com/turnstile/v0/siteverify` with a five-second
+attempt deadline. Use the same settings on all API replicas. Workers and
+maintenance do not use them.
+
+For local development, Cloudflare publishes test keys. The secret
+`1x0000000000000000000000000000000AA` always passes,
+`2x0000000000000000000000000000000AA` always fails, and
+`3x0000000000000000000000000000000AA` reports a spent token. Use them with a
+test sitekey such as `1x00000000000000000000AA` and the dummy token
+`XXXX.DUMMY.TOKEN.XXXX`. The test responses do not carry your operation's action
+or hostname, so set `TURNSTILE_VERIFY_ACTION=false` and leave
+`TURNSTILE_EXPECTED_HOSTNAMES` unset with test keys. `APP_ENV=production`
+rejects these test secrets. See
+[Cloudflare testing](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)
+and [human verification](security.md#human-verification).
+
 ## Optional search and push
 
 The shared `MEILISEARCH_URL` and `MEILISEARCH_API_KEY` enable derived filename,

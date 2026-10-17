@@ -1,9 +1,9 @@
-use super::{HttpState, error::ApiError};
+use super::{HttpState, error::ApiError, middleware::client_address};
 use application::config::SecretString;
 use application::{ApplicationError, identity::AuthenticatedSession};
 use axum::{
     Json,
-    extract::{FromRequest, FromRequestParts, Path, Query, Request},
+    extract::{ConnectInfo, FromRequest, FromRequestParts, Path, Query, Request},
     http::{HeaderMap, StatusCode, request::Parts},
 };
 use cookie::Cookie;
@@ -81,6 +81,23 @@ impl FromRequestParts<HttpState> for Session {
         let token = session_token(&parts.headers, state.settings.session_cookie_name())?
             .ok_or(ApplicationError::Unauthenticated)?;
         Ok(Self(state.app.identity.authenticate_session(&token).await?))
+    }
+}
+
+/// Client IP address under the trusted-proxy contract. It is absent when the
+/// request has no socket peer, for example in an in-process test.
+pub struct ClientAddress(pub Option<std::net::IpAddr>);
+impl FromRequestParts<HttpState> for ClientAddress {
+    type Rejection = ApiError;
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &HttpState,
+    ) -> Result<Self, Self::Rejection> {
+        let peer = parts
+            .extensions
+            .get::<ConnectInfo<std::net::SocketAddr>>()
+            .map(|peer| peer.0.ip());
+        client_address(peer, &parts.headers, &state.settings.trusted_proxy_ips).map(Self)
     }
 }
 

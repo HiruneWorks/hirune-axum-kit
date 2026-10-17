@@ -267,6 +267,14 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "human_verification_token": {
+            "description": "Cloudflare Turnstile token. The widget action is `email_verification` for\nverification mail or `password_reset` for password reset. Required when\nthe server enables human verification; ignored otherwise.",
+            "maxLength": 2048,
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -495,6 +503,14 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "human_verification_token": {
+            "description": "Cloudflare Turnstile token from a widget with the action `login`.\nRequired when the server enables human verification; ignored otherwise.",
+            "maxLength": 2048,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "password": {
             "type": "string"
@@ -1199,6 +1215,14 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "human_verification_token": {
+            "description": "Cloudflare Turnstile token from a widget with the action `signup`.\nRequired when the server enables human verification; ignored otherwise.",
+            "maxLength": 2048,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "password": {
             "description": "At least 15 Unicode characters and at most 1024 UTF-8 bytes.",

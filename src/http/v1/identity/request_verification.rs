@@ -1,9 +1,10 @@
 use crate::http::{
     HttpState,
     error::ApiError,
-    extract::ApiJson,
+    extract::{ApiJson, ClientAddress},
     v1::identity::contracts::{AcceptedOutput, EmailInput},
 };
+use application::human_verification::HumanVerificationAction;
 use axum::{Extension, Json, extract::State, http::StatusCode, response::IntoResponse};
 use jobs::TraceContext;
 
@@ -11,8 +12,18 @@ use jobs::TraceContext;
 pub async fn request_verification(
     State(state): State<HttpState>,
     Extension(trace): Extension<TraceContext>,
+    ClientAddress(client_address): ClientAddress,
     ApiJson(input): ApiJson<EmailInput>,
 ) -> Result<impl IntoResponse, ApiError> {
+    state
+        .app
+        .human_verification
+        .verify(
+            HumanVerificationAction::EmailVerification,
+            input.human_verification_token.as_deref(),
+            client_address,
+        )
+        .await?;
     state
         .app
         .identity

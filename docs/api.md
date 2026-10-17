@@ -57,6 +57,12 @@ public error codes. Worker handlers return error codes and retryability to the
 job runtime, which owns attempt recording and retry decisions. Request/job spans
 preserve correlation across these boundaries without returning internal details.
 
+When Cloudflare Turnstile is configured, signup, verification resend, password-reset
+requests, and password login read `human_verification_token` from the JSON body.
+A missing or rejected token returns `403` `human_verification_failed`. A provider
+failure returns `503` `human_verification_unavailable`. Without Turnstile the
+field is optional and ignored. See [human verification](security.md#human-verification).
+
 JSON bodies are bounded at 16 KiB. Requests have a configured deadline and a
 bounded concurrency budget. Overload returns 503. Invalid attempts count toward
 authentication limits. Authentication 429 responses include `Retry-After: 60`.

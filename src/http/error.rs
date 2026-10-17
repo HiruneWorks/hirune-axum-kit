@@ -106,6 +106,16 @@ impl From<ApplicationError> for ApiError {
                 "integration_unavailable",
                 "The integration is temporarily unavailable.",
             ),
+            ApplicationError::HumanVerificationFailed => Self::new(
+                StatusCode::FORBIDDEN,
+                "human_verification_failed",
+                "Human verification failed. Complete a new challenge and try again.",
+            ),
+            ApplicationError::HumanVerificationUnavailable => Self::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "human_verification_unavailable",
+                "Human verification is temporarily unavailable.",
+            ),
             ApplicationError::FileTooLarge => Self::new(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "file_too_large",

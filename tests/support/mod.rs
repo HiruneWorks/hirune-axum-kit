@@ -40,6 +40,7 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
         profile_search: None,
         fcm: None,
         oidc: Vec::new(),
+        human_verification: None,
         observability: ObservabilitySettings {
             log_filter: "info,sqlx=off,sea_orm=off,reqwest=off,hyper=off".into(),
             sentry_dsn: None,

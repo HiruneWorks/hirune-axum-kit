@@ -95,6 +95,10 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
   concurrent replacements leave one returned generation and revoke old credentials.
 - JSON/query validation reuses domain rules, rejects invalid input before the
   handler, and does not expose submitted secrets in error responses.
+- Optional Turnstile verification uses a local fake siteverify server and no live
+  network call. It covers acceptance, missing and rejected tokens, hostname and
+  action mismatches, a retry that reuses its idempotency key, provider timeouts
+  and 5xx responses, and unchanged behavior when it is not configured.
 - Audit retention deletes bounded old batches while preserving recent events.
 - Finished-job retention preserves rows retried or failed again while deletion
   waits, and removes attempts only with an eligible retained job.

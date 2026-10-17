@@ -10,6 +10,12 @@ use validator::{Validate, ValidationError, ValidationErrors};
 pub struct EmailInput {
     #[validate(custom(function = "validation::email"))]
     pub email: String,
+    /// Cloudflare Turnstile token. The widget action is `email_verification` for
+    /// verification mail or `password_reset` for password reset. Required when
+    /// the server enables human verification; ignored otherwise.
+    #[validate(length(max = 2048))]
+    #[schema(max_length = 2048)]
+    pub human_verification_token: Option<String>,
 }
 
 #[derive(Default, Deserialize, ToSchema, Clone, Copy)]
