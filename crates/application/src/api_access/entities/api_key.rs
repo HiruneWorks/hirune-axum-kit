@@ -6,7 +6,9 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub client_id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(100))")]
     pub name: String,
+    #[sea_orm(column_type = "String(StringLen::N(64))")]
     pub secret_hash: String,
     pub created_at: DateTimeUtc,
     pub expires_at: DateTimeUtc,

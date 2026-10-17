@@ -25,6 +25,7 @@
 - Model finite states, purposes, roles, platforms, scopes, and ordering modes as enums. Convert strings at configuration/protocol/storage boundaries; preserve wire values explicitly and reject unknown values. Use SeaORM ActiveEnum for persisted closed sets.
 - Use application-generated UUIDv7 primary keys and UUID foreign keys. Keep natural uniqueness in explicit constraints; integers are for counts and versions, not entity identities.
 - Give each migration one clear schema responsibility. Keep its table, indexes, and constraints together; preserve applied migrations and add subsequent changes as new migrations.
+- Keep entity column metadata accurate. Register constrained string-enum columns and run `just test-db` for schema or persisted-enum changes. See [schema consistency](docs/schema-verification.md).
 - Pass settings explicitly. Keep API and worker processes replaceable; shared storage owns sessions, authentication flows, rate limits, and jobs. See [runtime](docs/runtime.md).
 - Run periodic maintenance through the portable maintenance executable and its shared job queue, with separate database credentials. Do not require an operating-system scheduler.
 - Keep environment examples under `.envs/.example/`, actual secrets under ignored `.envs/.<environment>/`, container build/local files under `compose/`, and deployment wiring under `deploy/`. Runtime processes must not receive migration-role credentials.

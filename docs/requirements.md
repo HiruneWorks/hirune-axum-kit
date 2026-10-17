@@ -30,7 +30,7 @@ requirements. It does not establish that verification steps passed.
 | Periodic maintenance | A portable scheduler/worker process registers deduplicated PostgreSQL jobs. No systemd or host-cron dependency; maintenance keeps its restricted database role and dedicated queue. |
 | Identity mail | Separate verification, password-reset, welcome, and password-change templates; account notifications commit durably with the successful account change. |
 | Device policy | New-device email verification is excluded from the default template. Use MFA for the additional authentication factor. |
-| Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. |
+| Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. Compare migrated schemas with entity metadata and registered string-enum CHECK values. Report schema failures in English. |
 | Files | Original bytes in a separate private S3-compatible SeaweedFS store; PostgreSQL owns metadata, permissions, quota reservations, and lifecycle. No default content sanitization, antivirus, image reencoding, video processing, or media processor. |
 | Search | Meilisearch is a derived index behind the authenticated API; current PostgreSQL state and permissions decide which results may be returned. |
 | Content example | Organization posts and single-level comments connect authorization, original attachments, profile/user and post search, cursor lists, numbered search pages, and durable notifications. No wiki engine. |

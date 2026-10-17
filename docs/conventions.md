@@ -72,6 +72,11 @@ Each migration creates one table and its indexes and constraints, or makes one
 coherent subsequent schema change. Foreign keys express dependencies and migration
 order. Never rewrite a migration that has been applied by a consuming project.
 
+Keep entity column metadata consistent with the migrated schema. Declare string
+lengths, text, and JSONB explicitly. Register constrained string-enum columns in
+the [schema comparison](schema-verification.md) and run `just test-db` after schema
+or persisted-enum changes. Historical migrations must not import current domain enums.
+
 Services own authorization, lock order, writes, and transactions. Repository
 writes require the caller's transaction. Recheck mutable authority under lock.
 Commit durable jobs in the same transaction as the business change. Network calls

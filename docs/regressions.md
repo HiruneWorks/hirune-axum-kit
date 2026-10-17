@@ -15,6 +15,10 @@ jobs include [retention races](../tests/jobs/retention.rs) and
 Core policy, encryption, mail rendering,
 pagination, proxy trust, and Sentry controls also have workspace unit tests.
 
+[Schema consistency](../tests/schema_consistency.rs) compares migrated tables,
+columns, types, nullability, primary keys, and registered string-enum CHECK values.
+It also verifies failure detection with deliberate database changes.
+
 | Reviewed test | Disposition |
 | --- | --- |
 | `account.rs::email_change_requires_password_and_confirmation` | Excluded: changing account email is outside the baseline; a future implementation must require reauthentication and confirmation. |
