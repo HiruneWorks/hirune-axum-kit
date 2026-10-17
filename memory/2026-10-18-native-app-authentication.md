@@ -31,9 +31,11 @@
   configured native client ID. Multiple audiences require `azp`. The library
   still verifies signature, issuer, expiry, and nonce.
 - Native routes are login only. Identity linking remains a browser flow.
-- Turnstile human verification was not on `main` when this branch started.
-  Decide whether native login needs it when the two branches merge; browser
-  OIDC login is not gated by it.
+- OIDC login, browser or native, does not use Turnstile. The provider performs
+  the interactive sign-in, and provider SDKs have no Turnstile widget.
+- The branch merged `main` (schema consistency) and the Turnstile branch. The
+  merge kept both sides of each conflict. The native flow entity declares its
+  64-character string columns for the schema check.
 
 ## Validation
 
@@ -54,6 +56,10 @@
   passed alone. The full identity (16/16) and jobs (14/14) binaries then passed
   with `--test-threads=2` against a disposable local PostgreSQL. The exact cause
   of the first failures was not established beyond the observed load.
+- After merging `main` and the Turnstile branch, `cargo xtask check` passed and
+  regenerated OpenAPI had no content drift. `cargo xtask test-db` passed identity
+  16/16, jobs 14/14, and schema_consistency 2/2. `cargo xtask test-api` passed
+  api 7/7, api_access 9/9, human_verification 2/2, and oidc 9/9.
 - Process, file, content, deployment, release-image, k6, and copied-template
   suites were not run. No remote CI, deployment, or live provider acceptance was
   verified.
@@ -62,7 +68,3 @@
 
 - Live Google and Apple SDK acceptance against real client registrations has
   not been performed.
-- Deployment grants are provisioned once with `ON ALL TABLES`; there are no
-  default privileges or re-grant step after `migrate`. An upgraded deployment must
-  grant runtime and maintenance `SELECT, INSERT, UPDATE, DELETE` on
-  `oauth_native_flows` before native login or cleanup can use it.

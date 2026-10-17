@@ -91,6 +91,11 @@ example because the password is wrong, the client must reset the widget and get
 a new token. Native clients that log in with `transport: "bearer"` must also
 supply a token when Turnstile is enabled.
 
+OIDC login does not use Turnstile, for browser redirects or native ID tokens.
+The provider performs the interactive sign-in. The API accepts only a signed ID
+token for a configured client that carries the flow's single-use nonce. Provider
+SDK sign-in has no Turnstile widget.
+
 Turnstile does not replace the PostgreSQL client and identity limits, and it is
 not a volumetric defense. Keep network or WAF limits in front of the API.
 Production configuration rejects Cloudflare's published test secret keys.
