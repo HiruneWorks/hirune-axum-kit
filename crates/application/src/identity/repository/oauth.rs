@@ -1,4 +1,4 @@
-use super::super::entities::{external_identity, oauth_flow};
+use super::super::entities::{external_identity, oauth_flow, oauth_native_flow};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait,
     ExprTrait, PaginatorTrait, QueryFilter, QuerySelect, Set,
@@ -38,6 +38,29 @@ pub async fn consume_flow(
         .await?
         .rows_affected
         == 1)
+}
+
+pub async fn insert_native_flow(
+    transaction: &DatabaseTransaction,
+    flow: oauth_native_flow::ActiveModel,
+) -> Result<(), DbErr> {
+    flow.insert(transaction).await?;
+    Ok(())
+}
+
+/// Deletes and returns an unexpired native flow only when it belongs to `provider`.
+pub async fn consume_native_flow(
+    transaction: &DatabaseTransaction,
+    flow_hash: &str,
+    provider: &str,
+) -> Result<Option<oauth_native_flow::Model>, DbErr> {
+    Ok(oauth_native_flow::Entity::delete_many()
+        .filter(oauth_native_flow::Column::FlowHash.eq(flow_hash))
+        .filter(oauth_native_flow::Column::Provider.eq(provider))
+        .filter(Expr::col(oauth_native_flow::Column::ExpiresAt).gt(Func::cust("clock_timestamp")))
+        .exec_with_returning(transaction)
+        .await?
+        .pop())
 }
 
 pub async fn find_identity(

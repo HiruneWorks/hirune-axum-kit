@@ -102,6 +102,12 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
   holds canonical parent locks and waits for the file row. A synchronized
   PostgreSQL regression covers the foreign-key lock cycle found by mixed load.
 - OIDC checks browser binding, state replay, nonce, signed key rotation, provider outages, explicit linking, and the common MFA gate.
+- Native OIDC ID token login checks opt-in providers, Android and iOS audience
+  shapes, unconfigured `aud`/`azp`, missing or different nonces, expiry, issuer,
+  unpublished keys, malformed tokens, flow consumption on rejection, provider
+  mismatch, browser/native flow separation, the common MFA gate, expired-flow
+  rejection and cleanup, and bearer-only HTTP responses without an Origin or
+  cookie (`tests/oidc/native.rs`).
 - Worker crash recovery preserves attempt history, honors retry delay, and fences stale completion; a hung heartbeat/handler cannot hold a lease forever.
 - Database outages return unavailable; HTTP configuration is isolated across application instances.
 - Real Mailpit delivery checks HTML/text content, worker replacement, cross-process revocation, and absence of secrets in captured process logs.

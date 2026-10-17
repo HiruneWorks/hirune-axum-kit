@@ -33,3 +33,6 @@ This index is updated when a milestone is complete.
 - [2026-10-17 — Technical writing](2026-10-17-technical-writing.md): practical
   ASD-STE100 clarity guidance, revised existing documentation and comments, and
   preserved technical contracts.
+- [2026-10-18 — Native app authentication](2026-10-18-native-app-authentication.md):
+  14/90-day default session lifetimes, native OIDC ID token login with opt-in
+  client IDs, separate single-use native flows, and shared login rules.

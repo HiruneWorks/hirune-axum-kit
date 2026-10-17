@@ -48,7 +48,8 @@ SMTP. Cookie security follows APP_ENV.
 Secrets use redacted Debug representations. Do not log complete settings.
 
 Configure any number of named providers with the `OIDC_PROVIDERS` JSON array.
-Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirect_url`:
+Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirect_url`.
+The optional `native_client_ids` array enables native ID token login:
 
 ```json
 [
@@ -57,7 +58,11 @@ Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirec
     "issuer": "https://accounts.google.com",
     "client_id": "replace-with-google-client-id",
     "client_secret": "replace-with-google-client-secret",
-    "redirect_url": "https://app.example.com/api/v1/auth/oidc/google/callback"
+    "redirect_url": "https://app.example.com/api/v1/auth/oidc/google/callback",
+    "native_client_ids": [
+      "replace-with-google-ios-client-id",
+      "replace-with-google-android-client-id"
+    ]
   },
   {
     "name": "company",
@@ -80,6 +85,13 @@ Keep provider definitions and compatible secret keys consistent across API
 replicas. Routes select the provider by its `name`. Identity ownership uses the
 verified issuer and subject. This configuration supports OIDC providers.
 OAuth-only integrations need their own protocol adapter.
+
+List every client ID that a native SDK token can contain in `aud` or `azp`. The
+provider `client_id` is always accepted and need not be listed. For example, the
+Google Android SDK uses the web client as `aud` and the Android client as `azp`.
+Sign in with Apple uses the app bundle ID as `aud`. Omit the field or use `[]` to
+disable native login for a provider. Empty or duplicate native client IDs fail
+configuration.
 
 Configured providers must be reachable for initial discovery. SENTRY_DSN is optional.
 SENTRY_SAMPLE_RATE controls performance sampling when enabled. The SMTP server

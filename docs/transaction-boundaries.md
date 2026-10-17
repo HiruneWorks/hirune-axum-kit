@@ -32,7 +32,10 @@ lock, re-read the challenge, check expiry, and consume it conditionally. TOTP
 replay state belongs to the account, not an individual challenge. Recovery code
 consumption is conditional and single use. Bind OIDC callback state to a browser.
 Consume that state before exchanging the code with the provider.
-An ambiguous exchange failure requires a new authorization flow.
+An ambiguous exchange failure requires a new authorization flow. Native ID token
+login deletes and returns its flow in one committed statement before token
+verification or key refresh. The account transaction starts only after the
+token is verified.
 
 Password verification and hashing run on bounded blocking tasks before database
 locks. After locking, compare the password snapshot and security version again.

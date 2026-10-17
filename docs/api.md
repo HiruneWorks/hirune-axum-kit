@@ -77,6 +77,14 @@ duplicate session cookies, and multiple Authorization headers. Session rotation
 preserves the request's transport. Never put credentials in query strings.
 The Bearer scheme name is case-insensitive. The credential remains case-sensitive.
 
+Native clients sign in with an OIDC provider SDK through
+`POST /api/v1/auth/oidc/{provider}/native` and
+`POST /api/v1/auth/oidc/{provider}/native/complete`. The first route returns a
+single-use `flow` and `nonce`. Pass the nonce to the SDK. Send the flow and the
+SDK `id_token` to the second route. Completion always returns a bearer session or
+an MFA challenge and never sets a cookie. These routes do not require an Origin.
+See [native ID token login](behavior/identity.md#native-id-token-login).
+
 External server applications use an organization-owned API key in the Bearer
 header on explicitly designated external routes. Keys and user sessions cannot
 be substituted for each other. See [API access](behavior/api-access.md) for key

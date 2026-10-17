@@ -120,6 +120,35 @@ The same subject from different issuers identifies different external identities
 A callback sent to another configured provider is rejected without consuming the
 valid initiating flow. Login can start on one API replica and finish on another.
 
+### Native ID token login
+
+Native applications sign in with the provider SDK, not a browser redirect. A
+provider supports this only when its `native_client_ids` list is not empty.
+Otherwise both native routes return `404 not_found`.
+
+1. The client calls `POST /api/v1/auth/oidc/{provider}/native`. The API stores
+   hashes of a new `flow` secret and `nonce` in a five-minute native flow and
+   returns both values.
+2. The client passes `nonce` unchanged to the provider SDK sign-in request. It
+   keeps `flow` and does not send it to the provider.
+3. The client sends `flow` and the returned `id_token` to
+   `POST /api/v1/auth/oidc/{provider}/native/complete`.
+
+Completion consumes the flow before it parses or verifies the token, so a
+rejected token requires a new flow. A flow sent to another provider is rejected
+without being consumed. The protocol library verifies the signature, issuer,
+expiry, and nonce. The service then requires every `aud` value and any `azp`
+value to be the provider `client_id` or a configured native client ID. A token
+with multiple audiences must contain `azp`. An unknown signing key refreshes
+provider keys once, with the same cooldown as browser login.
+
+A verified token uses the browser login rules for returning identities, new
+accounts, the welcome email, and the MFA gate. Completion always uses bearer
+transport. An `mfa_required` result continues at `POST /api/v1/auth/mfa` with
+`transport: "bearer"`. Browser and native flows are stored separately, so neither
+completion route accepts the other flow. Native routes do not link identities.
+Link from an authenticated browser session.
+
 These controls are exercised in `tests/identity.rs`, `tests/api.rs`,
 `tests/oidc.rs`, and `tests/process.rs`. Live provider registration, consent,
 redirect configuration, and email delivery outside Mailpit remain deployment
