@@ -11,6 +11,7 @@ pub struct Model {
     pub started_at: DateTimeUtc,
     pub finished_at: Option<DateTimeUtc>,
     pub outcome: Option<AttemptOutcome>,
+    #[sea_orm(column_type = "String(StringLen::N(100))")]
     pub error_code: Option<String>,
 }
 

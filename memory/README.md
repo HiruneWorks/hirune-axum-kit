@@ -33,3 +33,6 @@ This index is updated when a milestone is complete.
 - [2026-10-17 — Technical writing](2026-10-17-technical-writing.md): practical
   ASD-STE100 clarity guidance, revised existing documentation and comments, and
   preserved technical contracts.
+- [2026-10-18 — Schema consistency](2026-10-18-schema-consistency.md): automatic
+  entity discovery, PostgreSQL schema comparison, string-enum CHECK validation,
+  and regression tests for deliberate drift.

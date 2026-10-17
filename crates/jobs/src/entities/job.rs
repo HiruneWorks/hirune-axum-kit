@@ -6,9 +6,13 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(100))")]
     pub kind: String,
+    #[sea_orm(column_type = "String(StringLen::N(64))")]
     pub queue: String,
+    #[sea_orm(column_type = "String(StringLen::N(128))")]
     pub schedule_key: Option<String>,
+    #[sea_orm(column_type = "JsonBinary")]
     pub payload: Json,
     pub request_id: Uuid,
     pub state: JobState,
@@ -18,6 +22,7 @@ pub struct Model {
     pub claim_token: Option<Uuid>,
     pub lease_until: Option<DateTimeUtc>,
     pub deadline_at: Option<DateTimeUtc>,
+    #[sea_orm(column_type = "String(StringLen::N(100))")]
     pub last_error: Option<String>,
     pub created_at: DateTimeUtc,
     pub finished_at: Option<DateTimeUtc>,

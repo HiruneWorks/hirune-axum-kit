@@ -8,12 +8,16 @@ pub struct Model {
     pub id: Uuid,
     pub organization_id: Uuid,
     pub uploader_id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(150))")]
     pub object_key: String,
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub filename: String,
+    #[sea_orm(column_type = "String(StringLen::N(120))")]
     pub media_type: Option<String>,
     pub byte_size: i64,
     pub state: FileState,
     pub version: i64,
+    #[sea_orm(column_type = "String(StringLen::N(64))")]
     pub content_hash: Option<String>,
     pub upload_expires_at: DateTimeUtc,
     pub created_at: DateTimeUtc,

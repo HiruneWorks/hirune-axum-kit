@@ -32,7 +32,11 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
     for target in targets {
         command.args(["--test", target]);
     }
-    command.arg("--").args(["--ignored", "--test-threads=2"]);
+    let parallel_test_cases = if targets.contains(&"jobs") { 1 } else { 2 };
+    command
+        .arg("--")
+        .arg("--ignored")
+        .arg(format!("--test-threads={parallel_test_cases}"));
     if load {
         command
             .args(["load::mixed_workload", "--nocapture"])

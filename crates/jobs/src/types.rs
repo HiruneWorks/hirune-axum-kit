@@ -2,7 +2,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum JobState {
     #[sea_orm(string_value = "pending")]
@@ -16,7 +16,7 @@ pub enum JobState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum AttemptOutcome {
     #[sea_orm(string_value = "succeeded")]

@@ -27,7 +27,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just manage repair-search` | Queue up to 100 current records per configured filename/post/profile index for reconciliation. |
 | `just fmt` | Format the workspace. |
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, OpenAPI drift. |
-| `just test-db` | Real PostgreSQL identity and queue tests, including transaction/concurrency failures, immediate slot refill across 1/2/4 worker pools, and empty-queue polling bounds. |
+| `just test-db` | Real PostgreSQL identity, queue, and schema-consistency tests, including transaction/concurrency failures, immediate slot refill across 1/2/4 worker pools, empty-queue polling bounds, and entity/enum drift detection. |
 | `just test-api` | Production-router API and local signed OIDC tests; external API scope, shared quota concurrency, window rollover, authority races, transaction rollback, and retention. |
 | `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
@@ -46,6 +46,11 @@ UUID-named database and applies migrations. Test cleanup drops only those genera
 databases. Plain `cargo test --workspace` leaves infrastructure tests ignored.
 The explicit integration commands select them with `--ignored`.
 
+The database suite runs independent cases one at a time so queue timing checks
+do not compete with other cases. Each concurrency scenario still creates its own
+simultaneous actors and independent worker pools. Other integration commands
+retain their existing case parallelism.
+
 For an existing local disposable PostgreSQL server, set `TEST_DATABASE_URL`.
 The role must be allowed to create and drop test databases. Non-loopback database
 hosts are rejected. Process/load tests additionally require `TEST_SMTP_PORT` and
@@ -55,6 +60,9 @@ File tests additionally require loopback `TEST_S3_ENDPOINT` and
 starts these services automatically in its disposable Compose project.
 Test databases from a panic may remain in external infrastructure. Inspect their
 generated `kit_test_` names before explicit cleanup.
+
+See [schema consistency](schema-verification.md) for the database comparison,
+enum-column bindings, supported checks, and verification limits.
 
 ## Load evidence
 

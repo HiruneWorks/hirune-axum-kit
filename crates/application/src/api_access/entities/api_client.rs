@@ -6,7 +6,9 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub organization_id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(100))")]
     pub name: String,
+    #[sea_orm(column_type = "JsonBinary")]
     pub scopes: Json,
     pub active: bool,
     pub minute_limit: i64,

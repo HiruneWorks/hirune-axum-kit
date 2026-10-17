@@ -7,7 +7,9 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub account_id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(64))")]
     pub challenge_hash: Option<String>,
+    #[sea_orm(column_type = "Text")]
     pub ciphertext: Option<String>,
     pub state: MailDeliveryState,
     pub expires_at: DateTimeUtc,
