@@ -9,6 +9,7 @@ pub(super) enum AuthenticationOperation {
     Mfa,
     OidcStart,
     ChangePassword,
+    SetInitialPassword,
 }
 impl AuthenticationOperation {
     pub(super) fn as_str(self) -> &'static str {
@@ -22,6 +23,7 @@ impl AuthenticationOperation {
             Self::Mfa => "mfa",
             Self::OidcStart => "oidc_start",
             Self::ChangePassword => "change_password",
+            Self::SetInitialPassword => "set_initial_password",
         }
     }
 }

@@ -93,6 +93,10 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
   deny an administrator without MFA. Administrator MFA removal is forbidden.
 - Recovery-code regeneration requires recent authentication and a fresh proof;
   concurrent replacements leave one returned generation and revoke old credentials.
+- An OIDC-only account adds a first password only with recent authentication.
+  The change advances the security version, revokes every session and challenge,
+  and registers the security notification. An existing password returns a
+  conflict, and concurrent requests store one password.
 - JSON/query validation reuses domain rules, rejects invalid input before the
   handler, and does not expose submitted secrets in error responses.
 - Audit retention deletes bounded old batches while preserving recent events.

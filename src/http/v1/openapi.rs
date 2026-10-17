@@ -7,7 +7,7 @@ use utoipa::{
 #[derive(OpenApi)]
 #[openapi(paths(
     identity::signup::signup, identity::request_verification::request_verification, identity::verify_email::verify_email, identity::login::login, identity::complete_mfa::complete_mfa,
-    identity::request_reset::request_reset, identity::reset_password::reset_password, identity::get_account::get_account, identity::deactivate_account::deactivate_account, identity::change_password::change_password,
+    identity::request_reset::request_reset, identity::reset_password::reset_password, identity::get_account::get_account, identity::deactivate_account::deactivate_account, identity::change_password::change_password, identity::set_initial_password::set_initial_password,
     identity::list_sessions::list_sessions, identity::revoke_session::revoke_session, identity::revoke_all_sessions::revoke_all_sessions, identity::rotate_session::rotate_session,
     identity::begin_totp::begin_totp, identity::confirm_totp::confirm_totp, identity::disable_totp::disable_totp, identity::regenerate_recovery_codes::regenerate_recovery_codes,
     organizations::create_organization::create_organization, organizations::get_organization::get_organization, organizations::list_organizations::list_organizations, organizations::rename_organization::rename_organization, organizations::add_member::add_member, organizations::remove_member::remove_member,

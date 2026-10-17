@@ -1,5 +1,8 @@
 mod support;
 
+#[path = "oidc/initial_password.rs"]
+mod initial_password;
+
 #[path = "oidc/providers.rs"]
 mod providers;
 

@@ -60,8 +60,8 @@ HTTP adapter's common status/code/request-ID error response.
 Purpose-specific MJML and plain-text templates live under `crates/mail/templates/`:
 `verify-email`, `reset-password`, `welcome`, and `password-changed`. Signup sends
 verification instructions. Successful verification or new verified OIDC signup
-registers the welcome message. A completed password change or reset registers a
-security notification, never the password itself. These notifications have no
+registers the welcome message. A completed password change, initial password, or
+reset registers a security notification, never the password itself. These notifications have no
 action token and expire after 24 hours. All registrations commit with the owning
 account change and use the same encrypted delivery/job path.
 
