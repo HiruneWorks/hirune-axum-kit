@@ -12,6 +12,7 @@ not a secret or an access-control mechanism.
 | Passwords | At least 15 Unicode characters, at most 1024 UTF-8 bytes, no truncation or composition rule. Argon2id uses 19 MiB, 2 iterations, and 1 lane with random salt. Blocking work retains its concurrency permit until it actually finishes. |
 | Enumeration | Signup, verification resend, and reset requests return the same accepted response for eligible and ineligible accounts. Invalid logins share an authentication error; missing accounts use dummy password verification. |
 | Abuse limits | PostgreSQL stores keyed hashes of client and identity rate keys. Client requests are limited before hashing/provider requests; identity limits survive failed authentication. Defaults are 60 requests per client and 10 attempts per operation/identity per minute, with explicit settings. There is no attacker-exhaustible global login quota. |
+| Human verification | Optional Cloudflare Turnstile, disabled unless `TURNSTILE_SECRET_KEY` is set. Then signup, verification resend, password-reset requests, and password login need a token that passes server-side siteverify (success, configured hostnames, per-operation action) before the identity service runs. Provider failures fail closed. See [human verification](#human-verification). |
 | Sessions | Random 256-bit opaque credentials; only hashes stored. Shared database authority, idle and absolute expiry (defaults 14 and 90 days), rotation, per-session and all-session revocation. Credential changes increment account security version and revoke existing sessions/challenges. |
 | External API keys | Organization-owned principals, explicit scopes, expiring 256-bit random secrets with domain-separated hashes, one-time issuance, revocation, and atomic shared request accounting. New clients have zero allocation; only trusted operators grant quotas. See [API access](behavior/api-access.md). |
 | MFA | TOTP is optional for ordinary accounts and required for global administrators. Secrets are encrypted; accepted TOTP steps and hashed recovery codes are single use. Password and OIDC login share the gate, which is also checked at session issuance, session authentication, and final service authorization. New-device email challenges are excluded. |
@@ -49,6 +50,51 @@ for each client. Both accept 1 through 100000. Counters are shared across proces
 and use a common saturation ceiling above every supported budget, so a lower-limit
 instance cannot reset or truncate a higher-limit instance's counter. Keep instance
 settings consistent. Changing a budget does not reset the active counter window.
+
+## Human verification
+
+Cloudflare Turnstile is an optional abuse control for public identity
+operations. It is disabled by default. When `TURNSTILE_SECRET_KEY` is empty or
+unset, the API ignores `human_verification_token` and behaves as before.
+Startup never contacts Cloudflare.
+
+When the secret is set, these operations require a token in the JSON body:
+
+| Operation | Turnstile widget `action` |
+| --- | --- |
+| `POST /api/v1/auth/signup` | `signup` |
+| `POST /api/v1/auth/verification` | `email_verification` |
+| `POST /api/v1/auth/password/reset` | `password_reset` |
+| `POST /api/v1/auth/login` | `login` |
+
+The API checks the shared client budget and the JSON body first. The handler then
+sends the token to siteverify before it calls the identity service. A rejected
+request therefore does not reach password hashing or the account lock, and it
+does not consume the identity budget. The server sends the secret, the token,
+the client IP from the trusted-proxy contract when known, and a random
+`idempotency_key`. After a transport error, a timeout, HTTP 429 or 5xx, or the
+`internal-error` code, the server retries once with the same key, so Cloudflare
+does not report the retry as a reused token. Each attempt has a five-second
+deadline. Redirects are not followed, and the response body is limited to 16 KiB.
+
+The token passes only when `success` is true, the `hostname` matches one of
+`TURNSTILE_EXPECTED_HOSTNAMES` (when set), and the `action` equals the operation's
+action (unless `TURNSTILE_VERIFY_ACTION=false`). A missing, rejected, expired, or
+reused token returns `403 human_verification_failed`. A token longer than 2048
+bytes returns `400 invalid_input`. A provider outage, an invalid response, or a
+rejected secret returns `503 human_verification_unavailable`; the API fails
+closed. Logs contain only a fixed failure category, never the token, the secret,
+or the provider response.
+
+A token is single use. If the identity operation fails after verification, for
+example because the password is wrong, the client must reset the widget and get
+a new token. Native clients that log in with `transport: "bearer"` must also
+supply a token when Turnstile is enabled.
+
+Turnstile does not replace the PostgreSQL client and identity limits, and it is
+not a volumetric defense. Keep network or WAF limits in front of the API.
+Production configuration rejects Cloudflare's published test secret keys.
+See [runtime configuration](runtime.md#optional-human-verification).
 
 ## Administrator and recovery policy
 
@@ -106,4 +152,5 @@ verified, active account; action mail still requires its live challenge/version.
 - [OWASP OAuth2 Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html)
 - [OWASP REST Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html)
 - [OWASP API resource consumption](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/)
+- [Cloudflare Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
 - [OpenID Connect library verification guidance](https://docs.rs/openidconnect/latest/openidconnect/)

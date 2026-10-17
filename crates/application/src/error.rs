@@ -20,6 +20,10 @@ pub enum ApplicationError {
     ExternalUnavailable,
     #[error("integration unavailable")]
     IntegrationUnavailable,
+    #[error("human verification failed")]
+    HumanVerificationFailed,
+    #[error("human verification unavailable")]
+    HumanVerificationUnavailable,
     #[error("file is too large")]
     FileTooLarge,
     #[error("file quota exceeded")]

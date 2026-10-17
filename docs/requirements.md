@@ -73,10 +73,10 @@ Conversation-specific attachment permissions belong to the owning conversation
 service in a consuming project. The template does not parse or execute arbitrary
 file contents. `ready` means storage is complete. It does not establish that a
 file is free of malware or safe to use.
-Storage, search, and FCM are separately optional integrations. User profiles are
-discoverable only within current shared organization membership. Wiki engines,
-campaign email, public social graphs, and application-specific permission models
-remain consuming-project extensions.
+Storage, search, FCM, and Cloudflare Turnstile human verification are separately
+optional integrations. User profiles are discoverable only within current shared
+organization membership. Wiki engines, campaign email, public social graphs, and
+application-specific permission models remain consuming-project extensions.
 The [regression inventory](regressions.md) records retained security behavior and
 intentional exclusions from the reference test coverage.
 
