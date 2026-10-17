@@ -62,3 +62,7 @@
 
 - Live Google and Apple SDK acceptance against real client registrations has
   not been performed.
+- Deployment grants are provisioned once with `ON ALL TABLES`; there are no
+  default privileges or re-grant step after `migrate`. An upgraded deployment must
+  grant runtime and maintenance `SELECT, INSERT, UPDATE, DELETE` on
+  `oauth_native_flows` before native login or cleanup can use it.

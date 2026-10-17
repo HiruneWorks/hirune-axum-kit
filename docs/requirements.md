@@ -22,6 +22,7 @@ requirements. It does not establish that verification steps passed.
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
 | Session lifetime | Defaults are 14 days idle and 90 days absolute. Cookie and bearer sessions use the same values. Deployments can lower them through configuration. |
 | External providers | Multiple OIDC providers may be configured simultaneously, each with an explicit name, issuer, client credentials, and callback URL. |
+| Native OIDC login | Native apps exchange a provider SDK ID token for a bearer session. Each provider opts in with explicit native client IDs. The server issues a single-use nonce. Native login does not link identities; linking stays a browser flow. A browser redirect with an app handoff code is not part of the baseline. |
 | Developer API | Provide organization-owned API clients and scoped, expiring, revocable API keys. All keys of a client share operator-allocated request budgets across API replicas; owners cannot self-allocate. OAuth2 client credentials is outside this baseline. |
 | Privileged authentication | Global administrators must have confirmed TOTP enrollment. Role changes use an operator command, invalidate existing credentials, and are audited. Ordinary accounts may choose MFA. |
 | Password screening | No external screening service. A local common/breached-password blocklist is deferred; do not add one without a new decision. |
