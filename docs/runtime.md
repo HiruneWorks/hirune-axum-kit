@@ -48,7 +48,8 @@ SMTP. Cookie security follows APP_ENV.
 Secrets use redacted Debug representations. Do not log complete settings.
 
 Configure any number of named providers with the `OIDC_PROVIDERS` JSON array.
-Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirect_url`:
+Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirect_url`.
+The optional `native_client_ids` array enables native ID token login:
 
 ```json
 [
@@ -57,7 +58,11 @@ Each entry requires `name`, `issuer`, `client_id`, `client_secret`, and `redirec
     "issuer": "https://accounts.google.com",
     "client_id": "replace-with-google-client-id",
     "client_secret": "replace-with-google-client-secret",
-    "redirect_url": "https://app.example.com/api/v1/auth/oidc/google/callback"
+    "redirect_url": "https://app.example.com/api/v1/auth/oidc/google/callback",
+    "native_client_ids": [
+      "replace-with-google-ios-client-id",
+      "replace-with-google-android-client-id"
+    ]
   },
   {
     "name": "company",
@@ -81,9 +86,22 @@ replicas. Routes select the provider by its `name`. Identity ownership uses the
 verified issuer and subject. This configuration supports OIDC providers.
 OAuth-only integrations need their own protocol adapter.
 
+List every client ID that a native SDK token can contain in `aud` or `azp`. The
+provider `client_id` is always accepted and need not be listed. For example, the
+Google Android SDK uses the web client as `aud` and the Android client as `azp`.
+Sign in with Apple uses the app bundle ID as `aud`. Omit the field or use `[]` to
+disable native login for a provider. Empty or duplicate native client IDs fail
+configuration.
+
 Configured providers must be reachable for initial discovery. SENTRY_DSN is optional.
 SENTRY_SAMPLE_RATE controls performance sampling when enabled. The SMTP server
 need not be reachable at API startup. Delivery failures follow the queue contract.
+
+Session lifetimes are `SESSION_IDLE_SECONDS` (default 1209600, 14 days) and
+`SESSION_ABSOLUTE_SECONDS` (default 7776000, 90 days). Idle expiry must be at
+least 60 seconds. Absolute expiry must be at least the idle expiry. The same
+values apply to cookie and bearer sessions. Lower both values for deployments
+that need shorter unattended sessions.
 
 Authentication budgets are `AUTH_IDENTITY_LIMIT_PER_MINUTE` (default 10 per
 operation/identity) and `AUTH_CLIENT_LIMIT_PER_MINUTE` (default 60 shared across
@@ -114,6 +132,37 @@ job for the current bucket. Retention and explicit manual retry cover both queue
 Behind a proxy, configure exact ALLOWED_ORIGINS and the explicit TRUSTED_PROXY_IPS
 contract in [security](security.md). Protect the backend from direct untrusted
 network access. Do not enable forwarding-header trust globally.
+
+## Optional human verification
+
+Set `TURNSTILE_SECRET_KEY` to enable Cloudflare Turnstile on signup,
+verification resend, password-reset requests, and password login. Leave it
+empty or unset to disable the check. The API then requires no Turnstile
+configuration and does not contact Cloudflare. Keep the secret in secret
+management. It is a server credential; only the sitekey belongs in the client.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `TURNSTILE_SECRET_KEY` | unset | Widget secret key. Its presence enables verification. |
+| `TURNSTILE_EXPECTED_HOSTNAMES` | unset | Comma-separated hostnames that may serve the widget. Unset skips the hostname check. |
+| `TURNSTILE_VERIFY_ACTION` | `true` | Requires the widget action to match the operation. |
+
+The other Turnstile settings require the secret. The server always calls
+`https://challenges.cloudflare.com/turnstile/v0/siteverify` with a five-second
+attempt deadline. Use the same settings on all API replicas. Workers and
+maintenance do not use them.
+
+For local development, Cloudflare publishes test keys. The secret
+`1x0000000000000000000000000000000AA` always passes,
+`2x0000000000000000000000000000000AA` always fails, and
+`3x0000000000000000000000000000000AA` reports a spent token. Use them with a
+test sitekey such as `1x00000000000000000000AA` and the dummy token
+`XXXX.DUMMY.TOKEN.XXXX`. The test responses do not carry your operation's action
+or hostname, so set `TURNSTILE_VERIFY_ACTION=false` and leave
+`TURNSTILE_EXPECTED_HOSTNAMES` unset with test keys. `APP_ENV=production`
+rejects these test secrets. See
+[Cloudflare testing](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)
+and [human verification](security.md#human-verification).
 
 ## Optional search and push
 

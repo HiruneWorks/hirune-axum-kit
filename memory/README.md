@@ -36,3 +36,12 @@ This index is updated when a milestone is complete.
 - [2026-10-17 — Initial password for OIDC-only accounts](2026-10-17-oidc-initial-password.md):
   first-password operation, credential revocation and notification parity with
   password change, `has_password`, and local API/database verification.
+- [2026-10-17 — Optional Turnstile human verification](2026-10-17-turnstile-human-verification.md):
+  optional siteverify checks for public identity operations, explicit
+  configuration, fail-closed provider errors, and fake-provider verification.
+- [2026-10-18 — Schema consistency](2026-10-18-schema-consistency.md): automatic
+  entity discovery, PostgreSQL schema comparison, string-enum CHECK validation,
+  and regression tests for deliberate drift.
+- [2026-10-18 — Native app authentication](2026-10-18-native-app-authentication.md):
+  14/90-day default session lifetimes, native OIDC ID token login with opt-in
+  client IDs, separate single-use native flows, and shared login rules.

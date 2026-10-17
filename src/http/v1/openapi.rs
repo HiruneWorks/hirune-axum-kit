@@ -11,7 +11,7 @@ use utoipa::{
     identity::list_sessions::list_sessions, identity::revoke_session::revoke_session, identity::revoke_all_sessions::revoke_all_sessions, identity::rotate_session::rotate_session,
     identity::begin_totp::begin_totp, identity::confirm_totp::confirm_totp, identity::disable_totp::disable_totp, identity::regenerate_recovery_codes::regenerate_recovery_codes,
     organizations::create_organization::create_organization, organizations::get_organization::get_organization, organizations::list_organizations::list_organizations, organizations::rename_organization::rename_organization, organizations::add_member::add_member, organizations::remove_member::remove_member,
-    identity::oidc::begin_login::begin_login, identity::oidc::begin_link::begin_link, identity::oidc::callback::callback, identity::oidc::list_identities::list_identities, identity::oidc::unlink_identity::unlink_identity,
+    identity::oidc::begin_login::begin_login, identity::oidc::begin_link::begin_link, identity::oidc::callback::callback, identity::oidc::begin_native_login::begin_native_login, identity::oidc::complete_native_login::complete_native_login, identity::oidc::list_identities::list_identities, identity::oidc::unlink_identity::unlink_identity,
     files::reserve_file::reserve_file, files::list_files::list_files, files::get_file::get_file, files::upload_original::upload_original, files::delete_file::delete_file,
     files::search_files::search_files, files::download_original::download_original, files::head_original::head_original,
     api_access::create_client::create_client, api_access::list_clients::list_clients, api_access::get_client::get_client,

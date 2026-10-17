@@ -2,7 +2,8 @@ mod support;
 
 #[path = "oidc/initial_password.rs"]
 mod initial_password;
-
+#[path = "oidc/native.rs"]
+mod native;
 #[path = "oidc/providers.rs"]
 mod providers;
 
@@ -108,6 +109,7 @@ impl MockProvider {
             redirect_url: "http://localhost:3000/api/v1/auth/oidc/test/callback"
                 .parse()
                 .unwrap(),
+            native_client_ids: Vec::new(),
         }
     }
     fn authorize(

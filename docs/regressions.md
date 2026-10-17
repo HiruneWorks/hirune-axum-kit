@@ -15,6 +15,10 @@ jobs include [retention races](../tests/jobs/retention.rs) and
 Core policy, encryption, mail rendering,
 pagination, proxy trust, and Sentry controls also have workspace unit tests.
 
+[Schema consistency](../tests/schema_consistency.rs) compares migrated tables,
+columns, types, nullability, primary keys, and registered string-enum CHECK values.
+It also verifies failure detection with deliberate database changes.
+
 | Reviewed test | Disposition |
 | --- | --- |
 | `account.rs::email_change_requires_password_and_confirmation` | Excluded: changing account email is outside the baseline; a future implementation must require reauthentication and confirmation. |
@@ -99,6 +103,10 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
   conflict, and concurrent requests store one password.
 - JSON/query validation reuses domain rules, rejects invalid input before the
   handler, and does not expose submitted secrets in error responses.
+- Optional Turnstile verification uses a local fake siteverify server and no live
+  network call. It covers acceptance, missing and rejected tokens, hostname and
+  action mismatches, a retry that reuses its idempotency key, provider timeouts
+  and 5xx responses, and unchanged behavior when it is not configured.
 - Audit retention deletes bounded old batches while preserving recent events.
 - Finished-job retention preserves rows retried or failed again while deletion
   waits, and removes attempts only with an eligible retained job.
@@ -106,6 +114,12 @@ pagination, proxy trust, and Sentry controls also have workspace unit tests.
   holds canonical parent locks and waits for the file row. A synchronized
   PostgreSQL regression covers the foreign-key lock cycle found by mixed load.
 - OIDC checks browser binding, state replay, nonce, signed key rotation, provider outages, explicit linking, and the common MFA gate.
+- Native OIDC ID token login checks opt-in providers, Android and iOS audience
+  shapes, unconfigured `aud`/`azp`, missing or different nonces, expiry, issuer,
+  unpublished keys, malformed tokens, flow consumption on rejection, provider
+  mismatch, browser/native flow separation, the common MFA gate, expired-flow
+  rejection and cleanup, and bearer-only HTTP responses without an Origin or
+  cookie (`tests/oidc/native.rs`).
 - Worker crash recovery preserves attempt history, honors retry delay, and fences stale completion; a hung heartbeat/handler cannot hold a lease forever.
 - Database outages return unavailable; HTTP configuration is isolated across application instances.
 - Real Mailpit delivery checks HTML/text content, worker replacement, cross-process revocation, and absence of secrets in captured process logs.

@@ -2,6 +2,7 @@ use anyhow::{Context, Result, ensure};
 use application::{
     config::{IdentitySettings, SecretKeys, SecretString},
     files::{FileSettings, S3Settings},
+    human_verification::TurnstileSettings,
     identity::oidc::ProviderSettings,
     notifications::fcm::FcmSettings,
     search::SearchSettings,
@@ -13,6 +14,7 @@ use url::Url;
 
 mod environment;
 mod oidc;
+mod turnstile;
 
 #[derive(Clone, Debug)]
 pub struct DatabaseSettings {
@@ -65,6 +67,7 @@ pub struct Settings {
     pub profile_search: Option<SearchSettings>,
     pub fcm: Option<FcmSettings>,
     pub oidc: Vec<ProviderSettings>,
+    pub human_verification: Option<TurnstileSettings>,
     pub observability: ObservabilitySettings,
     pub retention: RetentionSettings,
     pub maintenance_interval_seconds: i64,
@@ -135,8 +138,8 @@ impl Settings {
                 "AUTH_CLIENT_LIMIT_PER_MINUTE",
                 60,
             )?,
-            session_idle_seconds: number(values, "SESSION_IDLE_SECONDS", 1800)?,
-            session_absolute_seconds: number(values, "SESSION_ABSOLUTE_SECONDS", 43_200)?,
+            session_idle_seconds: number(values, "SESSION_IDLE_SECONDS", 1_209_600)?,
+            session_absolute_seconds: number(values, "SESSION_ABSOLUTE_SECONDS", 7_776_000)?,
         };
         identity.validate()?;
         let database_url = required("DATABASE_URL")?;
@@ -306,6 +309,7 @@ impl Settings {
         };
         files.validate()?;
         let oidc = oidc::parse_providers(values, production)?;
+        let human_verification = turnstile::parse_turnstile(values, production)?;
         let observability = ObservabilitySettings {
             log_filter: get(
                 "RUST_LOG",
@@ -357,6 +361,7 @@ impl Settings {
             profile_search,
             fcm,
             oidc,
+            human_verification,
             observability,
             retention,
             maintenance_interval_seconds,

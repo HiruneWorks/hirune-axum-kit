@@ -11,6 +11,7 @@ mod initial_password;
 mod maintenance;
 mod mfa;
 pub mod oidc;
+mod oidc_native;
 mod oidc_provider;
 mod password_operations;
 mod recovery;

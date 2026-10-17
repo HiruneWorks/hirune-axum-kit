@@ -74,6 +74,14 @@ pub(in crate::http::v1) fn routes() -> axum::Router<HttpState> {
             axum::routing::get(oidc::callback::callback),
         )
         .route(
+            "/auth/oidc/{provider}/native",
+            axum::routing::post(oidc::begin_native_login::begin_native_login),
+        )
+        .route(
+            "/auth/oidc/{provider}/native/complete",
+            axum::routing::post(oidc::complete_native_login::complete_native_login),
+        )
+        .route(
             "/account/identities",
             axum::routing::get(oidc::list_identities::list_identities),
         )

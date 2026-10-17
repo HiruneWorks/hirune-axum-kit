@@ -20,7 +20,9 @@ requirements. It does not establish that verification steps passed.
 | Migrations | One table with its own indexes and constraints per baseline migration. Subsequent migrations have a clear schema responsibility. |
 | Scaling | Replaceable stateless API instances; shared state outside processes; independently scalable workers. Ready work fills available worker slots without a fixed inter-job delay; polling waits apply only after no eligible work is found. |
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
+| Session lifetime | Defaults are 14 days idle and 90 days absolute. Cookie and bearer sessions use the same values. Deployments can lower them through configuration. |
 | External providers | Multiple OIDC providers may be configured simultaneously, each with an explicit name, issuer, client credentials, and callback URL. |
+| Native OIDC login | Native apps exchange a provider SDK ID token for a bearer session. Each provider opts in with explicit native client IDs. The server issues a single-use nonce. Native login does not link identities; linking stays a browser flow. A browser redirect with an app handoff code is not part of the baseline. |
 | Developer API | Provide organization-owned API clients and scoped, expiring, revocable API keys. All keys of a client share operator-allocated request budgets across API replicas; owners cannot self-allocate. OAuth2 client credentials is outside this baseline. |
 | Privileged authentication | Global administrators must have confirmed TOTP enrollment. Role changes use an operator command, invalidate existing credentials, and are audited. Ordinary accounts may choose MFA. |
 | Password screening | No external screening service. A local common/breached-password blocklist is deferred; do not add one without a new decision. |
@@ -28,7 +30,7 @@ requirements. It does not establish that verification steps passed.
 | Periodic maintenance | A portable scheduler/worker process registers deduplicated PostgreSQL jobs. No systemd or host-cron dependency; maintenance keeps its restricted database role and dedicated queue. |
 | Identity mail | Separate verification, password-reset, welcome, and password-change templates; account notifications commit durably with the successful account change. |
 | Device policy | New-device email verification is excluded from the default template. Use MFA for the additional authentication factor. |
-| Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. |
+| Testing | Meaningful unit, PostgreSQL, API, process/SMTP, and k6 load coverage; reproducible GitHub CI commands. Compare migrated schemas with entity metadata and registered string-enum CHECK values. Report schema failures in English. |
 | Files | Original bytes in a separate private S3-compatible SeaweedFS store; PostgreSQL owns metadata, permissions, quota reservations, and lifecycle. No default content sanitization, antivirus, image reencoding, video processing, or media processor. |
 | Search | Meilisearch is a derived index behind the authenticated API; current PostgreSQL state and permissions decide which results may be returned. |
 | Content example | Organization posts and single-level comments connect authorization, original attachments, profile/user and post search, cursor lists, numbered search pages, and durable notifications. No wiki engine. |
@@ -71,10 +73,10 @@ Conversation-specific attachment permissions belong to the owning conversation
 service in a consuming project. The template does not parse or execute arbitrary
 file contents. `ready` means storage is complete. It does not establish that a
 file is free of malware or safe to use.
-Storage, search, and FCM are separately optional integrations. User profiles are
-discoverable only within current shared organization membership. Wiki engines,
-campaign email, public social graphs, and application-specific permission models
-remain consuming-project extensions.
+Storage, search, FCM, and Cloudflare Turnstile human verification are separately
+optional integrations. User profiles are discoverable only within current shared
+organization membership. Wiki engines, campaign email, public social graphs, and
+application-specific permission models remain consuming-project extensions.
 The [regression inventory](regressions.md) records retained security behavior and
 intentional exclusions from the reference test coverage.
 

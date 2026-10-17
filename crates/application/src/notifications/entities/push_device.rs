@@ -8,7 +8,9 @@ pub struct Model {
     pub id: Uuid,
     pub account_id: Uuid,
     pub session_id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(64))")]
     pub token_hash: String,
+    #[sea_orm(column_type = "Text")]
     pub encrypted_token: String,
     pub platform: PushPlatform,
     pub version: i64,

@@ -7,6 +7,7 @@ pub struct Model {
     pub id: Uuid,
     pub post_id: Uuid,
     pub author_id: Uuid,
+    #[sea_orm(column_type = "Text")]
     pub body: String,
     pub deleted: bool,
     pub version: i64,

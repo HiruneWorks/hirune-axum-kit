@@ -4580,6 +4580,7 @@ dependencies = [
  "derive-where",
  "derive_more",
  "futures-util",
+ "inventory",
  "itertools 0.14.0",
  "log",
  "mac_address",

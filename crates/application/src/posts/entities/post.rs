@@ -8,7 +8,9 @@ pub struct Model {
     pub id: Uuid,
     pub organization_id: Uuid,
     pub author_id: Uuid,
+    #[sea_orm(column_type = "String(StringLen::N(200))")]
     pub title: String,
+    #[sea_orm(column_type = "Text")]
     pub body: String,
     pub state: PostState,
     pub version: i64,

@@ -272,6 +272,14 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "human_verification_token": {
+            "description": "Cloudflare Turnstile token. The widget action is `email_verification` for\nverification mail or `password_reset` for password reset. Required when\nthe server enables human verification; ignored otherwise.",
+            "maxLength": 2048,
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -501,6 +509,14 @@
           "email": {
             "type": "string"
           },
+          "human_verification_token": {
+            "description": "Cloudflare Turnstile token from a widget with the action `login`.\nRequired when the server enables human verification; ignored otherwise.",
+            "maxLength": 2048,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "password": {
             "type": "string"
           },
@@ -626,6 +642,45 @@
             "type": "object"
           }
         ]
+      },
+      "NativeOidcFlowOutput": {
+        "properties": {
+          "flow": {
+            "description": "Single-use secret for the completion request. Keep it in the native client.",
+            "type": "string"
+          },
+          "nonce": {
+            "description": "Single-use nonce. Pass it unchanged to the provider SDK sign-in request.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flow",
+          "nonce"
+        ],
+        "type": "object"
+      },
+      "NativeOidcLoginInput": {
+        "additionalProperties": false,
+        "properties": {
+          "flow": {
+            "description": "The `flow` value from the matching begin request.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id_token": {
+            "description": "The provider-signed ID token that the provider SDK returned for the flow nonce.",
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "flow",
+          "id_token"
+        ],
+        "type": "object"
       },
       "NotificationKind": {
         "enum": [
@@ -1204,6 +1259,14 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "human_verification_token": {
+            "description": "Cloudflare Turnstile token from a widget with the action `signup`.\nRequired when the server enables human verification; ignored otherwise.",
+            "maxLength": 2048,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "password": {
             "description": "At least 15 Unicode characters and at most 1024 UTF-8 bytes.",
@@ -4344,6 +4407,275 @@
             "description": "Service unavailable"
           }
         },
+        "tags": [
+          "OIDC"
+        ]
+      }
+    },
+    "/api/v1/auth/oidc/{provider}/native": {
+      "post": {
+        "operationId": "begin_native_login",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NativeOidcFlowOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Request deadline elapsed"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Conflicting state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Body too large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Too many attempts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "tags": [
+          "OIDC"
+        ]
+      }
+    },
+    "/api/v1/auth/oidc/{provider}/native/complete": {
+      "post": {
+        "operationId": "complete_native_login",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeOidcLoginInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Request deadline elapsed"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Conflicting state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Body too large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Too many attempts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "summary": "Native login always uses bearer transport, so the response includes the session token.",
         "tags": [
           "OIDC"
         ]

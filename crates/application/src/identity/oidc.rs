@@ -1,7 +1,8 @@
+pub use super::oidc_native::NativeAuthorization;
 use super::{
     AuthenticatedSession, IdentityService, LoginOutcome,
     entities::oauth_flow,
-    oidc_provider::Provider,
+    oidc_provider::{DiscoveredClient, Provider},
     repository::{accounts, oauth, security, sessions},
     service::principal,
     validation::normalize_email,
@@ -14,12 +15,18 @@ use auth_core::token::{generate_secure_token, hash_token};
 use jobs::TraceContext;
 use openidconnect::{
     AccessTokenHash, AuthenticationFlow, AuthorizationCode, ClaimsVerificationError, CsrfToken,
-    Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, Scope,
-    SignatureVerificationError, TokenResponse, reqwest,
+    Nonce, NonceVerifier, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, Scope,
+    SignatureVerificationError, TokenResponse,
+    core::{CoreIdToken, CoreIdTokenClaims, CoreIdTokenVerifier},
+    reqwest,
 };
-use sea_orm::{Set, TransactionTrait};
+use sea_orm::{DatabaseTransaction, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+    time::Duration,
+};
 use url::Url;
 use uuid::Uuid;
 
@@ -30,6 +37,9 @@ pub struct ProviderSettings {
     pub client_id: String,
     pub client_secret: SecretString,
     pub redirect_url: Url,
+    /// Client IDs of native applications whose provider SDK ID tokens this API accepts.
+    /// An empty list disables native ID token login for the provider.
+    pub native_client_ids: Vec<String>,
 }
 
 impl ProviderSettings {
@@ -48,15 +58,41 @@ impl ProviderSettings {
                 "OIDC provider credentials are required",
             ));
         }
+        let mut native_client_ids = BTreeSet::new();
+        if self.native_client_ids.iter().any(|client_id| {
+            client_id.trim().is_empty() || !native_client_ids.insert(client_id.as_str())
+        }) {
+            return Err(ApplicationError::InvalidInput(
+                "invalid OIDC native client IDs",
+            ));
+        }
         Ok(())
     }
 }
 
 #[derive(Clone)]
 pub struct OidcService {
-    identity: IdentityService,
-    providers: Arc<BTreeMap<String, Provider>>,
-    http: reqwest::Client,
+    pub(super) identity: IdentityService,
+    pub(super) providers: Arc<BTreeMap<String, Provider>>,
+    pub(super) http: reqwest::Client,
+}
+
+/// Selects the audience rule for a provider-signed ID token.
+#[derive(Clone, Copy)]
+pub(super) enum IdTokenAudience {
+    /// The token comes from this API's own authorization code exchange.
+    BrowserClient,
+    /// The token comes from a provider SDK in a native application.
+    NativeClients,
+}
+impl IdTokenAudience {
+    fn verifier(self, client: &DiscoveredClient) -> CoreIdTokenVerifier<'_> {
+        match self {
+            Self::BrowserClient => client.id_token_verifier(),
+            // Provider::accepts_native_audiences checks every audience after verification.
+            Self::NativeClients => client.id_token_verifier().require_audience_match(false),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -225,7 +261,7 @@ impl OidcService {
         }
         transaction.commit().await?;
         let code = code.ok_or(ApplicationError::Unauthenticated)?;
-        let mut client = provider.client(&self.http, false).await?;
+        let client = provider.client(&self.http, false).await?;
         let tokens = client
             .exchange_code(AuthorizationCode::new(code.into()))
             .map_err(|_| ApplicationError::Unauthenticated)?
@@ -243,22 +279,15 @@ impl OidcService {
             })?;
         let id_token = tokens.id_token().ok_or(ApplicationError::Unauthenticated)?;
         let nonce = Nonce::new(secrets.nonce);
-        let verification = {
-            let verifier = client.id_token_verifier();
-            id_token.claims(&verifier, &nonce)
-        };
-        let claims = match verification {
-            Ok(claims) => claims,
-            Err(ClaimsVerificationError::SignatureVerification(
-                SignatureVerificationError::NoMatchingKey,
-            )) => {
-                client = provider.client(&self.http, true).await?;
-                id_token
-                    .claims(&client.id_token_verifier(), &nonce)
-                    .map_err(|_| ApplicationError::Unauthenticated)?
-            }
-            Err(_) => return Err(ApplicationError::Unauthenticated),
-        };
+        let (claims, client) = self
+            .verify_id_token(
+                provider,
+                client,
+                id_token,
+                IdTokenAudience::BrowserClient,
+                &nonce,
+            )
+            .await?;
         if let Some(expected_hash) = claims.access_token_hash() {
             let actual_hash = AccessTokenHash::from_token(
                 tokens.access_token(),
@@ -274,10 +303,7 @@ impl OidcService {
                 return Err(ApplicationError::Unauthenticated);
             }
         }
-        let subject = claims.subject().as_str();
-        if subject.is_empty() || subject.len() > 255 {
-            return Err(ApplicationError::Unauthenticated);
-        }
+        let subject = verified_subject(claims)?;
         let transaction = self.identity.database.begin().await?;
         let outcome = if let Some(account_id) = flow.account_id {
             let account = accounts::lock_account(&transaction, account_id)
@@ -327,66 +353,109 @@ impl OidcService {
             .await?;
             CallbackOutcome::Linked
         } else {
-            let account = if let Some(identity) =
-                oauth::find_identity(&transaction, &provider.issuer, subject).await?
-            {
-                let account = accounts::lock_account(&transaction, identity.account_id)
-                    .await?
-                    .ok_or(ApplicationError::Unauthenticated)?;
-                if oauth::find_identity(&transaction, &provider.issuer, subject)
-                    .await?
-                    .is_none_or(|current| {
-                        current.id != identity.id || current.account_id != account.id
-                    })
-                {
-                    return Err(ApplicationError::Unauthenticated);
-                }
-                account
-            } else {
-                if claims.email_verified() != Some(true) {
-                    return Err(ApplicationError::Unauthenticated);
-                }
-                let email = normalize_email(
-                    claims
-                        .email()
-                        .ok_or(ApplicationError::Unauthenticated)?
-                        .as_str(),
-                )?;
-                if accounts::find_by_email(&transaction, &email)
-                    .await?
-                    .is_some()
-                {
-                    return Err(ApplicationError::Conflict);
-                }
-                let account = accounts::insert_account(&transaction, email, None, true)
-                    .await
-                    .map_err(identity_conflict)?;
-                self.identity
-                    .register_account_notification(
-                        &transaction,
-                        &account,
-                        mail::MailPurpose::Welcome,
-                        trace,
-                    )
-                    .await?;
-                oauth::insert_identity(
-                    &transaction,
-                    account.id,
-                    provider.issuer.clone(),
-                    subject.into(),
-                )
-                .await
-                .map_err(identity_conflict)?;
-                account
-            };
             CallbackOutcome::Login(
-                self.identity
-                    .complete_primary_authentication(&transaction, &account, trace)
+                self.login_with_external_identity(&transaction, provider, subject, claims, trace)
                     .await?,
             )
         };
         transaction.commit().await?;
         Ok(outcome)
+    }
+
+    /// Verifies a provider-signed ID token. An unknown signing key refreshes provider keys once.
+    pub(super) async fn verify_id_token<'token>(
+        &self,
+        provider: &Provider,
+        client: DiscoveredClient,
+        id_token: &'token CoreIdToken,
+        audience: IdTokenAudience,
+        nonce: impl NonceVerifier + Copy,
+    ) -> ApplicationResult<(&'token CoreIdTokenClaims, DiscoveredClient)> {
+        let verification = id_token.claims(&audience.verifier(&client), nonce);
+        let (claims, client) = match verification {
+            Ok(claims) => (claims, client),
+            Err(ClaimsVerificationError::SignatureVerification(
+                SignatureVerificationError::NoMatchingKey,
+            )) => {
+                let client = provider.client(&self.http, true).await?;
+                let claims = id_token
+                    .claims(&audience.verifier(&client), nonce)
+                    .map_err(|_| ApplicationError::Unauthenticated)?;
+                (claims, client)
+            }
+            Err(_) => return Err(ApplicationError::Unauthenticated),
+        };
+        if matches!(audience, IdTokenAudience::NativeClients)
+            && !provider.accepts_native_audiences(claims)
+        {
+            return Err(ApplicationError::Unauthenticated);
+        }
+        Ok((claims, client))
+    }
+
+    /// Returns the primary login outcome for a verified external identity.
+    /// A new identity creates an account only for a verified, unused email address.
+    pub(super) async fn login_with_external_identity(
+        &self,
+        transaction: &DatabaseTransaction,
+        provider: &Provider,
+        subject: &str,
+        claims: &CoreIdTokenClaims,
+        trace: TraceContext,
+    ) -> ApplicationResult<LoginOutcome> {
+        let account = if let Some(identity) =
+            oauth::find_identity(transaction, &provider.issuer, subject).await?
+        {
+            let account = accounts::lock_account(transaction, identity.account_id)
+                .await?
+                .ok_or(ApplicationError::Unauthenticated)?;
+            if oauth::find_identity(transaction, &provider.issuer, subject)
+                .await?
+                .is_none_or(|current| current.id != identity.id || current.account_id != account.id)
+            {
+                return Err(ApplicationError::Unauthenticated);
+            }
+            account
+        } else {
+            if claims.email_verified() != Some(true) {
+                return Err(ApplicationError::Unauthenticated);
+            }
+            let email = normalize_email(
+                claims
+                    .email()
+                    .ok_or(ApplicationError::Unauthenticated)?
+                    .as_str(),
+            )?;
+            if accounts::find_by_email(transaction, &email)
+                .await?
+                .is_some()
+            {
+                return Err(ApplicationError::Conflict);
+            }
+            let account = accounts::insert_account(transaction, email, None, true)
+                .await
+                .map_err(identity_conflict)?;
+            self.identity
+                .register_account_notification(
+                    transaction,
+                    &account,
+                    mail::MailPurpose::Welcome,
+                    trace,
+                )
+                .await?;
+            oauth::insert_identity(
+                transaction,
+                account.id,
+                provider.issuer.clone(),
+                subject.into(),
+            )
+            .await
+            .map_err(identity_conflict)?;
+            account
+        };
+        self.identity
+            .complete_primary_authentication(transaction, &account, trace)
+            .await
     }
 
     pub async fn list_external_identities(
@@ -454,6 +523,13 @@ fn identity_conflict(error: sea_orm::DbErr) -> ApplicationError {
     } else {
         error.into()
     }
+}
+pub(super) fn verified_subject(claims: &CoreIdTokenClaims) -> ApplicationResult<&str> {
+    let subject = claims.subject().as_str();
+    if subject.is_empty() || subject.len() > 255 {
+        return Err(ApplicationError::Unauthenticated);
+    }
+    Ok(subject)
 }
 fn flow_context(flow_id: Uuid) -> String {
     format!("oidc flow v1:{flow_id}")

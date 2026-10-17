@@ -57,6 +57,12 @@ public error codes. Worker handlers return error codes and retryability to the
 job runtime, which owns attempt recording and retry decisions. Request/job spans
 preserve correlation across these boundaries without returning internal details.
 
+When Cloudflare Turnstile is configured, signup, verification resend, password-reset
+requests, and password login read `human_verification_token` from the JSON body.
+A missing or rejected token returns `403` `human_verification_failed`. A provider
+failure returns `503` `human_verification_unavailable`. Without Turnstile the
+field is optional and ignored. See [human verification](security.md#human-verification).
+
 JSON bodies are bounded at 16 KiB. Requests have a configured deadline and a
 bounded concurrency budget. Overload returns 503. Invalid attempts count toward
 authentication limits. Authentication 429 responses include `Retry-After: 60`.
@@ -76,6 +82,14 @@ Bearer <token>`. It is not a JWT. The API rejects mixed cookie and bearer creden
 duplicate session cookies, and multiple Authorization headers. Session rotation
 preserves the request's transport. Never put credentials in query strings.
 The Bearer scheme name is case-insensitive. The credential remains case-sensitive.
+
+Native clients sign in with an OIDC provider SDK through
+`POST /api/v1/auth/oidc/{provider}/native` and
+`POST /api/v1/auth/oidc/{provider}/native/complete`. The first route returns a
+single-use `flow` and `nonce`. Pass the nonce to the SDK. Send the flow and the
+SDK `id_token` to the second route. Completion always returns a bearer session or
+an MFA challenge and never sets a cookie. These routes do not require an Origin.
+See [native ID token login](behavior/identity.md#native-id-token-login).
 
 External server applications use an organization-owned API key in the Bearer
 header on explicitly designated external routes. Keys and user sessions cannot
