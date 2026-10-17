@@ -48,8 +48,10 @@ All checks ran locally on Windows with Docker, on 2026-10-17.
   release-image, and copied-template checks were not run for this change. No
   remote CI run or live OIDC provider was verified.
 - GitHub CodeQL flagged the literal test passwords (alerts 22-25). The tests
-  now generate passwords at runtime. `just check` and `just test-api` passed
-  again with the same counts.
+  now generate passwords at runtime. A new test path to the shared
+  `TEST_PASSWORD` fixture constant (existing alert 5) was replaced by a stored
+  hash comparison. `just check` and `just test-api` passed again after each
+  change, with the same counts.
 
 ## Remaining work
 

@@ -212,6 +212,7 @@ async fn existing_and_concurrent_passwords_are_never_replaced_by_initial_passwor
     let identity = database.identity_service().await?;
     let (password_actor, password_credentials) = database.verified_account(&identity).await?;
     let password_email = identity.get_account(&password_actor).await?.email;
+    let existing = stored_account(&database, password_actor.account_id()).await?;
     let rejected_password = generated_password();
     assert!(matches!(
         identity
@@ -223,10 +224,12 @@ async fn existing_and_concurrent_passwords_are_never_replaced_by_initial_passwor
             .await,
         Err(ApplicationError::Conflict)
     ));
+    let unchanged = stored_account(&database, password_actor.account_id()).await?;
+    assert_eq!(unchanged.password_hash, existing.password_hash);
+    assert_eq!(unchanged.security_version, existing.security_version);
     identity
         .authenticate_session(&password_credentials.token)
         .await?;
-    login_with_password(&identity, &password_email, test_support::TEST_PASSWORD).await?;
     assert!(matches!(
         login_with_password(&identity, &password_email, &rejected_password).await,
         Err(ApplicationError::Unauthenticated)
