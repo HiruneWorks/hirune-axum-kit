@@ -18,8 +18,18 @@ SOURCE = pathlib.Path(__file__).resolve().parents[2]
 PROJECT = "hirune-data-test-" + secrets.token_hex(6)
 
 
+def redact_output(value, environment):
+    for name in ["MIGRATION_DATABASE_URL", "POSTGRES_PASSWORD", "SCHEMA_OWNER_PASSWORD", "RUNTIME_PASSWORD", "MAINTENANCE_PASSWORD", "PGBACKREST_REPO1_CIPHER_PASS", "MEILI_MASTER_KEY"]:
+        secret = (environment or {}).get(name)
+        if secret:
+            value = value.replace(secret, "[redacted]")
+    return value
+
+
 def execute(arguments, *, env=None, text=None, success=True):
     result = subprocess.run(arguments, input=text, text=True, capture_output=True, env=env)
+    result.stdout = redact_output(result.stdout, env)
+    result.stderr = redact_output(result.stderr, env)
     if success and result.returncode:
         raise RuntimeError("Command failed: " + " ".join(arguments[:6]) + "\n" + result.stdout[-2500:] + result.stderr[-3500:])
     return result
@@ -62,13 +72,28 @@ def verify(root):
     database = "hirune_fixture"
     data_volume = PROJECT + "-postgres"
     (profile / "data.env").write_text(f"DATA_PROJECT_NAME={PROJECT}\nDATA_BIND_ADDRESS=127.0.0.1\nPOSTGRES_PORT={pg_port}\nMEILISEARCH_PORT={meili_port}\nPOSTGRES_DATA_VOLUME={data_volume}\nBACKUP_HOUR_UTC=3\n")
-    (profile / "postgres.env").write_text("POSTGRES_USER=postgres\nPOSTGRES_DB=postgres\nAPPLICATION_DATABASE=" + database + "\n" + "".join(f"{name}={value}\n" for name, value in passwords.items()))
-    (profile / "pgbackrest.env").write_text("PGBACKREST_REPO1_TYPE=posix\nPGBACKREST_REPO1_PATH=/backup\nPGBACKREST_REPO1_CIPHER_TYPE=aes-256-cbc\nPGBACKREST_REPO1_CIPHER_PASS=" + secrets.token_urlsafe(32) + "\n")
     master_key = secrets.token_urlsafe(32)
-    (profile / "meilisearch.env").write_text("MEILI_ENV=production\nMEILI_NO_ANALYTICS=true\nMEILI_MASTER_KEY=" + master_key + "\n")
+    database_environment = {"POSTGRES_USER": "postgres", "POSTGRES_DB": "postgres", "APPLICATION_DATABASE": database, **passwords}
+    repository_environment = {"PGBACKREST_REPO1_TYPE": "posix", "PGBACKREST_REPO1_PATH": "/backup", "PGBACKREST_REPO1_CIPHER_TYPE": "aes-256-cbc", "PGBACKREST_REPO1_CIPHER_PASS": secrets.token_urlsafe(32)}
+    search_environment = {"MEILI_ENV": "production", "MEILI_NO_ANALYTICS": "true", "MEILI_MASTER_KEY": master_key}
+    environment = {**os.environ, "DEPLOY_ENV": "prod", **database_environment, **repository_environment, **search_environment}
+    # Compose inherits fixture credentials from the process; files contain names only.
+    service_variables = {
+        "postgres": [*database_environment, *repository_environment],
+        "backup-scheduler": list(repository_environment),
+        "restore": list(repository_environment),
+        "recovery-check": list(repository_environment),
+        "meilisearch": list(search_environment),
+    }
     override = root / "fixture.yaml"
-    override.write_text("services:\n" + "".join(f"  {name}:\n    volumes: [fixture_backup:/backup]\n" for name in ["postgres", "backup-scheduler", "restore", "recovery-check"]) + "volumes:\n  fixture_backup: {}\n")
-    environment = {**os.environ, "DEPLOY_ENV": "prod"}
+    override.write_text("services:\n" + "".join(
+        f"  {name}:\n    env_file: !reset []\n    environment:\n" + "".join(f"      {variable}:\n" for variable in variables)
+        + ("    volumes: [fixture_backup:/backup]\n" if name != "meilisearch" else "")
+        for name, variables in service_variables.items()
+    ) + "volumes:\n  fixture_backup: {}\n")
+    fixture_secrets = [*passwords.values(), master_key, repository_environment["PGBACKREST_REPO1_CIPHER_PASS"]]
+    for path in [*profile.glob("*.env"), override]:
+        assert all(secret not in path.read_text() for secret in fixture_secrets), "Fixture configuration contains a generated secret"
     if environment.get("CODEX_PROXY_CERT"):
         environment["DATA_BUILD_CA_FILE"] = environment["CODEX_PROXY_CERT"]
     base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data/compose.yaml"), "-f", str(override)]
@@ -182,8 +207,6 @@ def verify(root):
         print("PostgreSQL restart and authenticated Meilisearch replacement retained persistent state.")
     except BaseException:
         logs = compose("--profile", "recovery", "logs", "--tail", "35", success=False).stdout
-        for value in passwords.values():
-            logs = logs.replace(value, "[redacted]")
         print(logs)
         raise
     finally:

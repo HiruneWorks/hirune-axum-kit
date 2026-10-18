@@ -24,6 +24,10 @@
   support retained recovery volumes. Cutover remains an explicit operator action.
 - Added actual physical recovery, role restriction, scheduler, and Meilisearch
   persistence acceptance to CI, plus data configuration/isolation contracts.
+- Addressed the PR CodeQL plaintext-storage finding in the acceptance fixture.
+  Generated database passwords, the repository cipher, and the Meilisearch key
+  pass through the process environment. Fixture files contain variable names,
+  not generated secrets. Captured output and failure exceptions redact them.
 
 ## Decisions and constraints
 
@@ -58,6 +62,9 @@
 - Local formatting, xtask/migration Clippy, deployment contracts, Python syntax,
   documentation links, and operator recipe parsing passed. Contracts also reject
   a data environment-selector override and a shared dev/prod database volume.
+- The environment-only fixture passed actual backup/recovery and persistence
+  acceptance. A focused failure check confirmed stdout, stderr, and exception
+  redaction for database, repository, and Meilisearch secrets.
 - Remote CI is pending. No S3/R2 provider, target host firewall, real Tunnel,
   or live production deployment was exercised.
 
