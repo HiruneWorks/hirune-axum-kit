@@ -10,6 +10,10 @@ This is a modular monolith with separately scalable API and worker processes.
 PostgreSQL owns accounts, authentication state, authorization facts, deliveries,
 and jobs. Neither process requires sticky routing or in-memory authority.
 Migration and management commands are explicit one-off processes.
+The optional [data profile](../deploy/data-services/README.md) keeps PostgreSQL,
+Meilisearch, and pgBackRest in Docker Compose outside k3s, including on the same
+Linux machine. Data volumes and backup recovery have a separate lifecycle from
+application Pods.
 The k3s ingress gateways share disposable Valkey counters for broad IP protection.
 Authentication and strict API accounting remain in PostgreSQL. Application
 processes do not connect to Valkey. See the [deployment contract](../deploy/k3s/README.md#shared-edge-limits).

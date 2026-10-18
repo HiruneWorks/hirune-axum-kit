@@ -26,6 +26,21 @@ const IMAGES: &[&str] = &[
     "rancher/klipper-helm:v0.13.3-build20260727",
 ];
 
+pub(crate) fn configure_api_spread(profile: &Path) -> Result<()> {
+    fs::write(
+        profile.join("api-spread.yaml"),
+        include_str!("../../deploy/k3s/verification/api-spread.yaml"),
+    )?;
+    let mut kustomization = fs::OpenOptions::new()
+        .append(true)
+        .open(profile.join("kustomization.yaml"))?;
+    writeln!(
+        kustomization,
+        "\npatches:\n  - path: api-spread.yaml\n    target:\n      kind: Deployment\n      name: hirune-api"
+    )?;
+    Ok(())
+}
+
 pub fn verify() -> Result<()> {
     let image = std::env::var("K3S_TEST_IMAGE")
         .context("set K3S_TEST_IMAGE to the canonical release application image")?;
@@ -697,6 +712,8 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
                 .replace("registry.example.com/your-project/hirune-kit", name)
                 .replace("newTag: 0.1.0", &format!("newTag: {tag}")),
         )?;
+        // Each revision must span both fixture nodes while old Pods terminate.
+        configure_api_spread(&profile)?;
         let path = self.directory.path().join("deploy/k3s/base/tunnel.yaml");
         fs::write(
             &path,

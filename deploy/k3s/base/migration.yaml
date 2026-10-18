@@ -30,6 +30,12 @@ spec:
             - name: MIGRATION_DATABASE_URL
               valueFrom:
                 secretKeyRef: {name: hirune-migration-database, key: MIGRATION_DATABASE_URL}
+            - name: MIGRATION_RUNTIME_ROLE
+              valueFrom:
+                secretKeyRef: {name: hirune-migration-database, key: MIGRATION_RUNTIME_ROLE, optional: true}
+            - name: MIGRATION_MAINTENANCE_ROLE
+              valueFrom:
+                secretKeyRef: {name: hirune-migration-database, key: MIGRATION_MAINTENANCE_ROLE, optional: true}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

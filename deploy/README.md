@@ -1,7 +1,8 @@
 # Deployment
 
-`deploy/justfile` deploys to Kubernetes. It does not start a Compose deployment
-or install k3s. Image build files live in `compose/`. Root `just infra-up` starts
+`deploy/justfile` deploys application processes to Kubernetes. Separate `data-*`
+commands manage optional self-hosted data services with Docker Compose. It does
+not install k3s. Image build files live in `compose/`. Root `just infra-up` starts
 only local development dependencies with Compose.
 
 The production path is Cloudflare Tunnel → private APISIX → API Service → API
@@ -15,8 +16,10 @@ broad IP limit. No forward-auth service is used.
 PostgreSQL, SMTP, optional S3 storage, and optional search are external services.
 The production manifests do not install PostgreSQL or allocate a database PVC.
 Provision persistent storage, database grants, backups, and recovery separately.
-A managed PostgreSQL service is a suitable default. An independently operated
-PostgreSQL cluster uses the same connection settings.
+A managed PostgreSQL service uses the same connection settings. For one Linux
+machine, the [data profile](data-services/README.md) runs PostgreSQL, Meilisearch, and a
+pgBackRest scheduler beside k3s. Its data volumes and off-host backups have a
+separate lifecycle from application rollout.
 
 ## Environments and commands
 
@@ -109,6 +112,10 @@ Provision three database roles:
 
 Verify the actual database grants during deployment acceptance. Separate
 environment files do not enforce these permissions.
+The optional `MIGRATION_RUNTIME_ROLE` and `MIGRATION_MAINTENANCE_ROLE` settings
+enable post-migration grants for the self-hosted profile. Set both or neither.
+The migration Job must finish this step before runtime rollout. Existing DDL or
+inherited/PUBLIC authority that violates the role contract causes failure.
 
 API and worker receive the generated runtime database Secret. Ordinary `manage`
 commands execute in an API Pod with that runtime role. Maintenance receives its

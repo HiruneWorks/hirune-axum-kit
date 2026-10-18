@@ -29,3 +29,36 @@ manage environment +arguments:
 
 cleanup environment:
     cargo xtask deploy-k3s cleanup "$1"
+
+# Run on the selected data host. Application deployments remain Kubernetes operations.
+data-services-check environment:
+    cargo xtask data-services check "$1"
+
+data-services-up environment:
+    cargo xtask data-services up "$1"
+
+data-services-down environment:
+    cargo xtask data-services down "$1"
+
+data-services-status environment:
+    cargo xtask data-services status "$1"
+
+data-services-logs environment service="postgres":
+    cargo xtask data-services logs "$1" "$2"
+
+backup environment type="incr":
+    cargo xtask data-services backup "$1" "$2"
+
+backup-check environment:
+    cargo xtask data-services backup-check "$1"
+
+backup-info environment:
+    cargo xtask data-services backup-info "$1"
+
+# Restore to a new volume. This does not replace the live database.
+restore environment label target="":
+    if [ -n "$3" ]; then cargo xtask data-services restore "$1" "$2" "$3"; else cargo xtask data-services restore "$1" "$2"; fi
+
+# Continue WAL validation in a retained recovery volume, without restoring files again.
+restore-resume environment label:
+    cargo xtask data-services restore-resume "$1" "$2"

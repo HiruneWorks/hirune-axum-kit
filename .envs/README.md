@@ -17,6 +17,10 @@ settings, `gateway.env` for the edge IP limit, generated application/provider Se
 and a Tunnel token. Keep databases, keys, origins, and tunnels separate between
 dev and prod. Both hosted environments use `APP_ENV=production` for HTTPS rules.
 See [deployment](../deploy/README.md) and the [k3s runbook](../deploy/k3s/README.md).
+Each hosted environment also has an optional `data-services/` profile for self-hosted
+PostgreSQL/Meilisearch and pgBackRest. Data and Kubernetes credentials must match,
+but only PostgreSQL/backup containers receive bootstrap and backup secrets. See
+the [data runbook](../deploy/data-services/README.md).
 
 Kubernetes generator env files use raw values. Write `OIDC_PROVIDERS=[]` or raw
 JSON with double quotes and no outer single quotes. These files do not expand
@@ -25,7 +29,9 @@ Do not transfer dotenv quotes into Kubernetes values.
 
 `runtime.env` supplies only the restricted runtime `DATABASE_URL`.
 `maintenance.env` supplies its restricted cleanup `DATABASE_URL`.
-`migration.env` supplies only the schema-owner `MIGRATION_DATABASE_URL`.
+`migration.env` supplies the schema-owner `MIGRATION_DATABASE_URL` and optional
+`MIGRATION_RUNTIME_ROLE` / `MIGRATION_MAINTENANCE_ROLE` identifiers. Set both to
+enable post-migration role grants, or leave both empty for external management.
 Kustomize creates separate hashed Secrets and resolves their workload references.
 API and worker Pods receive neither maintenance nor schema-owner credentials.
 Provision and verify actual database grants separately. An env-file name does

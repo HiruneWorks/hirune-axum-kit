@@ -178,6 +178,15 @@ account deactivation so deactivation cannot suppress a pending password-change
 alert. Signup welcome messages require a verified, active account; action mail
 still requires its live challenge/version.
 
+## Data services and recovery
+
+The optional [self-hosted data profile](../deploy/data-services/README.md) uses private
+host bindings, separate database roles, encrypted off-host pgBackRest repositories,
+and new-volume recovery. Its non-root backup scheduler has read-only data access
+and no Docker socket. Protect namespace writes, Docker administration, backup
+credentials, retained application keys, and the host's forwarding firewall.
+Local recovery acceptance does not establish real-provider access or host failover.
+
 ## Sources
 
 - [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)

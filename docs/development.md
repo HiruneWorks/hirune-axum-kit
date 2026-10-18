@@ -34,6 +34,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-content` | Real PostgreSQL/SeaweedFS/Meilisearch content, profiles, Cedar, revision conflicts, scoped pagination/search, transactional inbox, session-bound push devices, and provider-independent push gates. |
 | `just test-deployment` | Validate local Compose, isolated dev/prod Kubernetes overlays, database-role separation, and Secret-triggered rollouts using temporary examples. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
+| `just test-data-services` | Actual PostgreSQL/pgBackRest and Meilisearch Compose services: restricted migration grants, encrypted full/differential backup, isolated latest/PITR recovery, live-volume rejection, and persistent state across replacement. Uses a disposable local repository. |
 | `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, two APISIX gateways sharing Valkey, counter failure/recovery, environment isolation, and ingress policies. Requires `K3S_TEST_IMAGE`. |
 | `cd deploy; just up dev` / `just up prod` | Deploy to an explicitly configured Kubernetes context and namespace. Defaults to rolling. Use `just up prod drain` for an offline migration. |
 | `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |

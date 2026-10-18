@@ -31,3 +31,4 @@ rustc-ice-*.txt
 !.envs/.example/
 deploy/*.env
 logs/
+__pycache__/
