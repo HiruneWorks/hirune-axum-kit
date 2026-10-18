@@ -46,6 +46,11 @@ placeholders. Kubernetes generator env files use raw values: JSON has no outer
 single quotes, and shell variables are not expanded. See the
 [k3s runbook](k3s/README.md) for cluster and Tunnel preparation.
 
+The just recipes use a POSIX shell for argument forwarding. On Windows, use
+Git for Windows `sh`, or invoke the Rust CLI directly, for example
+`cargo xtask deploy-k3s up prod`. Local development recipes retain their normal
+platform shell.
+
 Run from this directory:
 
 ```sh

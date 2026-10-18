@@ -47,10 +47,19 @@
   set to the prod namespace before any cluster contact. Temporary files were removed.
 - Markdown links passed. `cargo test --locked --package xtask` passed but contains
   no unit tests; deployment contracts run through the explicit xtask command.
-- Real two-node k3s acceptance and new remote CI are pending at this commit.
-  The managed local kernel still lacks `xt_physdev`; full policy acceptance needs
-  the supported CI runner. The previous milestone's CI success does not establish
-  acceptance for this new change.
+- The local real two-node k3s fixture passed signup/mail, CF/SSR forwarding,
+  API replacement (636 successful authenticated requests, zero errors), gateway
+  configuration replacement (1,286 successful requests, zero errors), retained
+  sessions/quota, coordinated application drain, and unchanged dev Pods/replicas
+  with an unusable default kubeconfig context.
+- That full local command failed at private ingress denial because this managed
+  kernel lacks `xt_physdev`. The embedded policy controller reported failed
+  iptables synchronization. This is not a full local acceptance pass.
+- Cross-namespace denial resolves DNS outside the caught TCP error path. It must
+  pass on the supported remote CI runner. New remote CI remains pending; the
+  previous milestone's CI does not establish acceptance for this change.
+- Deployment just recipes use a POSIX shell on all platforms to preserve argument
+  boundaries. Windows operators can use Git's `sh` or the Rust CLI directly.
 
 ## Remaining work
 

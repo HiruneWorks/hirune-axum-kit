@@ -1,7 +1,7 @@
 set working-directory := ".."
 set dotenv-load := false
 set positional-arguments := true
-set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+set windows-shell := ["sh", "-cu"]
 
 default:
     @just --justfile deploy/justfile --list
