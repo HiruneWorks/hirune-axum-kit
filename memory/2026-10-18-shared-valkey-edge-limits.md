@@ -69,12 +69,30 @@
 - The complete local command failed at private ingress denial. This managed
   kernel lacks `xt_physdev`; both node policy controllers reported aborted
   iptables synchronization. This is not a full local acceptance pass. Policies
-  remain enabled. The fixture-only longer window and stronger post-replacement
-  reconnection assertion need final remote CI coverage.
-- Remote CI is pending at this snapshot.
+  remain enabled. The remote run below completed policy enforcement and the
+  final fixture-only timing/reconnection checks.
+- Remote [CI run 39101200034](https://github.com/HiruneWorks/hirune-axum-kit/actions/runs/39101200034)
+  passed `verify` and `container` for functional commit
+  `2dccd6bcf1e8826267330d8c73799dd94ae33048`. Later changes are documentation only.
+  It passed workspace checks, PostgreSQL/API/process/files/content suites,
+  deployment contracts, k6 smoke, and copied-template acceptance.
+- That CI built the canonical release image and passed production acceptance:
+  HTTPS, STARTTLS, cookies/origins, restricted database roles, backup/restore,
+  and encrypted MFA recovery.
+- CI two-node k3s acceptance passed with two API Pods on different nodes and
+  two real APISIX gateways sharing Valkey. API replacement handled 700
+  authenticated requests without errors; gateway configuration replacement
+  handled 1713 without errors. Sessions and strict quota survived rolling and
+  drained replacement. Direct gateway tests passed IP/SSR/spoof/duplicate rules,
+  CORS/errors/health, gateway replacement continuity, counter timeout/recovery
+  with strict PostgreSQL quota intact, and counter reset/reconnection.
+- CI retained independent dev counter state and its sentinel Pods. Tunnel-labelled
+  Pods could reach the gateway but could not bypass it to the API or Valkey.
+  Untrusted Pods could not reach any of those services. A dev tunnel-labelled Pod
+  could not reach prod gateway, API, or Valkey.
 
 ## Remaining work
 
-Complete remote CI acceptance on its supported Linux kernel before merging. Target infrastructure
-still needs real Tunnel/provider checks, monitoring, database recovery, and
-capacity measurements. No live production environment was deployed.
+Target infrastructure still needs real Tunnel/provider checks, monitoring,
+database recovery, and capacity measurements. No live production environment
+was deployed. Valkey failover and production capacity were not tested.
