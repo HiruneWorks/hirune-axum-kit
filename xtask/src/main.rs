@@ -1,5 +1,5 @@
 mod checks;
-mod data;
+mod data_services;
 mod deployment;
 mod infrastructure;
 mod kubernetes;
@@ -33,13 +33,15 @@ fn main() -> Result<()> {
         Some("test-deployment") => deployment::verify(),
         Some("test-production") => production::verify(),
         Some("deploy-k3s") => kubernetes::from_arguments(),
-        Some("data") => data::from_arguments(),
+        Some("data-services") => data_services::from_arguments(),
         Some("test-k3s") => kubernetes_test::verify(),
-        Some("test-data") => crate::run(Command::new("python3").arg("compose/data/verify.py")),
+        Some("test-data-services") => {
+            crate::run(Command::new("python3").arg("compose/data-services/verify.py"))
+        }
         Some("load-test") => infrastructure::run_load_test(),
         Some("template-check") => template::verify(root),
         _ => anyhow::bail!(
-            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|test-data|data <action> <dev|prod>|deploy-k3s <action> <dev|prod>|test-k3s|load-test|template-check>"
+            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|test-data-services|data-services <action> <dev|prod>|deploy-k3s <action> <dev|prod>|test-k3s|load-test|template-check>"
         ),
     }
 }

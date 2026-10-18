@@ -43,6 +43,6 @@ updates:
       interval: weekly
 
   - package-ecosystem: docker-compose
-    directory: /compose/data
+    directory: /compose/data-services
     schedule:
       interval: weekly

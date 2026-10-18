@@ -17,7 +17,7 @@ PostgreSQL, SMTP, optional S3 storage, and optional search are external services
 The production manifests do not install PostgreSQL or allocate a database PVC.
 Provision persistent storage, database grants, backups, and recovery separately.
 A managed PostgreSQL service uses the same connection settings. For one Linux
-machine, the [data profile](data/README.md) runs PostgreSQL, Meilisearch, and a
+machine, the [data profile](data-services/README.md) runs PostgreSQL, Meilisearch, and a
 pgBackRest scheduler beside k3s. Its data volumes and off-host backups have a
 separate lifecycle from application rollout.
 

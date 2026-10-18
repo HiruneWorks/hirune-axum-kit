@@ -42,7 +42,7 @@ def free_port():
 
 
 def scheduling():
-    spec = importlib.util.spec_from_file_location("backup_scheduler", SOURCE / "compose/data/backup_scheduler.py")
+    spec = importlib.util.spec_from_file_location("backup_scheduler", SOURCE / "compose/data-services/backup_scheduler.py")
     scheduler = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(scheduler)
     sunday = dt.datetime(2026, 10, 18, 3, tzinfo=dt.timezone.utc)
@@ -63,10 +63,10 @@ def scheduling():
 
 
 def verify(root):
-    for directory in ["compose/data", "compose/production/postgres", ".envs/.example/prod/data"]:
+    for directory in ["compose/data-services", "compose/production/postgres", ".envs/.example/prod/data-services"]:
         shutil.copytree(SOURCE / directory, root / directory)
-    profile = root / ".envs/.prod/data"
-    shutil.copytree(root / ".envs/.example/prod/data", profile)
+    profile = root / ".envs/.prod/data-services"
+    shutil.copytree(root / ".envs/.example/prod/data-services", profile)
     pg_port, meili_port = free_port(), free_port()
     passwords = {name: secrets.token_urlsafe(32) for name in ["POSTGRES_PASSWORD", "SCHEMA_OWNER_PASSWORD", "RUNTIME_PASSWORD", "MAINTENANCE_PASSWORD"]}
     database = "hirune_fixture"
@@ -98,7 +98,7 @@ def verify(root):
         public_ca = root / "build-proxy-ca.pem"
         shutil.copyfile(environment["CODEX_PROXY_CERT"], public_ca)
         environment["DATA_BUILD_CA_FILE"] = str(public_ca)
-    base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data/compose.yaml"), "-f", str(override)]
+    base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data-services/compose.yaml"), "-f", str(override)]
     recovery_volumes = []
 
     def compose(*arguments, success=True, extra_env=None):

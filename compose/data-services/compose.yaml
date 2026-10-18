@@ -7,8 +7,8 @@ x-database: &database
     dockerfile: compose/production/postgres/Dockerfile
     secrets: [proxy_ca]
   env_file:
-    - ../../.envs/.${DEPLOY_ENV:?Select dev or prod}/data/postgres.env
-    - ../../.envs/.${DEPLOY_ENV}/data/pgbackrest.env
+    - ../../.envs/.${DEPLOY_ENV:?Select dev or prod}/data-services/postgres.env
+    - ../../.envs/.${DEPLOY_ENV}/data-services/pgbackrest.env
   networks: [data]
   logging:
     driver: json-file
@@ -44,7 +44,7 @@ services:
   backup-scheduler:
     <<: *database
     user: postgres
-    env_file: ["../../.envs/.${DEPLOY_ENV}/data/pgbackrest.env"]
+    env_file: ["../../.envs/.${DEPLOY_ENV}/data-services/pgbackrest.env"]
     entrypoint: [python3, -u, /usr/local/bin/backup_scheduler.py]
     environment:
       BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-3}
@@ -62,7 +62,7 @@ services:
       postgres: {condition: service_healthy}
   meilisearch:
     image: getmeili/meilisearch:v1.55.0
-    env_file: ["../../.envs/.${DEPLOY_ENV}/data/meilisearch.env"]
+    env_file: ["../../.envs/.${DEPLOY_ENV}/data-services/meilisearch.env"]
     restart: unless-stopped
     ports:
       - "${DATA_BIND_ADDRESS}:${MEILISEARCH_PORT:?Set MEILISEARCH_PORT}:7700"
@@ -80,13 +80,13 @@ services:
   restore:
     <<: *database
     profiles: [recovery]
-    env_file: ["../../.envs/.${DEPLOY_ENV}/data/pgbackrest.env"]
+    env_file: ["../../.envs/.${DEPLOY_ENV}/data-services/pgbackrest.env"]
     entrypoint: [/usr/local/bin/hirune-restore]
     volumes: [recovery_data:/var/lib/postgresql]
   recovery-check:
     <<: *database
     profiles: [recovery]
-    env_file: ["../../.envs/.${DEPLOY_ENV}/data/pgbackrest.env"]
+    env_file: ["../../.envs/.${DEPLOY_ENV}/data-services/pgbackrest.env"]
     command: [postgres, -c, archive_mode=off, -c, listen_addresses=, -c, unix_socket_directories=/tmp]
     volumes: [recovery_data:/var/lib/postgresql]
 

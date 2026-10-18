@@ -8,7 +8,7 @@ servers can preserve the original client IP with a shared proxy secret.
 The [k3s profile](deploy/k3s/README.md) includes two API replicas, private APISIX,
 shared Valkey edge counters, Tunnel replicas, migration sequencing, and live
 rolling-update verification.
-For a single Linux host, the optional [data profile](deploy/data/README.md) runs
+For a single Linux host, the optional [data profile](deploy/data-services/README.md) runs
 Docker Compose PostgreSQL/Meilisearch and pgBackRest backups beside k3s.
 
 ## Start locally

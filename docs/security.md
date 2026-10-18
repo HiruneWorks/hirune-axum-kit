@@ -180,7 +180,7 @@ still requires its live challenge/version.
 
 ## Data services and recovery
 
-The optional [self-hosted data profile](../deploy/data/README.md) uses private
+The optional [self-hosted data profile](../deploy/data-services/README.md) uses private
 host bindings, separate database roles, encrypted off-host pgBackRest repositories,
 and new-volume recovery. Its non-root backup scheduler has read-only data access
 and no Docker socket. Protect namespace writes, Docker administration, backup

@@ -17,10 +17,10 @@ settings, `gateway.env` for the edge IP limit, generated application/provider Se
 and a Tunnel token. Keep databases, keys, origins, and tunnels separate between
 dev and prod. Both hosted environments use `APP_ENV=production` for HTTPS rules.
 See [deployment](../deploy/README.md) and the [k3s runbook](../deploy/k3s/README.md).
-Each hosted environment also has an optional `data/` profile for self-hosted
+Each hosted environment also has an optional `data-services/` profile for self-hosted
 PostgreSQL/Meilisearch and pgBackRest. Data and Kubernetes credentials must match,
 but only PostgreSQL/backup containers receive bootstrap and backup secrets. See
-the [data runbook](../deploy/data/README.md).
+the [data runbook](../deploy/data-services/README.md).
 
 Kubernetes generator env files use raw values. Write `OIDC_PROVIDERS=[]` or raw
 JSON with double quotes and no outer single quotes. These files do not expand

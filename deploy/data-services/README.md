@@ -17,7 +17,7 @@ rollouts; off-host backups provide recovery after machine or disk loss.
 ## Configure the host
 
 Install Docker Engine with Compose v2, Rust, and just. Copy the dev/prod examples
-to ignored `.envs/.dev/` and `.envs/.prod/`. Each `data/` directory contains:
+to ignored `.envs/.dev/` and `.envs/.prod/`. Each `data-services/` directory contains:
 
 - `data.env`: explicit Docker context, project, private bind address, distinct
   ports, PostgreSQL volume name, and the UTC backup hour.
@@ -68,12 +68,12 @@ encryption keys and deployment credentials needed for recovery.
 From `deploy/`, run:
 
 ```sh
-just data-check prod
-just data-up prod
+just data-services-check prod
+just data-services-up prod
 just backup-info prod
 ```
 
-`data-up` builds the database image, starts PostgreSQL and Meilisearch, creates
+`data-services-up` builds the database image, starts PostgreSQL and Meilisearch, creates
 and checks the pgBackRest stanza, takes an initial full backup if none exists,
 then starts the scheduler. Repository failure stops this setup command. A running
 PostgreSQL can remain healthy during later archive failures; monitor backups
@@ -117,7 +117,7 @@ just backup prod diff
 just backup prod incr
 just backup-check prod
 just backup-info prod
-just data-logs prod backup-scheduler
+just data-services-logs prod backup-scheduler
 ```
 
 The scheduler uses successful repository history. It takes a weekly full on
@@ -126,7 +126,7 @@ Sunday and a differential on other days at `BACKUP_HOUR_UTC` (default 03:00 UTC,
 replaying every missed day. An overdue full takes priority over a daily backup.
 Failures retry after 60 seconds. Manual and scheduled backups share pgBackRest
 locks. Two retained full backups and their required WAL form the default history;
-adjust retention in `compose/data/pgbackrest.conf` for the recovery requirement.
+adjust retention in `compose/data-services/pgbackrest.conf` for the recovery requirement.
 
 PostgreSQL continuously archives completed WAL segments. `archive_timeout=60`
 requests periodic WAL switches; this is not a guaranteed recovery-point bound.
@@ -159,7 +159,7 @@ Use a rehearsal to verify the actual data and recovery time before an incident.
 For a real cutover, stop application writers and the backup scheduler, then stop
 the old PostgreSQL process. Confirm that no other process uses either volume.
 Change `POSTGRES_DATA_VOLUME` in the selected `data.env` to the verified recovery
-volume and run `just data-up <environment>`. Keep the old volume until validation
+volume and run `just data-services-up <environment>`. Keep the old volume until validation
 and a new full backup complete. Never run two writable servers that archive the
 same recovered cluster to the same repository. Serialize all data operations.
 
@@ -175,7 +175,7 @@ Meilisearch, original object-store files, or application environment secrets.
 
 ## Validation scope
 
-Run `just test-data` with Docker and Python 3. The disposable acceptance fixture
+Run `just test-data-services` with Docker and Python 3. The disposable acceptance fixture
 uses the actual production Compose/image and an encrypted local repository. It
 checks role restrictions, full/differential backup, read-only non-root scheduling,
 latest recovery, point-in-time recovery, live-volume rejection, PostgreSQL restart,

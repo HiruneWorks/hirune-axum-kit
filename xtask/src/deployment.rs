@@ -8,7 +8,10 @@ pub fn verify() -> Result<()> {
     let temporary = tempfile::tempdir()?;
     let root = temporary.path();
     copy_directory(Path::new("deploy/k3s/base"), &root.join("deploy/k3s/base"))?;
-    copy_directory(Path::new("compose/data"), &root.join("compose/data"))?;
+    copy_directory(
+        Path::new("compose/data-services"),
+        &root.join("compose/data-services"),
+    )?;
     copy_directory(
         Path::new("compose/production/postgres"),
         &root.join("compose/production/postgres"),
@@ -23,10 +26,10 @@ pub fn verify() -> Result<()> {
         copy_directory(
             &Path::new(".envs/.example")
                 .join(environment.name())
-                .join("data"),
-            &root.join(format!(".envs/.{}/data", environment.name())),
+                .join("data-services"),
+            &root.join(format!(".envs/.{}/data-services", environment.name())),
         )?;
-        let data = crate::data::DataDeployment::load(root, environment)?;
+        let data = crate::data_services::DataServicesDeployment::load(root, environment)?;
         let rendered = data
             .compose(&["config", "--format", "json"])
             .env_remove("DATA_BUILD_CA_FILE")
@@ -76,25 +79,25 @@ pub fn verify() -> Result<()> {
         );
     }
     let dev = Deployment::load(root, Environment::Dev)?;
-    let dev_data_path = root.join(".envs/.dev/data/data.env");
+    let dev_data_path = root.join(".envs/.dev/data-services/data.env");
     let original_data = fs::read_to_string(&dev_data_path)?;
     fs::write(
         &dev_data_path,
         format!("{original_data}\nDEPLOY_ENV=prod\n"),
     )?;
     ensure!(
-        crate::data::DataDeployment::load(root, Environment::Dev).is_err(),
+        crate::data_services::DataServicesDeployment::load(root, Environment::Dev).is_err(),
         "data environment selector was overridden"
     );
     fs::write(&dev_data_path, original_data)?;
-    let prod_data_path = root.join(".envs/.prod/data/data.env");
+    let prod_data_path = root.join(".envs/.prod/data-services/data.env");
     let original_prod_data = fs::read_to_string(&prod_data_path)?;
     fs::write(
         &prod_data_path,
         original_prod_data.replace("hirune-prod-postgres", "hirune-dev-postgres"),
     )?;
     ensure!(
-        crate::data::DataDeployment::load(root, Environment::Prod).is_err(),
+        crate::data_services::DataServicesDeployment::load(root, Environment::Prod).is_err(),
         "dev and prod shared a data volume"
     );
     fs::write(&prod_data_path, original_prod_data)?;

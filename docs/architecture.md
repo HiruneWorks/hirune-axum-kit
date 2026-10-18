@@ -10,7 +10,7 @@ This is a modular monolith with separately scalable API and worker processes.
 PostgreSQL owns accounts, authentication state, authorization facts, deliveries,
 and jobs. Neither process requires sticky routing or in-memory authority.
 Migration and management commands are explicit one-off processes.
-The optional [data profile](../deploy/data/README.md) keeps PostgreSQL,
+The optional [data profile](../deploy/data-services/README.md) keeps PostgreSQL,
 Meilisearch, and pgBackRest in Docker Compose outside k3s, including on the same
 Linux machine. Data volumes and backup recovery have a separate lifecycle from
 application Pods.

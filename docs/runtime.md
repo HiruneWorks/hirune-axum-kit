@@ -39,7 +39,7 @@ uses a privileged local role solely for convenience/testing.
 The optional migration-only `MIGRATION_RUNTIME_ROLE` and
 `MIGRATION_MAINTENANCE_ROLE` settings apply restricted grants after migration.
 Set both or neither. The migration Job fails on existing DDL authority or unsafe
-effective table privileges. See [self-hosted data](../deploy/data/README.md).
+effective table privileges. See [self-hosted data](../deploy/data-services/README.md).
 
 ## Configuration
 

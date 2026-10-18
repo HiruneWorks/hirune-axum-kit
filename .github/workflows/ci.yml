@@ -64,7 +64,7 @@ jobs:
       - run: cargo xtask test-production
         env:
           PRODUCTION_TEST_IMAGE: hirune-kit:ci
-      - run: cargo xtask test-data
+      - run: cargo xtask test-data-services
         env:
           DATA_TEST_APP_IMAGE: hirune-kit:ci
       - name: Install pinned Kubernetes test tools

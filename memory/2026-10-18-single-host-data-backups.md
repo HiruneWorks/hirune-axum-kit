@@ -4,6 +4,9 @@
 
 - Added optional Docker Compose PostgreSQL 18.6, Meilisearch 1.55.0, and a
   pgBackRest scheduler outside k3s, including on the same Linux machine.
+- Named this operational group `data-services` in Compose/deployment folders,
+  environment profiles, xtask commands, and operator recipes. It groups the
+  database and search service with PostgreSQL backup execution.
 - Added separate dev/prod data settings and operator commands for explicit Docker
   contexts, private host bindings, persistent volumes, startup/shutdown, backup
   history/checks, and new-volume recovery. Application deployment remains k3s.

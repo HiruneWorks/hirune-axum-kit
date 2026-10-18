@@ -8,7 +8,7 @@ use std::{
     process::Command,
 };
 
-pub struct DataDeployment {
+pub struct DataServicesDeployment {
     pub directory: PathBuf,
     pub environment: Environment,
     pub project: String,
@@ -16,9 +16,9 @@ pub struct DataDeployment {
     pub values: BTreeMap<String, String>,
 }
 
-impl DataDeployment {
+impl DataServicesDeployment {
     pub fn load(root: &Path, environment: Environment) -> Result<Self> {
-        let directory = root.join(format!(".envs/.{}/data", environment.name()));
+        let directory = root.join(format!(".envs/.{}/data-services", environment.name()));
         let values: BTreeMap<String, String> = dotenvy::from_path_iter(directory.join("data.env"))
             .map_err(|_| anyhow::anyhow!("copy and configure the selected data environment first"))?
             .collect::<std::result::Result<_, _>>()
@@ -79,7 +79,7 @@ impl DataDeployment {
             Environment::Dev => "prod",
             Environment::Prod => "dev",
         };
-        let other_path = root.join(format!(".envs/.{other_environment}/data/data.env"));
+        let other_path = root.join(format!(".envs/.{other_environment}/data-services/data.env"));
         if other_path.exists() {
             let other: BTreeMap<String, String> = dotenvy::from_path_iter(other_path)
                 .map_err(|_| anyhow::anyhow!("invalid other data environment"))?
@@ -119,7 +119,7 @@ impl DataDeployment {
             .env("DEPLOY_ENV", self.environment.name())
             .args(["compose", "--project-name", &self.project, "--env-file"])
             .arg(self.directory.join("data.env"))
-            .args(["--file", "compose/data/compose.yaml"])
+            .args(["--file", "compose/data-services/compose.yaml"])
             .args(arguments);
         command
     }
@@ -322,7 +322,7 @@ pub fn from_arguments() -> Result<()> {
     let arguments: Vec<_> = std::env::args().skip(2).collect();
     let action = arguments.first().context("select a data action")?;
     let environment = Environment::parse(arguments.get(1).context("select dev or prod")?)?;
-    let deployment = DataDeployment::load(Path::new("."), environment)?;
+    let deployment = DataServicesDeployment::load(Path::new("."), environment)?;
     let extra: Vec<_> = arguments.iter().skip(2).map(String::as_str).collect();
     println!(
         "Data target: context={}, project={}, environment={}",
