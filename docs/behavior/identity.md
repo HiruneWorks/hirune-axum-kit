@@ -31,8 +31,9 @@ authentication is a separate five-minute window from the last primary login.
 Activity extends idle expiry at most once per minute and never beyond the
 absolute deadline. Rotation replaces the credential. The old token stops working
 across instances. Lists and revocation are owner-scoped. Account deactivation,
-password reset/change, and MFA configuration changes invalidate existing sessions
-and outstanding challenges. Deactivation is not physical data erasure.
+password reset/change, an initial password, and MFA configuration changes
+invalidate existing sessions and outstanding challenges. Deactivation is not
+physical data erasure.
 Authentication maintenance deletes expired rows in bounded batches. Session
 deletion rechecks both deadlines after a concurrent activity update releases its
 row lock, so an accepted idle extension cannot be removed from an old snapshot.
@@ -41,8 +42,29 @@ Password reset is available for verified active accounts with a password. It is
 single use, changes the password, and invalidates sessions in one transaction.
 It does not remove TOTP. OIDC-only accounts do not gain a password through reset.
 Changing a password requires the current password and recent authentication.
-Successful password changes and resets register a tokenless security notification
-in that transaction. See [mail delivery behavior](jobs-and-mail.md).
+Successful password changes, initial passwords, and resets register a tokenless
+security notification in that transaction. See [mail delivery behavior](jobs-and-mail.md).
+
+## Initial password for OIDC-only accounts
+
+An account created through OIDC has no password. Its owner can add one with
+`POST /api/v1/account/password/initial`. `GET /api/v1/account` returns
+`has_password`, so a client can choose this operation or a password change.
+
+This operation follows the password-change rules, except that no current
+password exists to verify. It requires a valid session with recent authentication
+(within five minutes) and applies the new-password rules. It has its own identity
+rate-limit key. The service hashes the password before it locks the account.
+Under the account lock, it rechecks the session, security version, and recent
+authentication. If the account already has a password, the service returns
+`409 conflict` and changes nothing.
+
+One transaction stores the hash, advances the security version, revokes all
+sessions and challenges, registers the password-change security notification,
+and appends an `initial_password_set` audit event. The current session is also
+revoked, and the response clears the session cookie. The owner then signs in
+again with the password or the OIDC provider. After this change, password reset
+is available, and the owner can unlink the last external identity.
 
 ## MFA and recovery
 

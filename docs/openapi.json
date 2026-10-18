@@ -17,6 +17,10 @@
           "email": {
             "type": "string"
           },
+          "has_password": {
+            "description": "False for an account that signs in only through OIDC.",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -32,7 +36,8 @@
           "id",
           "email",
           "verified",
-          "mfa_enabled"
+          "mfa_enabled",
+          "has_password"
         ],
         "type": "object"
       },
@@ -1394,6 +1399,20 @@
         ],
         "type": "string"
       },
+      "SetInitialPasswordInput": {
+        "additionalProperties": false,
+        "properties": {
+          "new_password": {
+            "description": "At least 15 Unicode characters and at most 1024 UTF-8 bytes.",
+            "minLength": 15,
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "type": "object"
+      },
       "TokenInput": {
         "additionalProperties": false,
         "properties": {
@@ -2517,6 +2536,137 @@
             "bearerAuth": []
           }
         ],
+        "tags": [
+          "Account"
+        ]
+      }
+    },
+    "/api/v1/account/password/initial": {
+      "post": {
+        "description": "Requires authentication within the last five minutes. An account that\nalready has a password receives 409. Success revokes every session,\nincluding the current one, and clears the session cookie.",
+        "operationId": "set_initial_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetInitialPasswordInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Request deadline elapsed"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Conflicting state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Body too large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Too many attempts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Adds the first password to an account that signs in only through OIDC.",
         "tags": [
           "Account"
         ]

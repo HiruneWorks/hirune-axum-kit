@@ -33,6 +33,9 @@ This index is updated when a milestone is complete.
 - [2026-10-17 — Technical writing](2026-10-17-technical-writing.md): practical
   ASD-STE100 clarity guidance, revised existing documentation and comments, and
   preserved technical contracts.
+- [2026-10-17 — Initial password for OIDC-only accounts](2026-10-17-oidc-initial-password.md):
+  first-password operation, credential revocation and notification parity with
+  password change, `has_password`, and local API/database verification.
 - [2026-10-17 — Optional Turnstile human verification](2026-10-17-turnstile-human-verification.md):
   optional siteverify checks for public identity operations, explicit
   configuration, fail-closed provider errors, and fake-provider verification.

@@ -10,6 +10,8 @@ pub struct AccountOutput {
     pub email: String,
     pub verified: bool,
     pub mfa_enabled: bool,
+    /// False for an account that signs in only through OIDC.
+    pub has_password: bool,
 }
 impl From<application::identity::AccountSummary> for AccountOutput {
     fn from(account: application::identity::AccountSummary) -> Self {
@@ -18,6 +20,7 @@ impl From<application::identity::AccountSummary> for AccountOutput {
             email: account.email,
             verified: account.verified,
             mfa_enabled: account.mfa_enabled,
+            has_password: account.has_password,
         }
     }
 }

@@ -33,6 +33,7 @@ pub struct AccountSummary {
     pub email: String,
     pub verified: bool,
     pub mfa_enabled: bool,
+    pub has_password: bool,
 }
 impl From<super::entities::account::Model> for AccountSummary {
     fn from(account: super::entities::account::Model) -> Self {
@@ -41,6 +42,7 @@ impl From<super::entities::account::Model> for AccountSummary {
             email: account.email,
             verified: account.verified,
             mfa_enabled: account.totp_secret.is_some(),
+            has_password: account.password_hash.is_some(),
         }
     }
 }

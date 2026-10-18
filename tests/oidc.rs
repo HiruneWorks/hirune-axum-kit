@@ -1,5 +1,7 @@
 mod support;
 
+#[path = "oidc/initial_password.rs"]
+mod initial_password;
 #[path = "oidc/native.rs"]
 mod native;
 #[path = "oidc/providers.rs"]

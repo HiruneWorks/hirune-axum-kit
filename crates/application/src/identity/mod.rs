@@ -7,6 +7,7 @@ mod administration;
 mod audit;
 mod delivery;
 pub mod entities;
+mod initial_password;
 mod maintenance;
 mod mfa;
 pub mod oidc;
