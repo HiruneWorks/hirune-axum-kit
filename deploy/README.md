@@ -6,6 +6,10 @@ The initial deployment uses an externally provisioned PostgreSQL database and
 SMTP server. Cloudflare Tunnel and a private APISIX gateway provide production
 ingress. Database backups and provider configuration are deployment responsibilities.
 
+Use the [k3s profile](k3s/README.md) for private APISIX, Tunnel replicas,
+two API Pods, migration sequencing, and rolling updates. The instructions below
+describe the separate single-host Compose option.
+
 1. Build and publish an application image with `compose/production/app/Dockerfile`
    and the repository root as context. Publishing is an explicit operator action.
 2. Copy `production.env.example` to `production.env`; set an immutable image tag

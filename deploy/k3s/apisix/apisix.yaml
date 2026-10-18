@@ -1,0 +1,13 @@
+routes:
+  - id: hirune-api
+    uri: /*
+    upstream:
+      type: roundrobin
+      nodes:
+        hirune-api.hirune-kit.svc.cluster.local:3000: 1
+      retries: 0
+      timeout:
+        connect: 5
+        send: 330
+        read: 330
+#END

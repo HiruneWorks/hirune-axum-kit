@@ -15,6 +15,9 @@ Never commit credentials or print rendered production Compose configuration.
 Executables read injected environment variables only. For direct `cargo run`,
 export settings yourself or use `just`. Compose passes an explicit env_file.
 Deployment selectors (image, project, port) live separately under `deploy/`.
+For k3s, copy `.example/production/k3s-secrets.yaml` to
+`.production/k3s-secrets.yaml` and follow the [k3s runbook](../deploy/k3s/README.md).
+Use Secret `stringData` for JSON settings; dotenv quoting is not Kubernetes quoting.
 
 `app.env` uses the restricted runtime role, including append-only audit access.
 `migration.env` supplies only migration settings and the schema-owner connection.

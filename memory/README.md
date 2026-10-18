@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-18 — Private k3s deployment and rolling acceptance](2026-10-18-k3s-deployment.md):
+  standalone APISIX/Tunnel profile, two-node API rollouts, coordinated migrations,
+  reproducible CI, and the local kernel limitation on policy enforcement.
+
 - [2026-10-18 — Tunnel client identity and Caddy verification](2026-10-18-tunnel-client-ip.md):
   Tunnel-only ingress, shared-secret SSR IP overrides, shared client-IP validation,
   two-instance traffic-limit verification, and the Caddy HTTPS fixture.

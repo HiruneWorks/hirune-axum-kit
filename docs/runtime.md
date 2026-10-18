@@ -227,3 +227,7 @@ API container, run migrations once before rollout, and arrange health probes and
 termination grace periods. The development Compose file does not deploy this image.
 See [environment layout](../.envs/README.md), [container files](../compose/README.md),
 and [deployment commands](../deploy/README.md) for the canonical paths.
+The [k3s profile](../deploy/k3s/README.md) supplies two API replicas, a private
+APISIX Service, Tunnel replicas, readiness, graceful rollout, migration sequencing,
+and an optional HPA. Compatible upgrades can roll. Incompatible schema or job
+changes require a coordinated drain before migration.

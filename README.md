@@ -5,6 +5,8 @@ PostgreSQL, Tokio, structured tracing, Cedar authorization, and MJML email.
 API and worker processes scale independently. PostgreSQL stores their shared state.
 Production ingress uses Cloudflare Tunnel and a private APISIX gateway. SSR
 servers can preserve the original client IP with a shared proxy secret.
+The [k3s profile](deploy/k3s/README.md) includes two API replicas, private APISIX,
+Tunnel replicas, migration sequencing, and live rolling-update verification.
 
 ## Start locally
 

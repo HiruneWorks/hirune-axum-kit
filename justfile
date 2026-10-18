@@ -60,6 +60,13 @@ test-deployment:
 test-production:
     cargo xtask test-production
 
+# Requires a release image in K3S_TEST_IMAGE, Docker, k3d, and kubectl.
+test-k3s:
+    cargo xtask test-k3s
+
+deploy-k3s mode:
+    cargo xtask deploy-k3s {{mode}}
+
 load-test:
     cargo xtask load-test
 
