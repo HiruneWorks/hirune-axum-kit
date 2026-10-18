@@ -57,3 +57,25 @@ jobs:
       - run: cargo xtask test-production
         env:
           PRODUCTION_TEST_IMAGE: hirune-kit:ci
+      - name: Install pinned Kubernetes test tools
+        run: |
+          curl --fail --location --retry 3 --output k3d-linux-amd64 https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64
+          curl --fail --location --retry 3 --output checksums.txt https://github.com/k3d-io/k3d/releases/download/v5.9.0/checksums.txt
+          python3 -c 'import hashlib,pathlib; expected = next(line.split()[0] for line in pathlib.Path("checksums.txt").read_text().splitlines() if pathlib.PurePosixPath(line.split()[1]).name == "k3d-linux-amd64"); assert hashlib.sha256(pathlib.Path("k3d-linux-amd64").read_bytes()).hexdigest() == expected'
+          sudo install -m 0755 k3d-linux-amd64 /usr/local/bin/k3d
+          curl --fail --location --retry 3 --output kubectl https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+          curl --fail --location --retry 3 --output kubectl.sha256 https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl.sha256
+          python3 -c 'import hashlib,pathlib; assert hashlib.sha256(pathlib.Path("kubectl").read_bytes()).hexdigest() == pathlib.Path("kubectl.sha256").read_text().strip()'
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+          rm k3d-linux-amd64 checksums.txt kubectl kubectl.sha256
+      - name: Release build caches on the disposable runner
+        run: docker builder prune --all --force
+      - name: Load k3s network-policy kernel modules
+        run: |
+          sudo modprobe br_netfilter
+          sudo modprobe ip_set
+          sudo modprobe xt_set
+          sudo modprobe xt_physdev
+      - run: cargo xtask test-k3s
+        env:
+          K3S_TEST_IMAGE: hirune-kit:ci

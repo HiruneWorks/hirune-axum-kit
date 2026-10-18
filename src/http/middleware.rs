@@ -1,5 +1,6 @@
 use super::{
     HttpState,
+    client_address::client_address,
     error::{ApiError, ErrorDescription, ErrorOutput},
     extract::read_cookie,
 };
@@ -141,12 +142,15 @@ async fn run_validated_request(state: &HttpState, request: Request, next: Next) 
             .extensions()
             .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
             .map(|peer| peer.0.ip());
-        let client =
-            match client_address(peer, request.headers(), &state.settings.trusted_proxy_ips) {
-                // Requests without a socket peer, such as in-process tests, share one budget.
-                Ok(client) => client.map_or_else(|| "in-process".to_owned(), |ip| ip.to_string()),
-                Err(error) => return error.into_response(),
-            };
+        let client = match client_address(
+            peer,
+            request.headers(),
+            state.settings.internal_proxy_secret.as_ref(),
+        ) {
+            // In-process requests without a client header or socket peer share one budget.
+            Ok(client) => client.map_or_else(|| "in-process".to_owned(), |ip| ip.to_string()),
+            Err(error) => return error.into_response(),
+        };
         if let Err(error) = state
             .app
             .identity
@@ -157,28 +161,6 @@ async fn run_validated_request(state: &HttpState, request: Request, next: Next) 
         }
     }
     next.run(request).await
-}
-
-pub(super) fn client_address(
-    peer: Option<std::net::IpAddr>,
-    headers: &HeaderMap,
-    trusted_proxies: &[std::net::IpAddr],
-) -> Result<Option<std::net::IpAddr>, ApiError> {
-    let Some(peer) = peer else {
-        return Ok(None);
-    };
-    if !trusted_proxies.contains(&peer) {
-        return Ok(Some(peer));
-    }
-    let mut forwarded = headers.get_all("x-forwarded-for").iter();
-    let address = forwarded
-        .next()
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<std::net::IpAddr>().ok());
-    if forwarded.next().is_some() {
-        return Err(ApiError::invalid_input());
-    }
-    address.map(Some).ok_or_else(ApiError::invalid_input)
 }
 
 fn validate_origin(
@@ -222,29 +204,4 @@ pub fn require_browser_origin(state: &HttpState, headers: &HeaderMap) -> Result<
         ));
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn forwarding_headers_require_an_explicit_proxy_and_one_address() {
-        let proxy = "127.0.0.1".parse().unwrap();
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", HeaderValue::from_static("192.0.2.10"));
-        assert_eq!(
-            client_address(Some(proxy), &headers, &[]).unwrap(),
-            Some(proxy)
-        );
-        assert_eq!(
-            client_address(Some(proxy), &headers, &[proxy]).unwrap(),
-            Some("192.0.2.10".parse().unwrap())
-        );
-        assert_eq!(client_address(None, &headers, &[proxy]).unwrap(), None);
-        headers.insert(
-            "x-forwarded-for",
-            HeaderValue::from_static("192.0.2.10, 192.0.2.11"),
-        );
-        assert!(client_address(Some(proxy), &headers, &[proxy]).is_err());
-    }
 }

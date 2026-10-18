@@ -143,13 +143,16 @@ def prepare_account():
             {"token": verification_token(email)}, expected=204)
     credentials = {"email": email, "password": password}
     request("POST", "/api/v1/auth/login", credentials, origin="https://untrusted.example", expected=403)
-    request("POST", "/verification/unforwarded-login", credentials, expected=400)
+    request("POST", "/verification/invalid-client-ip-login", credentials, expected=400)
     direct, _ = request("POST", "http://api:3000/api/v1/auth/login",
                         {**credentials, "transport": "bearer"},
                         headers={"X-Forwarded-For": "spoofed, invalid"})
     assert direct["status"] == "authenticated"
     result, headers = request("POST", "/api/v1/auth/login", credentials,
-                              headers={"X-Forwarded-For": "spoofed, invalid"})
+                              headers={"X-Forwarded-For": "spoofed, invalid",
+                                       "CF-Connecting-IP": "invalid",
+                                       "X-Real-Client-IP": "invalid",
+                                       "X-Internal-Secret": "incorrect"})
     assert result["status"] == "authenticated"
     cookie = session_cookie(headers)
     account, _ = request("GET", "/api/v1/account", cookie=cookie)

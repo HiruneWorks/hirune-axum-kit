@@ -34,6 +34,8 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-content` | Real PostgreSQL/SeaweedFS/Meilisearch content, profiles, Cedar, revision conflicts, scoped pagination/search, transactional inbox, session-bound push devices, and provider-independent push gates. |
 | `just test-deployment` | Validate local/deployment Compose and separation of runtime, maintenance, and migration credentials using temporary example files. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
+| `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, APISIX configuration rollout, and ingress policies. Requires `K3S_TEST_IMAGE`. |
+| `just deploy-k3s rolling` / `just deploy-k3s drain` | Deploy to the selected Kubernetes context with explicit compatible rolling or coordinated offline migration mode. |
 | `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
 | `just template-check` | Copy/rename the source into a temporary directory and run its workspace and identity/database tests. |
@@ -106,8 +108,11 @@ network paths, and intended concurrency before a capacity decision.
 `APP_ENV=production` inside a uniquely named local Compose project. Set
 `PRODUCTION_TEST_IMAGE` only when deliberately verifying an existing local image.
 Cleanup preserves that image. The fixture uses an internal Docker network, an
-ephemeral private CA, an HTTPS proxy, and Mailpit requiring
-STARTTLS. It checks secure cookies, origins, proxy header replacement, and actual
+ephemeral private CA, a Caddy HTTPS proxy, and Mailpit requiring
+STARTTLS. Caddy uses the fixture's certificate and does not request external
+certificates. It simulates the Cloudflare client-IP header at the private ingress.
+Production uses Cloudflare Tunnel and APISIX. The fixture checks secure cookies,
+origins, proxy header replacement, and actual
 Rust-worker mail delivery, including rejection of an untrusted SMTP certificate
 and a certificate whose hostname does not match. Runtime containers use a
 non-root user and read-only filesystem.
@@ -125,6 +130,18 @@ cover local release-image behavior. They do not publish or deploy the image,
 verify a real SMTP/OIDC provider, or test S3 original-file backup and restoration.
 Record actual execution results in [milestones](../memory/README.md). The presence
 of this command or its CI step does not establish that it passed.
+
+## Kubernetes fixture scope
+
+`K3S_TEST_IMAGE=hirune-kit:local just test-k3s` needs Docker, k3d v5.9.0, and
+kubectl v1.37.1. Build the canonical release image first. The fixture creates an
+isolated two-node k3s cluster and removes it afterward. It applies the production
+profile with local database/mail substitutions and no real Tunnel connection.
+It checks two API Pods on separate nodes, real APISIX routing, migration Job
+sequencing, live API and config-only gateway rollouts, session/quota continuity,
+and private ingress NetworkPolicies. See the [k3s runbook](../deploy/k3s/README.md).
+Run this in addition to production acceptance; each fixture verifies a different
+deployment boundary. CI uses the same release image for both commands.
 
 ## Editing and diagnostics
 

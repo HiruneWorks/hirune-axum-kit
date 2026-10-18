@@ -99,7 +99,6 @@ impl ProductionFixture {
              PUBLIC_URL=https://api:8443/\n\
              ALLOWED_ORIGINS=https://api:8443\n\
              BIND_ADDRESS=0.0.0.0:3000\n\
-             TRUSTED_PROXY_IPS=127.0.0.1\n\
              DATABASE_URL=postgresql://runtime:{}@postgres/kit\n\
              DATABASE_MAX_CONNECTIONS=5\n\
              ACTIVE_SECRET_KEY=verification-v1\n\

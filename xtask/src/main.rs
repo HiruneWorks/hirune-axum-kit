@@ -1,6 +1,8 @@
 mod checks;
 mod deployment;
 mod infrastructure;
+mod kubernetes;
+mod kubernetes_test;
 mod production;
 mod template;
 
@@ -28,10 +30,12 @@ fn main() -> Result<()> {
         Some("test-content") => infrastructure::run_tests(&["content"]),
         Some("test-deployment") => deployment::verify(),
         Some("test-production") => production::verify(),
+        Some("deploy-k3s") => kubernetes::deploy_from_environment(),
+        Some("test-k3s") => kubernetes_test::verify(),
         Some("load-test") => infrastructure::run_load_test(),
         Some("template-check") => template::verify(root),
         _ => anyhow::bail!(
-            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|load-test|template-check>"
+            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|deploy-k3s rolling|deploy-k3s drain|test-k3s|load-test|template-check>"
         ),
     }
 }

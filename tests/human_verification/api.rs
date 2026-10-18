@@ -32,6 +32,110 @@ fn assert_error(response: &axum_test::TestResponse, status: StatusCode, code: &s
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL; run just test-api"]
+async fn tunnel_and_ssr_identity_share_limits_and_reach_human_verification() -> Result<()> {
+    let database = TestDatabase::create().await?;
+    let provider = FakeSiteverify::start().await?;
+    let secret = auth_core::token::generate_secure_token();
+    let mut settings = support::settings(&database)?;
+    settings.http.internal_proxy_secret = Some(SecretString::new(secret.clone()));
+    settings.identity.authentication_client_limit_per_minute = 2;
+    settings.human_verification = Some(provider.settings());
+    let first_app = bootstrap(&settings).await?;
+    let second_app = bootstrap(&settings).await?;
+    let first = TestServer::new(build_router(first_app.clone(), settings.http.clone()));
+    let second = TestServer::new(build_router(second_app.clone(), settings.http));
+    let body = json!({
+        "email": "tunnel-identity@example.test",
+        "human_verification_token": "valid:email_verification"
+    });
+
+    for (server, presented, original, expected_ip, status) in [
+        (
+            &first,
+            None,
+            "198.51.100.7",
+            "192.0.2.10",
+            StatusCode::ACCEPTED,
+        ),
+        (
+            &second,
+            Some("incorrect"),
+            "198.51.100.8",
+            "192.0.2.10",
+            StatusCode::ACCEPTED,
+        ),
+        (
+            &first,
+            None,
+            "198.51.100.9",
+            "192.0.2.10",
+            StatusCode::TOO_MANY_REQUESTS,
+        ),
+        (
+            &first,
+            Some(secret.as_str()),
+            "198.51.100.7",
+            "198.51.100.7",
+            StatusCode::ACCEPTED,
+        ),
+        (
+            &second,
+            Some(secret.as_str()),
+            "198.51.100.7",
+            "198.51.100.7",
+            StatusCode::ACCEPTED,
+        ),
+        (
+            &first,
+            Some(secret.as_str()),
+            "198.51.100.7",
+            "198.51.100.7",
+            StatusCode::TOO_MANY_REQUESTS,
+        ),
+    ] {
+        let mut request = server
+            .post("/api/v1/auth/verification")
+            .add_header("cf-connecting-ip", "192.0.2.10")
+            .add_header("x-real-client-ip", original)
+            .add_header("x-forwarded-for", original)
+            .json(&body);
+        if let Some(presented) = presented {
+            request = request.add_header("x-internal-secret", presented);
+        }
+        let response = request.await;
+        response.assert_status(status);
+        let calls = provider.take_requests();
+        if status == StatusCode::ACCEPTED {
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0]["remoteip"], expected_ip);
+        } else {
+            assert!(calls.is_empty());
+            assert_eq!(response.json::<Value>()["error"]["code"], "rate_limited");
+            assert!(response.headers().contains_key(header::RETRY_AFTER));
+        }
+        assert!(!response.text().contains(&secret));
+    }
+    second
+        .post("/api/v1/auth/verification")
+        .add_header("cf-connecting-ip", "203.0.113.20")
+        .json(&body)
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    assert_eq!(provider.take_requests()[0]["remoteip"], "203.0.113.20");
+    first
+        .post("/api/v1/auth/verification")
+        .add_header("cf-connecting-ip", "invalid")
+        .json(&body)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    assert!(provider.take_requests().is_empty());
+    first_app.close().await?;
+    second_app.close().await?;
+    database.finish().await
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; run just test-api"]
 async fn configured_turnstile_protects_public_identity_operations() -> Result<()> {
     let database = TestDatabase::create().await?;
     let provider = FakeSiteverify::start().await?;

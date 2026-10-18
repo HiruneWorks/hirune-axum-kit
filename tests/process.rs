@@ -107,6 +107,7 @@ impl ProcessEnvironment {
             .env_remove("SMTP_PASSWORD")
             .env_remove("SMTP_CA_CERTIFICATE")
             .env_remove("TRUSTED_PROXY_IPS")
+            .env_remove("INTERNAL_PROXY_SECRET")
             .kill_on_drop(true)
             .stdout(Stdio::from(log.reopen()?))
             .stderr(Stdio::from(log.reopen()?));
