@@ -52,6 +52,16 @@ All checks ran locally on Windows with Docker, on 2026-10-17.
   `TEST_PASSWORD` fixture constant (existing alert 5) was replaced by a stored
   hash comparison. `just check` and `just test-api` passed again after each
   change, with the same counts.
+- On 2026-10-18, `main` (Turnstile, schema consistency, native OIDC login, and
+  14/90-day sessions) was merged into this branch. The conflicts in
+  `docs/security.md`, `memory/README.md`, and `tests/oidc.rs` kept both sides.
+  Regenerated OpenAPI had no content drift. `cargo xtask check` passed.
+  `cargo xtask test-api` passed api 7/7, api_access 9/9, human_verification 2/2,
+  and oidc 12/12. `cargo xtask test-db` passed identity 16/16, but two
+  timing-sensitive queue dispatch tests failed while another project compiled
+  and ran its own test containers on the same machine. The queue binary (14/14)
+  and schema_consistency (2/2) then passed against a disposable local
+  PostgreSQL with `--test-threads=2`.
 
 ## Remaining work
 
