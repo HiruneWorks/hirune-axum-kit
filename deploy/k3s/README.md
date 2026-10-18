@@ -129,7 +129,11 @@ aligned with application upload settings.
 API, worker, APISIX, and cloudflared replica counts are independent. The optional
 `autoscaling.yaml` uses CPU to scale API replicas from two to four. Copy it into an
 environment overlay and add it to that overlay's `resources`. Keep metrics-server
-enabled. Removing a resource from an overlay does not delete it from Kubernetes;
+enabled. When enabling HPA, remove the API Deployment's `spec.replicas` with an
+overlay patch so later applies do not reset the autoscaled count. Follow the
+[Kubernetes field-ownership migration steps](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling)
+when changing an existing Deployment to HPA control.
+Removing a resource from an overlay does not delete it from Kubernetes;
 remove an active HPA explicitly with the correct context and namespace.
 
 With pools of 10, two API Pods plus one API surge, one worker, and one maintenance

@@ -56,12 +56,29 @@
   kernel lacks `xt_physdev`. The embedded policy controller reported failed
   iptables synchronization. This is not a full local acceptance pass.
 - Cross-namespace denial resolves DNS outside the caught TCP error path. It must
-  pass on the supported remote CI runner. New remote CI remains pending; the
-  previous milestone's CI does not establish acceptance for this change.
+  pass on the supported remote CI runner. The run below completed that acceptance.
 - Deployment just recipes use a POSIX shell on all platforms to preserve argument
   boundaries. Windows operators can use Git's `sh` or the Rust CLI directly.
 
+- Remote [CI run 39096785480](https://github.com/HiruneWorks/hirune-axum-kit/actions/runs/39096785480)
+  passed both `verify` and `container` for functional commit
+  `64ffecc355a946ae86412209b49d84d1cdc98f00`. Later changes are documentation only.
+  Verification included workspace checks/tests, PostgreSQL/API/process/files/content
+  suites, deployment contracts, k6 smoke, and copied-template acceptance.
+- That CI built the canonical release image and passed real production acceptance:
+  HTTPS, STARTTLS, cookies/origins, restricted database roles, backup/restore,
+  and encrypted MFA recovery.
+- CI two-node k3s acceptance passed with two ready API Pods on distinct nodes,
+  API replacement (553 successful requests, zero errors), gateway configuration
+  replacement (1,452 successful requests, zero errors), retained sessions/quota,
+  coordinated drain, unfinished migration guard, and both private ingress denials.
+  Prod operations preserved the dev sentinel Pod and replicas with an unusable
+  current context. A dev tunnel-labelled Pod could not reach the prod gateway/API.
+- The optional HPA overlay with an API `spec.replicas` removal patch rendered
+  successfully. This is a manifest check; HPA scaling was not exercised in k3s.
+
 ## Remaining work
 
-Finish current k3s acceptance and remote CI before merging. Verify real Tunnel,
-provider, database backup/recovery, and capacity on the target infrastructure.
+Verify real Tunnel, provider behavior, database backup/recovery, and capacity on
+actual target infrastructure. The acceptance fixture did not connect a live
+Cloudflare Tunnel or deploy an external production database.
