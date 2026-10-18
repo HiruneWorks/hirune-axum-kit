@@ -4,7 +4,7 @@ routes:
     upstream:
       type: roundrobin
       nodes:
-        hirune-api.hirune-kit.svc.cluster.local:3000: 1
+        hirune-api.${{POD_NAMESPACE}}.svc.cluster.local:3000: 1
       retries: 0
       timeout:
         connect: 5

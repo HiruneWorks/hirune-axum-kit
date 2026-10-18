@@ -1,23 +1,21 @@
 # k3s deployment
 
 The production path is Cloudflare Tunnel → private APISIX → API Service → API
-Pods. This profile uses APISIX standalone YAML mode. It needs no APISIX etcd,
-Admin API, ingress controller, public LoadBalancer, NodePort, or Ingress object.
-New API endpoints use the catch-all route. Add a controller when independently
-deployed services need dynamic route ownership.
+Pods. APISIX uses standalone YAML mode without etcd, an Admin API, or an ingress
+controller. The gateway and API use only private ClusterIP Services. New backend
+endpoints use the catch-all route. Add a controller when independently deployed
+services need dynamic route ownership.
 
-The baseline runs two API, two APISIX, and two cloudflared replicas. PostgreSQL,
-SMTP, optional S3 storage, and optional search are external services. API and
-worker Pods contain no authoritative local state. PostgreSQL owns sessions,
-authentication limits, API allocations, and jobs. APISIX does not call
-forward-auth or count business API usage.
+`base/` contains namespace-neutral runtime manifests and gateway configuration.
+Ignored `.envs/.dev/k3s/` and `.envs/.prod/k3s/` overlays select images, namespaces,
+settings, and generated Secrets. Follow [deployment](../README.md) to copy the
+examples and use the canonical `deploy/justfile` commands.
 
 ## Prepare the cluster
 
-Install a supported k3s version on your nodes. The acceptance fixture pins
-`v1.37.1+k3s1`. Keep the embedded network-policy controller enabled. On **every
-server**, merge these settings into `/etc/rancher/k3s/config.yaml`, then restart
-k3s. The same settings apply when you install a new server.
+Install k3s on your nodes. The acceptance fixture pins `v1.37.1+k3s1`.
+On every server, merge these settings into `/etc/rancher/k3s/config.yaml`, then
+restart k3s. Use the same settings when installing a new server.
 
 ```yaml
 disable:
@@ -25,165 +23,163 @@ disable:
   - servicelb
 ```
 
-Keep CoreDNS. Keep metrics-server if you enable the optional HPA. Use at least
-two schedulable nodes with capacity for an extra API and gateway during rollout.
-The topology spread rules prefer different nodes. PodDisruptionBudgets preserve
-one ready replica during voluntary eviction. They do not establish control-plane
-HA or protect against simultaneous node failure. Provision that separately.
+Keep CoreDNS and the embedded network-policy controller. Keep metrics-server if
+you enable HPA. Use at least two schedulable nodes with room for extra API,
+worker, maintenance, and gateway Pods during rollout. Topology spread rules
+prefer different nodes. PodDisruptionBudgets preserve one ready replica during
+voluntary eviction. Provision control-plane availability separately.
 
-Restrict namespace write access. The ingress policies trust namespace and Pod
-labels; anyone who can create a tunnel-labelled Pod can enter that boundary.
-Do not grant application users permission to create Pods or change these labels.
-Host-network traffic and cluster administrators are outside this Pod boundary.
-Do not add public Services or ports for the gateway or API.
+Restrict namespace write access. The ingress policies allow only same-namespace
+Pods with the expected labels: tunnel → gateway and gateway → API. A Pod in dev
+cannot enter prod through these rules, even with the same labels. Anyone who can
+create Pods inside the target namespace can impersonate these labels. Host-network
+traffic and cluster administrators are outside this boundary. Do not add public
+Services or ports for the gateway or API.
 
-## Configure and deploy
+## Configure ingress and credentials
 
-Run commands from the repository root with the intended `KUBECONFIG` and context.
-The fixed namespace is `hirune-kit`. If you change it, also change Service DNS
-in `apisix/apisix.yaml`, NetworkPolicy namespace selectors, the secret example,
-and the operator command's namespace constant.
+1. Publish the canonical image built from `compose/production/app/Dockerfile`.
+   Set each overlay's image to the intended immutable tag or digest. Add an image
+   pull secret if the registry requires one.
+2. Set public HTTPS origins, SMTP, and runtime settings in the environment's
+   `app.env`. Supply independent encryption and rate-limit keys in `secrets.env`.
+   Set `INTERNAL_PROXY_SECRET` only when a trusted SSR server needs client-IP
+   overrides. JSON values in Kubernetes env files have no outer dotenv quotes.
+3. Provision separate runtime, maintenance, and schema-owner database roles.
+   Set their URLs in the corresponding env files. The production profile uses
+   external PostgreSQL. The [role contract](../README.md#database-roles-and-maintenance)
+   defines the required permissions.
+4. Create a remotely managed Cloudflare Tunnel for each environment. For namespace
+   `hirune-prod`, route its public hostname to
+   `http://hirune-apisix.hirune-prod.svc.cluster.local:9080`. Set that Tunnel's
+   token in prod's `tunnel.env`. Dev uses its own hostname, namespace, and Tunnel.
+   Both cloudflared replicas in one environment connect to the same Tunnel.
+5. Verify that Cloudflare supplies `CF-Connecting-IP` and cannot reach a separate
+   public origin. APISIX preserves it and the optional SSR override headers.
+   PostgreSQL owns authentication and business API counters; APISIX does not run
+   forward-auth or keep a separate request quota.
 
-1. Build and publish the canonical image from
-   `compose/production/app/Dockerfile`. Set `images` in `kustomization.yaml` to
-   your immutable tag or digest. Configure an image pull secret if required.
-2. Set public HTTPS origins, SMTP, and non-secret options in `app.env`. Keep
-   settings and encryption keys identical across API and worker replicas.
-3. Copy `.envs/.example/production/k3s-secrets.yaml` to ignored
-   `.envs/.production/k3s-secrets.yaml`. Replace all placeholders. Generate a
-   base64-encoded 32-byte encryption key and an independent random rate-limit
-   key. Set a shared `INTERNAL_PROXY_SECRET` only if trusted SSR servers need
-   `X-Real-Client-IP`. Give the runtime, maintenance, and schema owner separate
-   database credentials with the grants in [deployment](../README.md#database-roles-and-maintenance).
-   Secret `stringData` accepts JSON directly; do not add dotenv single quotes.
-4. Create a remotely managed Cloudflare Tunnel. Route your application hostname
-   to `http://hirune-apisix.hirune-kit.svc.cluster.local:9080`. Set the tunnel token
-   in `hirune-tunnel`. Cloudflared replicas share that tunnel. Restrict other
-   origins and verify that Cloudflare supplies the client-IP header.
-5. Prepare the namespace and secrets, then inspect the rendered resources:
+APISIX obtains its namespace through the Kubernetes Downward API. Its route uses
+`${{POD_NAMESPACE}}` in the API Service DNS name. No Pod IP or fixed namespace is
+stored in the gateway route. Increasing API replicas does not change Tunnel or
+gateway configuration.
 
-   ```sh
-   kubectl apply -f deploy/k3s/namespace.yaml
-   kubectl apply -f .envs/.production/k3s-secrets.yaml
-   kubectl kustomize deploy/k3s
-   ```
+## Migration and rollout
 
-6. For the first deployment, or an upgrade whose schema, settings, HTTP, and job
-   payloads work with both generations, run:
-
-   ```sh
-   just deploy-k3s rolling
-   ```
-
-The command creates one migration Job, waits for success, applies runtime
-resources, and waits for all Deployments. It replaces a finished migration Job
-on the next invocation; an unfinished Job blocks another deployment. A migration
-failure leaves existing compatible processes running and blocks the new rollout.
-Inspect `kubectl logs -n hirune-kit job/hirune-migration` and fix the cause before
-retrying. Do not run concurrent deploy commands. This helper is not a deployment
-lock. Use a serialized release pipeline for production.
-
-Do not use `kubectl apply -k deploy/k3s` as the deployment procedure. That starts
-runtime changes without waiting for migration and cannot update a finished Job's
-immutable template. A plain `kubectl rollout undo` also does not restore schema,
-Secrets, or settings. Use an explicitly compatible release to recover.
-
-The API rollout has `maxUnavailable: 0` and `maxSurge: 1`. HTTP readiness gates
-Service traffic. TCP liveness avoids restarting a healthy process because of
-database failure or HTTP admission pressure. A five-second pre-stop delay gives
-Service endpoints time to converge. The API then drains for at most 30 seconds.
-The 45-second termination grace also covers the default 35-second worker drain.
-Increase grace when you increase the worker drain; pre-stop consumes that budget.
-
-APISIX config files use individual read-only mounts. Its generated configuration,
-PID, log, and temporary paths remain writable as required by the standard image.
-Hashed ConfigMap references replace Pods when settings or routes change. The
-gateway preserves `CF-Connecting-IP`, `X-Internal-Secret`, and `X-Real-Client-IP`.
-It does not add trusted identity on behalf of arbitrary clients. Requests have
-no automatic upstream retries because a retry can count an admission twice.
-The 128 MiB body limit and 330-second timeouts cover default 100 MiB/300-second
-file transfers. Keep these limits aligned when changing file settings and the
-Cloudflare plan's upload limits.
-
-## Incompatible upgrades
-
-Use an expand/migrate/contract sequence when possible. If old code cannot use
-the new schema or job payloads, plan an interruption and run:
+From `deploy/`, run `just check prod`, then `just up prod`.
+All resources are rendered and validated once before any cluster mutation.
+The command applies the namespace and prerequisites, creates one migration Job,
+waits for its success, then applies and waits for all runtime Deployments.
+A finished migration Job is replaced on the next release. An unfinished Job
+blocks another deployment, including a Job that is pending or suspended.
+A failed migration blocks runtime rollout. Inspect it with the selected target:
 
 ```sh
-kubectl delete -f deploy/k3s/autoscaling.yaml --ignore-not-found
-just deploy-k3s drain
+kubectl --context k3s-prod --namespace hirune-prod logs job/hirune-migration
 ```
 
-This stops **all API, worker, and maintenance** Pods and waits for their exit
-before migration. It then restores the manifest's replica counts. A failed
-migration leaves those processes stopped. Correct the migration and repeat the
-drained deployment. A per-Deployment `Recreate` strategy alone cannot coordinate
-old workers with new producers. Back up the database before destructive changes.
+`rolling` is the default. Existing API and worker Pods keep running during the
+migration. New code, schema, settings, HTTP, and job payloads must work with both
+generations. For example, add a new column first, deploy code that no longer uses
+an old column, and delete the old column in a later compatible release. Automatic
+migration execution does not establish compatibility with running old code.
 
-## Scaling and secrets
+The API uses `maxUnavailable: 0` and `maxSurge: 1`. HTTP readiness gates Service
+traffic. TCP liveness avoids restarting healthy processes during database failure
+or HTTP admission pressure. A five-second pre-stop delay gives Service endpoints
+time to converge. The API then drains for at most 30 seconds. The 45-second
+termination grace also covers the default 35-second worker drain. Increase grace
+when increasing the worker drain; pre-stop consumes that budget.
 
-API and workers scale independently. `autoscaling.yaml` is optional and requires
-metrics-server. It scales the API from two to four Pods using CPU utilization.
-With pools of 10, the baseline needs up to 50 connections during one API surge
-(2 API + 1 surge + 1 worker + 1 maintenance). With the HPA maximum, budget at
-least 70, plus migration, management, worker surges, maintenance surges, and
-operational reserve. Check the complete concurrent rollout against PostgreSQL's
-connection limit before raising replicas or pool sizes.
+If old code cannot use the new schema or job contract, schedule an interruption:
 
 ```sh
-kubectl apply -f deploy/k3s/autoscaling.yaml
-kubectl -n hirune-kit exec deployment/hirune-api -- manage set-api-client-quota UUID 100 10000
+just up prod drain
 ```
 
-Manual worker scaling must also be reflected in the desired manifests. A deploy
-applies those replica counts again. Environment-based Secret changes require
-`kubectl rollout restart` for affected Deployments; a Secret update alone does
-not change existing process environments. Coordinate encryption-key rotation
-across every process. Do not remove keys still needed by stored encrypted data.
-Enable k3s secrets encryption at rest and restrict Secret read access.
+This stops all API, worker, and maintenance Pods and waits for exit before
+migration. It then restores desired replicas. A migration failure leaves those
+processes stopped. Correct the cause and repeat the drained deployment. Remove
+HPAs from both the overlay and selected namespace before this operation; an HPA
+can restore old replicas while the database is changing. A per-Deployment
+`Recreate` strategy does not coordinate all application roles.
 
-Private SMTP CAs, custom integration credentials, and ADC files need explicit
-read-only volume mounts, as described in [deployment](../README.md#smtp-trust).
-The example does not install providers or initialize buckets/indexes. Use the
-explicit management commands after provisioning and migration.
+Serialize release commands. This helper is not a distributed deployment lock.
+Do not deploy with a plain `kubectl apply -k`: it does not wait for migration and
+cannot replace a completed Job's immutable template. A plain `rollout undo` does
+not restore database schema or configuration. Recover with an explicitly
+compatible release and the required retained encryption keys.
 
-## Local acceptance
+## Configuration, scaling, and storage
 
-On a Linux Docker host, install `k3d v5.9.0` and `kubectl v1.37.1`. Build the canonical release
-image. Reserve at least 20 GiB of free disk space for native snapshots, and then run:
+Kustomize generates hashed ConfigMaps and Secrets. A value change updates the
+Pod template reference and replaces affected Pods. Schema-owner credential changes
+replace only the migration reference. Application-secret changes replace API,
+worker, and maintenance Pods. Tunnel-token changes replace cloudflared Pods.
+Old generated objects remain for existing Pods and recovery. Remove unused objects
+only after checking live Pods and retained ReplicaSets. Do not prune them blindly.
+
+APISIX mounts configuration files read-only. Paths for its generated configuration,
+PID, logs, and temporary data remain writable as required by the standard image.
+It does not retry upstream requests automatically, because retries can duplicate
+admission. Its 128 MiB body limit and 330-second timeouts cover the default
+100 MiB/300-second file transfers. Keep these limits and the Cloudflare plan
+aligned with application upload settings.
+
+API, worker, APISIX, and cloudflared replica counts are independent. The optional
+`autoscaling.yaml` uses CPU to scale API replicas from two to four. Copy it into an
+environment overlay and add it to that overlay's `resources`. Keep metrics-server
+enabled. Removing a resource from an overlay does not delete it from Kubernetes;
+remove an active HPA explicitly with the correct context and namespace.
+
+With pools of 10, two API Pods plus one API surge, one worker, and one maintenance
+process need 50 database connections. At the HPA maximum, budget at least 70,
+plus migration, management, worker/maintenance surges, and reserve. Check complete
+concurrent rollout capacity before increasing replicas or pool sizes. Manual
+scaling must also be reflected in the overlay, because deployment reapplies the
+desired replica counts.
+
+API Pods contain no authoritative local data. PostgreSQL, SMTP, optional object
+storage, and optional search are external. Kubernetes does not provision their
+persistence or backups through these manifests. Use read-only mounts for private
+SMTP CAs or provider credential files when needed. Enable Kubernetes Secret
+encryption at rest and restrict Secret read access. Coordinate key rotation across
+all processes and retain keys required by stored encrypted data.
+
+## Acceptance
+
+On a Linux Docker host, install `k3d v5.9.0` and `kubectl v1.37.1`, build the
+canonical release image, and reserve at least 20 GiB for native snapshots:
 
 ```sh
 K3S_TEST_IMAGE=hirune-kit:local just test-k3s
 ```
 
-The Rust fixture creates and removes its own k3d cluster: one k3s server and one
-agent. It imports local images and uses a native container snapshotter, the
-Flannel host-gw backend, and a null kernel-message device for nested Docker hosts.
-Network-policy enforcement remains enabled. It leaves the current
-kubeconfig unchanged. It applies a disposable copy of this profile with two
-API Pods on distinct nodes, APISIX, PostgreSQL, Mailpit, and probe Pods. Real
-cloudflared replicas are set to zero. Local HTTP/mail and one database owner
-are fixture-only substitutions; the separate production fixture verifies
-HTTPS, STARTTLS, and restricted database roles.
+The Rust fixture creates and removes its own two-node k3d cluster. It uses a native
+container snapshotter, Flannel host-gw, and a null kernel-message device for nested
+hosts. Network-policy enforcement stays enabled. It never changes the user's
+kubeconfig. The isolated kubeconfig has an intentionally unusable current context;
+operations must use the explicitly selected context.
 
-The host kernel must support bridge filtering, IP sets, and `xt_physdev` for the
-embedded policy controller. CI loads these modules on its disposable Ubuntu
-runner. A nested host without those modules can run Pods while policy rule
-installation fails. The acceptance command must fail in that case; successful
-manifest application does not establish ingress isolation. Its failure output
-includes the controller's policy-sync errors.
+The fixture deploys a disposable prod overlay with two API Pods on distinct nodes,
+APISIX, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero. Local
+HTTP/mail and one database owner are fixture-only substitutions. The separate
+production fixture verifies HTTPS, STARTTLS, and restricted database roles.
 
-The check verifies signup, worker mail, forwarded identity, a retained session,
-shared API quota across replacement, continuous authenticated traffic during
-API and gateway rollouts, a config-only gateway restart, and denied direct
-ingress. It also rejects an unfinished migration Job and exercises a coordinated
-drained deployment with retained authority. It checks that at least two API replicas remain available during the
-observed update. This is a rollout regression check, not a capacity benchmark,
-control-plane failover test, long-upload drain proof, or real Tunnel acceptance.
-Verify the real hostname, header provenance, mail, providers, backups, and node
-drain on your target cluster before production use.
+Acceptance covers an unfinished migration guard, signup and mail, retained
+sessions and API quota, continuous authenticated traffic during API/gateway
+replacement, config-only gateway rollout, coordinated application drain, and
+private ingress. A same-name dev sentinel Deployment must retain its Pod and
+replica count across prod operations. A dev Pod with tunnel labels must fail to
+reach prod gateway/API. This does not establish real Tunnel connectivity,
+control-plane failover, long-upload drain, or production capacity.
 
-Review pinned k3s, k3d, kubectl, APISIX, and cloudflared versions together when
-updating this profile. See [development](../../docs/development.md) and actual
-[milestones](../../memory/README.md) for verification results.
+The host kernel needs bridge filtering, IP sets, and `xt_physdev`. CI loads these
+modules on its disposable Ubuntu runner. Missing modules can leave running Pods
+with failed policy installation. The acceptance command must fail in that case;
+its failure output includes policy-controller errors.
+
+Review pinned k3s, k3d, kubectl, APISIX, and cloudflared versions together. Verify
+real-hostname identity headers, mail, providers, backups, recovery, and node drain
+on the target cluster. See [development](../../docs/development.md) and actual
+[milestones](../../memory/README.md) for validation evidence.

@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-18 — Kubernetes dev and prod deployment commands](2026-10-18-k3s-environments.md):
+  canonical Kubernetes operator commands, explicit environment targets, generated
+  Secret rollouts, and cross-environment acceptance coverage.
+
 - [2026-10-18 — Private k3s deployment and rolling acceptance](2026-10-18-k3s-deployment.md):
   standalone APISIX/Tunnel profile, two-node API rollouts, coordinated migrations,
   reproducible CI, and the local kernel limitation on policy enforcement.

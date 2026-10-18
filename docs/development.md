@@ -32,10 +32,10 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
 | `just test-content` | Real PostgreSQL/SeaweedFS/Meilisearch content, profiles, Cedar, revision conflicts, scoped pagination/search, transactional inbox, session-bound push devices, and provider-independent push gates. |
-| `just test-deployment` | Validate local/deployment Compose and separation of runtime, maintenance, and migration credentials using temporary example files. |
+| `just test-deployment` | Validate local Compose, isolated dev/prod Kubernetes overlays, database-role separation, and Secret-triggered rollouts using temporary examples. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
 | `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, APISIX configuration rollout, and ingress policies. Requires `K3S_TEST_IMAGE`. |
-| `just deploy-k3s rolling` / `just deploy-k3s drain` | Deploy to the selected Kubernetes context with explicit compatible rolling or coordinated offline migration mode. |
+| `cd deploy; just up dev` / `just up prod` | Deploy to an explicitly configured Kubernetes context and namespace. Defaults to rolling. Use `just up prod drain` for an offline migration. |
 | `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
 | `just template-check` | Copy/rename the source into a temporary directory and run its workspace and identity/database tests. |

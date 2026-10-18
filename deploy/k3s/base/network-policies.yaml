@@ -19,9 +19,7 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: hirune-kit}
-          podSelector:
+        - podSelector:
             matchLabels:
               app.kubernetes.io/part-of: hirune-kit
               app.kubernetes.io/component: tunnel
@@ -39,9 +37,7 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: hirune-kit}
-          podSelector:
+        - podSelector:
             matchLabels:
               app.kubernetes.io/part-of: hirune-kit
               app.kubernetes.io/component: gateway

@@ -1,32 +1,31 @@
+set working-directory := ".."
+set dotenv-load := false
+set positional-arguments := true
 set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 
 default:
-    @just --list
+    @just --justfile deploy/justfile --list
 
-# Validate without printing expanded secret values.
-check environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml config --quiet
+# Render and validate one environment without displaying secrets or contacting its cluster.
+check environment:
+    cargo xtask deploy-k3s check "$1"
 
-pull environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml pull
+# Migrate once, then roll out. Use drain only for an offline upgrade.
+up environment mode="rolling":
+    cargo xtask deploy-k3s up "$1" "$2"
 
-# Apply schema and drain the old generation before starting new producers.
-up environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml run --rm migration
-    docker compose --env-file {{environment}}.env -f compose.yml stop api worker maintenance
-    docker compose --env-file {{environment}}.env -f compose.yml up -d api worker maintenance
+# Stop runtime Pods and keep namespace, settings, secrets, and external data.
+down environment:
+    cargo xtask deploy-k3s down "$1"
 
-down environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml down
+status environment:
+    cargo xtask deploy-k3s status "$1"
 
-status environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml ps
-
-logs environment="production" *services:
-    docker compose --env-file {{environment}}.env -f compose.yml logs -f {{services}}
+logs environment deployment="hirune-api":
+    cargo xtask deploy-k3s logs "$1" "$2"
 
 manage environment +arguments:
-    docker compose --env-file {{environment}}.env -f compose.yml run --rm manage {{arguments}}
+    cargo xtask deploy-k3s manage "$@"
 
-cleanup environment="production":
-    docker compose --env-file {{environment}}.env -f compose.yml run --rm --entrypoint manage maintenance cleanup
+cleanup environment:
+    cargo xtask deploy-k3s cleanup "$1"
