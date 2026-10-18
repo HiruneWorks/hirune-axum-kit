@@ -9,7 +9,8 @@ Pods. The baseline has two API, two APISIX, and two cloudflared replicas.
 One environment-specific Cloudflare Tunnel accepts both cloudflared connectors.
 API scaling does not create tunnels. APISIX uses the same generated routing
 configuration on both Pods. PostgreSQL owns sessions, login limits, API usage,
-and jobs. This profile does not use Redis or forward-auth.
+and jobs. APISIX replicas share one Valkey instance per environment for a separate
+broad IP limit. No forward-auth service is used.
 
 PostgreSQL, SMTP, optional S3 storage, and optional search are external services.
 The production manifests do not install PostgreSQL or allocate a database PVC.
@@ -25,12 +26,13 @@ Copy `.envs/.example/dev/` to ignored `.envs/.dev/` and
 - `target.env`: an explicit Kubernetes context and namespace.
 - `kustomization.yaml`: the namespace, application image, and optional patches.
 - `app.env`: public runtime settings.
+- `gateway.env`: `EDGE_RATE_LIMIT_REQUESTS` per IP per 60 seconds, shared by gateways.
 - `secrets.env`: encryption keys, authentication settings, and provider secrets.
 - `runtime.env`, `maintenance.env`, `migration.env`: separate database roles.
 - `tunnel.env`: that environment's Cloudflare Tunnel token.
 
 Use separate databases, encryption/rate-limit keys, origins, and tunnels for dev
-and prod. Both hosted environments use `APP_ENV=production` for HTTPS security.
+and prod. Each namespace also has its own disposable Valkey. Both hosted environments use `APP_ENV=production` for HTTPS security.
 The deployment name `dev` does not disable production security rules.
 
 Set `KUBE_CONTEXT` to an existing context from your kubeconfig. Set

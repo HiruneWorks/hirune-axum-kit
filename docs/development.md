@@ -34,7 +34,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-content` | Real PostgreSQL/SeaweedFS/Meilisearch content, profiles, Cedar, revision conflicts, scoped pagination/search, transactional inbox, session-bound push devices, and provider-independent push gates. |
 | `just test-deployment` | Validate local Compose, isolated dev/prod Kubernetes overlays, database-role separation, and Secret-triggered rollouts using temporary examples. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
-| `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, APISIX configuration rollout, and ingress policies. Requires `K3S_TEST_IMAGE`. |
+| `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, two APISIX gateways sharing Valkey, counter failure/recovery, environment isolation, and ingress policies. Requires `K3S_TEST_IMAGE`. |
 | `cd deploy; just up dev` / `just up prod` | Deploy to an explicitly configured Kubernetes context and namespace. Defaults to rolling. Use `just up prod drain` for an offline migration. |
 | `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
@@ -139,7 +139,8 @@ isolated two-node k3s cluster and removes it afterward. It applies the productio
 profile with local database/mail substitutions and no real Tunnel connection.
 It checks two API Pods on separate nodes, real APISIX routing, migration Job
 sequencing, live API and config-only gateway rollouts, session/quota continuity,
-and private ingress NetworkPolicies. See the [k3s runbook](../deploy/k3s/README.md).
+two gateways sharing Valkey, counter timeout/recovery and reset, separate dev
+counter state, and private ingress NetworkPolicies. See the [k3s runbook](../deploy/k3s/README.md).
 Run this in addition to production acceptance; each fixture verifies a different
 deployment boundary. CI uses the same release image for both commands.
 

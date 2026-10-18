@@ -149,11 +149,11 @@ concurrency tests cover multiple services and real API processes sharing one
 database. They do not establish production request-per-second capacity. Measure
 the intended client concurrency and database budget before changing the backend.
 
-An edge gateway or WAF can reject volumetric and unauthenticated abuse before
-it reaches the application. APISIX, Cloud Armor, or Apigee are deployment choices,
-not required dependencies. Edge limits do not replace the application's strict
-allocation authority. Redis, an OAuth authorization server, subscription billing,
-and a developer portal are not included in this baseline.
+The k3s profile uses APISIX and a shared Valkey IP counter to reject broad abuse
+before it reaches the application. Edge counter failure relaxes only this layer.
+It does not replace the application's strict PostgreSQL allocation authority.
+The application does not require a Valkey connection. An OAuth authorization
+server, subscription billing, and a developer portal are outside this baseline.
 
 ## References
 

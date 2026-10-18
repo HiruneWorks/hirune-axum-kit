@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - workloads.yaml
   - gateway.yaml
+  - edge-valkey.yaml
   - tunnel.yaml
   - migration.yaml
   - network-policies.yaml
@@ -13,3 +14,6 @@ configMapGenerator:
     files:
       - config.yaml=apisix/config.yaml
       - apisix.yaml=apisix/apisix.yaml
+      - hirune_edge.lua=apisix/hirune_edge.lua
+  - name: hirune-edge-valkey
+    files: [valkey.conf=edge-valkey.conf]

@@ -174,13 +174,15 @@ def cannot_connect(host, port):
 def private_ingress():
     request("GET", "/health/ready", expected=204)
     cannot_connect("hirune-api", 3000)
-    print("Tunnel-labelled Pod can reach APISIX and cannot bypass it to the API.")
+    cannot_connect("hirune-edge-valkey", 6379)
+    print("Tunnel-labelled Pod can reach APISIX and cannot bypass it to the API or Valkey.")
 
 
 def denied_ingress():
     cannot_connect("hirune-apisix", 9080)
     cannot_connect("hirune-api", 3000)
-    print("Untrusted Pod cannot connect to either APISIX or the API.")
+    cannot_connect("hirune-edge-valkey", 6379)
+    print("Untrusted Pod cannot connect to APISIX, the API, or Valkey.")
 
 
 {
