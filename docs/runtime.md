@@ -14,8 +14,9 @@ PostgreSQL owns sessions, security versions, challenges, OAuth flows, rate limit
 organizations, external API clients/keys/usage budgets, job leases, and delivery
 state. API instances require no sticky routing. Add worker processes to increase
 concurrency. Database locks and fencing remain authoritative across them.
-In-process semaphores only bound local CPU/request capacity. Redis, a broker,
-and provider credentials are not baseline startup dependencies.
+In-process semaphores only bound local CPU/request capacity. Valkey, a broker,
+and provider credentials are not application startup dependencies. The k3s
+gateways use Valkey for a separate broad IP limit before requests reach the API.
 
 Workers fill available execution slots without an inter-job delay. The
 `WORKER_POLL_MILLISECONDS` setting (default 250) controls only the delay after
@@ -227,6 +228,6 @@ termination grace periods. The development Compose file does not deploy this ima
 See [environment layout](../.envs/README.md), [container files](../compose/README.md),
 and [deployment commands](../deploy/README.md) for the canonical paths.
 The [k3s profile](../deploy/k3s/README.md) supplies two API replicas, a private
-APISIX Service, Tunnel replicas, readiness, graceful rollout, migration sequencing,
+APISIX Service, shared Valkey edge counters, Tunnel replicas, readiness, graceful rollout, migration sequencing,
 and an optional HPA. Compatible upgrades can roll. Incompatible schema or job
 changes require a coordinated drain before migration.

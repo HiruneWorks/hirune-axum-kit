@@ -20,6 +20,7 @@ requirements. It does not establish that verification steps passed.
 | Migrations | One table with its own indexes and constraints per baseline migration. Subsequent migrations have a clear schema responsibility. |
 | Scaling | Replaceable stateless API instances; shared state outside processes; independently scalable workers. Ready work fills available worker slots without a fixed inter-job delay; polling waits apply only after no eligible work is found. |
 | Production ingress | Cloudflare Tunnel reaches private APISIX, then the API. Trust Cloudflare client-IP headers within that boundary. SSR client-IP overrides require a shared proxy secret; proxy Pod IPs do not establish trust. |
+| Edge protection | APISIX replicas share a Valkey-backed IP counter in each deployment environment. This broad edge limit fails open on counter failure. PostgreSQL retains authentication limits and strict external API allocations. Do not use forward-auth for this accounting. |
 | Kubernetes deployment | Use `deploy/justfile` as the Kubernetes deployment entrypoint, with explicit dev/prod contexts, namespaces, images, and credentials. Default to compatible rolling updates. Provide a k3s profile with Traefik disabled, private standalone APISIX, at least two stateless API replicas, compatible rolling updates, and coordinated drain for incompatible changes. Verify two API Pods on two real k3s nodes with continuous traffic and shared authority across replacement. |
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
 | Session lifetime | Defaults are 14 days idle and 90 days absolute. Cookie and bearer sessions use the same values. Deployments can lower them through configuration. |
@@ -50,10 +51,11 @@ not a fleet of microservices. Shared storage makes instances replaceable without
 sticky routing. Organize source code by feature ownership and dependency
 boundaries. Do not build a framework or a generic abstraction over every backend.
 
-Redis is not a baseline dependency. PostgreSQL owns sessions, challenges, OIDC
-flows, rate limits, and jobs. A future cache must have explicit consistency and
-failure semantics and must never authorize a revoked session. Provider public
-key caching is separate from account and session authority.
+PostgreSQL owns sessions, challenges, OIDC flows, authentication limits, strict
+API allocations, and jobs. Application processes do not require Valkey. The k3s
+gateway uses a separate disposable Valkey instance for shared edge IP limits.
+Its failure relaxes only edge enforcement; it cannot authorize requests or reset
+PostgreSQL budgets. Provider public-key caching is separate from session authority.
 
 Password signup requires email verification. MFA is optional for ordinary accounts
 and mandatory for global administrators. Once enabled it applies to every supported

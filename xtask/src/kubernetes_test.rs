@@ -18,6 +18,7 @@ const NAMESPACE: &str = "hirune-prod";
 const NODE_IMAGE: &str = "rancher/k3s:v1.37.1-k3s1";
 const IMAGES: &[&str] = &[
     "apache/apisix:3.19.0-debian",
+    "valkey/valkey:9.1.2-alpine",
     "postgres:18-alpine",
     "axllent/mailpit:v1.31.5",
     "python:3.14-alpine",
@@ -67,7 +68,7 @@ pub fn verify() -> Result<()> {
     }
     result?;
     println!(
-        "Two-node k3s acceptance passed: two API replicas, live rolling updates, shared sessions and quota, gateway configuration rollout, and private ingress policies. Real Cloudflare Tunnel was not connected."
+        "Two-node k3s acceptance passed: two API replicas, live rolling updates, shared sessions and quota, two gateways sharing Valkey, counter failure and recovery, environment isolation, and private ingress policies. Real Cloudflare Tunnel was not connected."
     );
     Ok(())
 }
@@ -328,7 +329,24 @@ impl Fixture {
             "a gateway-only config change replaced API Pods"
         );
         println!("{}", self.probe("stop-traffic")?.trim());
+        let counter_before_drain = self.json(&[
+            "get",
+            "pods",
+            "-l",
+            "app.kubernetes.io/component=edge-counter",
+        ])?["items"][0]["metadata"]["uid"]
+            .clone();
         self.deploy("drain")?;
+        ensure!(
+            self.json(&[
+                "get",
+                "pods",
+                "-l",
+                "app.kubernetes.io/component=edge-counter"
+            ])?["items"][0]["metadata"]["uid"]
+                == counter_before_drain,
+            "application drain replaced Valkey"
+        );
         println!("{}", self.probe("retained-authority")?.trim());
         ensure!(
             self.other_environment_state()? == dev_before,
@@ -336,6 +354,11 @@ impl Fixture {
         );
         println!(
             "Prod rolling and drained deployments left dev Pods and replicas unchanged with an unusable default context."
+        );
+        self.check_edge_limits()?;
+        ensure!(
+            self.other_environment_state()? == dev_before,
+            "prod counter operations changed dev state"
         );
         println!("{}", self.probe("private-ingress")?.trim());
         println!(
@@ -358,7 +381,8 @@ impl Fixture {
             "-c",
             r#"import socket
 for host, port in [('hirune-apisix.hirune-prod.svc.cluster.local', 9080),
-                   ('hirune-api.hirune-prod.svc.cluster.local', 3000)]:
+                   ('hirune-api.hirune-prod.svc.cluster.local', 3000),
+                   ('hirune-edge-valkey.hirune-prod.svc.cluster.local', 6379)]:
     address = socket.gethostbyname(host)
     try:
         connection = socket.create_connection((address, port), timeout=3)
@@ -366,8 +390,126 @@ for host, port in [('hirune-apisix.hirune-prod.svc.cluster.local', 9080),
         continue
     connection.close()
     raise AssertionError('cross-namespace ingress was allowed')
-print('Dev tunnel-labelled Pod cannot reach prod gateway or API.')"#,
+print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         ]))?;
+        Ok(())
+    }
+
+    fn edge_probe(&self, operation: &str) -> Result<String> {
+        let pods = self.json(&["get", "pods", "-l", "app.kubernetes.io/component=gateway"])?;
+        let gateways: Vec<_> = pods["items"]
+            .as_array()
+            .context("gateway Pods missing")?
+            .iter()
+            .filter(|pod| pod["metadata"]["deletionTimestamp"].is_null())
+            .map(|pod| {
+                pod["status"]["podIP"]
+                    .as_str()
+                    .map(|ip| format!("http://{ip}:9080"))
+            })
+            .collect::<Option<Vec<_>>>()
+            .context("gateway addresses missing")?;
+        ensure!(gateways.len() == 2, "edge acceptance requires two gateways");
+        let mut command = self.kubectl(&[
+            "exec",
+            "trusted-probe",
+            "--",
+            "python",
+            "/checks/edge.py",
+            operation,
+        ]);
+        let output = command.args(gateways).output()?;
+        ensure!(
+            output.status.success(),
+            "edge acceptance failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(String::from_utf8(output.stdout)?)
+    }
+
+    fn check_edge_limits(&self) -> Result<()> {
+        let path = self.directory.path().join(".envs/.prod/k3s/gateway.env");
+        fs::write(path, "EDGE_RATE_LIMIT_REQUESTS=8\n")?;
+        // Keep the continuity bucket alive across slow fixture rollouts.
+        let route = self
+            .directory
+            .path()
+            .join("deploy/k3s/base/apisix/apisix.yaml");
+        fs::write(
+            &route,
+            fs::read_to_string(&route)?.replace("time_window: 60", "time_window: 600"),
+        )?;
+        let counter_before = self.json(&[
+            "get",
+            "pods",
+            "-l",
+            "app.kubernetes.io/component=edge-counter",
+        ])?["items"][0]["metadata"]["uid"]
+            .clone();
+        self.deploy("rolling")?;
+        ensure!(
+            self.json(&[
+                "get",
+                "pods",
+                "-l",
+                "app.kubernetes.io/component=edge-counter"
+            ])?["items"][0]["metadata"]["uid"]
+                == counter_before,
+            "gateway settings replaced Valkey"
+        );
+        println!("{}", self.edge_probe("check")?.trim());
+        ensure!(
+            self.read(&[
+                "exec",
+                "deployment/hirune-edge-valkey",
+                "--",
+                "valkey-cli",
+                "GET",
+                "namespace-marker"
+            ])?
+            .trim()
+            .is_empty(),
+            "dev counter state leaked into prod"
+        );
+        crate::run(&mut self.kubectl(&["rollout", "restart", "deployment/hirune-apisix"]))?;
+        crate::run(&mut self.kubectl(&[
+            "rollout",
+            "status",
+            "deployment/hirune-apisix",
+            "--timeout=180s",
+        ]))?;
+        println!("{}", self.edge_probe("after-gateway-restart")?.trim());
+        crate::run(&mut self.kubectl(&[
+            "exec",
+            "deployment/hirune-edge-valkey",
+            "--",
+            "valkey-cli",
+            "CLIENT",
+            "PAUSE",
+            "5000",
+            "ALL",
+        ]))?;
+        println!("{}", self.edge_probe("outage")?.trim());
+        crate::run(&mut self.kubectl(&["rollout", "restart", "deployment/hirune-edge-valkey"]))?;
+        crate::run(&mut self.kubectl(&[
+            "rollout",
+            "status",
+            "deployment/hirune-edge-valkey",
+            "--timeout=180s",
+        ]))?;
+        ensure!(
+            self.read(&[
+                "exec",
+                "deployment/hirune-edge-valkey",
+                "--",
+                "valkey-cli",
+                "DBSIZE"
+            ])?
+            .trim()
+                == "0",
+            "replacement Valkey retained disposable counters"
+        );
+        println!("{}", self.edge_probe("after-valkey-restart")?.trim());
         Ok(())
     }
 
@@ -383,9 +525,22 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway or API.')"#,
         let target = self.other_target();
         let deployment = target.json(&["get", "deployment", "hirune-api"])?;
         let pods = target.json(&["get", "pods"])?;
+        let counter = target.json(&["get", "deployment", "hirune-edge-valkey"])?;
+        let marker = target
+            .kubectl(&[
+                "exec",
+                "deployment/hirune-edge-valkey",
+                "--",
+                "valkey-cli",
+                "GET",
+                "namespace-marker",
+            ])
+            .output()?;
+        ensure!(marker.status.success(), "cannot inspect dev counter marker");
         Ok(
             json!({"uid":deployment["metadata"]["uid"],"generation":deployment["metadata"]["generation"],
-            "spec":deployment["spec"],"pods":pods["items"].as_array().context("dev Pods missing")?.iter()
+            "spec":deployment["spec"], "counter":counter["spec"], "marker":String::from_utf8(marker.stdout)?,
+            "pods":pods["items"].as_array().context("dev Pods missing")?.iter()
                 .map(|pod| pod["metadata"]["uid"].clone()).collect::<Vec<_>>()}),
         )
     }
@@ -396,6 +551,43 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway or API.')"#,
             &target,
             vec![json!({"apiVersion":"v1","kind":"Namespace","metadata":{"name":"hirune-dev"}})],
         )?;
+        copy_directory(
+            Path::new(".envs/.example/dev/k3s"),
+            &self.directory.path().join(".envs/.dev/k3s"),
+        )?;
+        let dev = Deployment::load(self.directory.path(), Environment::Dev)?;
+        crate::kubernetes::apply(
+            &target,
+            dev.resources
+                .into_iter()
+                .filter(|r| {
+                    let name = r["metadata"]["name"].as_str().unwrap_or_default();
+                    (r["kind"] == "ConfigMap" && name.starts_with("hirune-edge-valkey-"))
+                        || (matches!(r["kind"].as_str(), Some("Deployment" | "Service"))
+                            && name == "hirune-edge-valkey")
+                        || (r["kind"] == "NetworkPolicy"
+                            && matches!(
+                                name,
+                                "hirune-private-ingress" | "hirune-gateway-to-edge-counter"
+                            ))
+                })
+                .collect(),
+        )?;
+        crate::run(&mut target.kubectl(&[
+            "rollout",
+            "status",
+            "deployment/hirune-edge-valkey",
+            "--timeout=180s",
+        ]))?;
+        crate::run(&mut target.kubectl(&[
+            "exec",
+            "deployment/hirune-edge-valkey",
+            "--",
+            "valkey-cli",
+            "SET",
+            "namespace-marker",
+            "dev",
+        ]))?;
         crate::kubernetes::apply(
             &target,
             vec![json!({"apiVersion":"apps/v1","kind":"Deployment",
@@ -568,7 +760,8 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway or API.')"#,
             .clone();
         let mut resources = vec![
             json!({"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"probe-checks"},
-                "data":{"probe.py":include_str!("../../deploy/k3s/verification/probe.py")}}),
+                "data":{"probe.py":include_str!("../../deploy/k3s/verification/probe.py"),
+                    "edge.py":include_str!("../../deploy/k3s/verification/edge.py")}}),
         ];
         for (name, image, port, env) in [
             (

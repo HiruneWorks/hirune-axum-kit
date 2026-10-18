@@ -13,7 +13,7 @@ credentials or print rendered production Kubernetes resources.
 - Tests receive explicit settings and never read developer secrets.
 
 Each hosted overlay owns its target context/namespace, image, public runtime
-settings, generated application/provider Secrets, three database-role env files,
+settings, `gateway.env` for the edge IP limit, generated application/provider Secrets, three database-role env files,
 and a Tunnel token. Keep databases, keys, origins, and tunnels separate between
 dev and prod. Both hosted environments use `APP_ENV=production` for HTTPS rules.
 See [deployment](../deploy/README.md) and the [k3s runbook](../deploy/k3s/README.md).
@@ -38,7 +38,8 @@ No executable searches for environment files during startup.
 Production ingress requires Cloudflare Tunnel and private gateway/API listeners.
 Set `INTERNAL_PROXY_SECRET` only when an SSR server forwards the original client
 IP. Share the same random value (at least 32 visible ASCII characters) with that
-server and all API replicas. Empty disables SSR overrides. The API still reads
+server, gateways, and all API replicas. Gateways receive only this Secret key.
+Empty disables SSR overrides. The API still reads
 `CF-Connecting-IP`. Remove the old `TRUSTED_PROXY_IPS` setting. See
 [proxy trust](../docs/security.md#proxy-and-cache-trust).
 

@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-18 — Shared Valkey edge limits](2026-10-18-shared-valkey-edge-limits.md):
+  per-environment shared APISIX IP counters, preserved PostgreSQL authority,
+  disposable counter lifecycle, and failure/isolation acceptance coverage.
+
 - [2026-10-18 — Kubernetes dev and prod deployment commands](2026-10-18-k3s-environments.md):
   canonical Kubernetes operator commands, explicit environment targets, generated
   Secret rollouts, and cross-environment acceptance coverage.

@@ -30,7 +30,9 @@ prefer different nodes. PodDisruptionBudgets preserve one ready replica during
 voluntary eviction. Provision control-plane availability separately.
 
 Restrict namespace write access. The ingress policies allow only same-namespace
-Pods with the expected labels: tunnel → gateway and gateway → API. A Pod in dev
+Pods with the expected labels: tunnel → gateway, gateway → API, and gateway →
+Valkey. Valkey has no public listener or password; these namespace policies and
+namespace write permissions establish its access boundary. A Pod in dev
 cannot enter prod through these rules, even with the same labels. Anyone who can
 create Pods inside the target namespace can impersonate these labels. Host-network
 traffic and cluster administrators are outside this boundary. Do not add public
@@ -56,20 +58,58 @@ Services or ports for the gateway or API.
    Both cloudflared replicas in one environment connect to the same Tunnel.
 5. Verify that Cloudflare supplies `CF-Connecting-IP` and cannot reach a separate
    public origin. APISIX preserves it and the optional SSR override headers.
-   PostgreSQL owns authentication and business API counters; APISIX does not run
-   forward-auth or keep a separate request quota.
+   PostgreSQL owns authentication and business API counters. APISIX uses Valkey
+   for an additional broad IP limit. It does not run forward-auth.
 
 APISIX obtains its namespace through the Kubernetes Downward API. Its route uses
-`${{POD_NAMESPACE}}` in the API Service DNS name. No Pod IP or fixed namespace is
+`${{POD_NAMESPACE}}` in the API and Valkey Service DNS names. No Pod IP or fixed namespace is
 stored in the gateway route. Increasing API replicas does not change Tunnel or
 gateway configuration.
+
+## Shared edge limits
+
+Each environment runs two APISIX replicas and one Valkey 9.1.2 Pod. Both gateways
+use the same counter store. The baseline has nine runtime Pods: two API, two
+APISIX, two cloudflared, one worker, one maintenance, and one Valkey. The migration
+Job runs separately. PostgreSQL and optional search/object storage stay external.
+
+Set `EDGE_RATE_LIMIT_REQUESTS` in `gateway.env`. The example allows 60000 requests
+per client IP per 60-second fixed window across both gateways. This is an initial
+abuse ceiling, not measured service capacity. Tune it for real traffic and shared
+NAT users. It covers all routes except exact GET/HEAD `/health/live` and
+`/health/ready`. Authentication routes still enforce their lower PostgreSQL limits.
+External API allocations stay strict and independent of this edge counter.
+
+APISIX uses `limit-count` with `policy: redis` because Valkey speaks that protocol.
+No Redis server or application Valkey client is installed. The private counter key
+uses the same Cloudflare/secret-authenticated SSR IP selection as the backend.
+Equivalent IPv6 forms and IPv4-mapped IPv6 share a budget. Forwarded headers do
+not establish identity. Gateway-generated 429 responses use `edge_rate_limited`,
+the common JSON error envelope, a generated request ID, `Retry-After`, and allowed
+origin CORS. Backend 429 responses retain their own body and quota headers.
+
+The gateway sets a 200 ms socket timeout for Valkey connect/send/read operations.
+This is not an end-to-end request deadline. Counter failure or memory exhaustion
+lets the request continue to the backend. Monitor Valkey health,
+memory, APISIX counter errors, and rejection volume. PostgreSQL authentication
+limits and API allocations still apply during a Valkey outage. Counter failure
+does not make API or gateway readiness depend on Valkey.
+
+Valkey has a 128 MiB data limit, `noeviction`, no disk persistence, and no PVC.
+Its single-replica `Recreate` strategy prevents independent stores from splitting
+one budget. Do not scale it or attach an HPA. Counter replacement intentionally
+resets only the short edge windows. API/gateway rollouts and application drain
+keep it running. This baseline does not provide Valkey failover. If the service
+later needs highly available edge enforcement, use one replicated Valkey service
+with coordinated primary failover and adapt the gateway connection configuration.
 
 ## Migration and rollout
 
 From `deploy/`, run `just check prod`, then `just up prod`.
 All resources are rendered and validated once before any cluster mutation.
 The command applies the namespace and prerequisites, creates one migration Job,
-waits for its success, then applies and waits for all runtime Deployments.
+waits for its success, starts and waits for Valkey, then applies the other runtime
+Deployments. `just down <environment>` stops Valkey with the other Deployments.
 A finished migration Job is replaced on the next release. An unfinished Job
 blocks another deployment, including a Job that is pending or suspended.
 A failed migration blocks runtime rollout. Inspect it with the selected target:
@@ -99,7 +139,7 @@ just up prod drain
 
 This stops all API, worker, and maintenance Pods and waits for exit before
 migration. It then restores desired replicas. A migration failure leaves those
-processes stopped. Correct the cause and repeat the drained deployment. Remove
+processes stopped. APISIX, Tunnel connectors, and Valkey keep running. Correct the cause and repeat the drained deployment. Remove
 HPAs from both the overlay and selected namespace before this operation; an HPA
 can restore old replicas while the database is changing. A per-Deployment
 `Recreate` strategy does not coordinate all application roles.
@@ -115,7 +155,10 @@ compatible release and the required retained encryption keys.
 Kustomize generates hashed ConfigMaps and Secrets. A value change updates the
 Pod template reference and replaces affected Pods. Schema-owner credential changes
 replace only the migration reference. Application-secret changes replace API,
-worker, and maintenance Pods. Tunnel-token changes replace cloudflared Pods.
+worker, maintenance, and gateway Pods because gateways reference the optional SSR
+secret key. Gateways receive no database, SMTP, or encryption credentials.
+Edge-limit changes replace only gateways. Valkey config changes replace only the
+counter Pod. Tunnel-token changes replace cloudflared Pods.
 Old generated objects remain for existing Pods and recovery. Remove unused objects
 only after checking live Pods and retained ReplicaSets. Do not prune them blindly.
 
@@ -166,24 +209,30 @@ kubeconfig. The isolated kubeconfig has an intentionally unusable current contex
 operations must use the explicitly selected context.
 
 The fixture deploys a disposable prod overlay with two API Pods on distinct nodes,
-APISIX, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero. Local
+two APISIX Pods, Valkey, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero. Local
 HTTP/mail and one database owner are fixture-only substitutions. The separate
 production fixture verifies HTTPS, STARTTLS, and restricted database roles.
 
 Acceptance covers an unfinished migration guard, signup and mail, retained
 sessions and API quota, continuous authenticated traffic during API/gateway
 replacement, config-only gateway rollout, coordinated application drain, and
-private ingress. A same-name dev sentinel Deployment must retain its Pod and
-replica count across prod operations. A dev Pod with tunnel labels must fail to
-reach prod gateway/API. This does not establish real Tunnel connectivity,
+private ingress. Direct requests to both gateways verify one combined IP budget,
+header spoofing, SSR trust, duplicate rejection, IP normalization, CORS, health
+exceptions, gateway restart continuity, counter timeout/recovery, retained strict
+PostgreSQL quota, and intentional reset on Valkey replacement. A same-name dev
+sentinel and a separate dev Valkey retain their Pods and state across prod
+operations. A dev Pod with tunnel labels must fail to reach prod gateway, API,
+and Valkey. This does not establish real Tunnel connectivity,
 control-plane failover, long-upload drain, or production capacity.
+The continuity checks use a fixture-only 600-second window so slow rollouts do
+not expire their counters. Production keeps its 60-second window.
 
 The host kernel needs bridge filtering, IP sets, and `xt_physdev`. CI loads these
 modules on its disposable Ubuntu runner. Missing modules can leave running Pods
 with failed policy installation. The acceptance command must fail in that case;
 its failure output includes policy-controller errors.
 
-Review pinned k3s, k3d, kubectl, APISIX, and cloudflared versions together. Verify
+Review pinned k3s, k3d, kubectl, APISIX, Valkey, and cloudflared versions together. Verify
 real-hostname identity headers, mail, providers, backups, recovery, and node drain
 on the target cluster. See [development](../../docs/development.md) and actual
 [milestones](../../memory/README.md) for validation evidence.

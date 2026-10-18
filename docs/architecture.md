@@ -10,6 +10,9 @@ This is a modular monolith with separately scalable API and worker processes.
 PostgreSQL owns accounts, authentication state, authorization facts, deliveries,
 and jobs. Neither process requires sticky routing or in-memory authority.
 Migration and management commands are explicit one-off processes.
+The k3s ingress gateways share disposable Valkey counters for broad IP protection.
+Authentication and strict API accounting remain in PostgreSQL. Application
+processes do not connect to Valkey. See the [deployment contract](../deploy/k3s/README.md#shared-edge-limits).
 The separate maintenance executable registers periodic jobs and consumes a
 dedicated queue using restricted database credentials. It shares the same lease,
 retry, and attempt-history implementation as ordinary workers.

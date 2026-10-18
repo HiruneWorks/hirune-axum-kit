@@ -34,6 +34,15 @@ spec:
         - name: apisix
           image: apache/apisix:3.19.0-debian
           env:
+            - name: EDGE_RATE_LIMIT_REQUESTS
+              valueFrom:
+                configMapKeyRef: {name: hirune-edge-settings, key: EDGE_RATE_LIMIT_REQUESTS}
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef: {name: hirune-settings, key: ALLOWED_ORIGINS}
+            - name: INTERNAL_PROXY_SECRET
+              valueFrom:
+                secretKeyRef: {name: hirune-app-secrets, key: INTERNAL_PROXY_SECRET, optional: true}
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef: {fieldPath: metadata.namespace}
@@ -60,6 +69,10 @@ spec:
             preStop:
               exec: {command: [sh, -c, sleep 5]}
           volumeMounts:
+            - name: configuration
+              mountPath: /usr/local/apisix/conf/hirune_edge.lua
+              subPath: hirune_edge.lua
+              readOnly: true
             - name: configuration
               mountPath: /usr/local/apisix/conf/config.yaml
               subPath: config.yaml

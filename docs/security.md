@@ -58,7 +58,17 @@ NAT users share a client budget. Tune the application policy for its audience.
 Network/WAF limits protect PostgreSQL from volumetric attacks before application
 authentication or accounting runs.
 
-PostgreSQL is authoritative for authentication state. Redis is not required. The
+The k3s profile enforces a shared IP limit through APISIX and Valkey. The gateway
+canonicalizes the selected address into a private request-context variable;
+caller headers cannot replace the counter key. Exact GET/HEAD liveness and
+readiness paths bypass this edge limit. Valkey timeouts relax only this broad
+limit. Authentication limits and strict API allocations stay in PostgreSQL.
+Gateway errors use the common JSON error envelope and a generated request ID.
+Edge 429 responses include `Retry-After` and exact-origin credentialed CORS.
+Backend 429 bodies, IDs, and quota headers pass through; the gateway exposes
+`Retry-After` to allowed browser origins. See [edge operations](../deploy/k3s/README.md#shared-edge-limits).
+
+PostgreSQL is authoritative for authentication state. The
 OIDC public-key cache has a bounded lifetime, serialized refresh, unknown-key
 refresh, and failed-refresh cooldown. It never caches session authority. Do not
 add cached allow decisions without an explicit revocation contract.

@@ -9,6 +9,8 @@ images:
     newName: registry.example.com/your-project/hirune-kit
     newTag: 0.1.0
 configMapGenerator:
+  - name: hirune-edge-settings
+    envs: [gateway.env]
   - name: hirune-settings
     envs: [app.env]
 secretGenerator:

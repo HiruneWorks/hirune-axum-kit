@@ -155,6 +155,40 @@ impl Deployment {
                 "deployment requires exactly one {kind}/{name}"
             );
         }
+        let counter = self
+            .resources
+            .iter()
+            .find(|r| r["kind"] == "Deployment" && r["metadata"]["name"] == "hirune-edge-valkey")
+            .context("edge counter Deployment missing")?;
+        ensure!(
+            counter["spec"]["replicas"] == 1 && counter["spec"]["strategy"]["type"] == "Recreate",
+            "the disposable shared Valkey requires one replica and Recreate"
+        );
+        ensure!(
+            !self
+                .resources
+                .iter()
+                .any(|r| r["kind"] == "HorizontalPodAutoscaler"
+                    && r["spec"]["scaleTargetRef"]["name"] == "hirune-edge-valkey"),
+            "independent Valkey replicas cannot share one counter Service"
+        );
+        let settings = self
+            .resources
+            .iter()
+            .find(|r| {
+                r["kind"] == "ConfigMap"
+                    && r["metadata"]["name"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with("hirune-edge-settings-"))
+            })
+            .context("gateway settings missing")?;
+        ensure!(
+            settings["data"]["EDGE_RATE_LIMIT_REQUESTS"]
+                .as_str()
+                .and_then(|value| value.parse::<u32>().ok())
+                .is_some_and(|value| value > 0),
+            "EDGE_RATE_LIMIT_REQUESTS must be a positive integer"
+        );
         Ok(())
     }
 }

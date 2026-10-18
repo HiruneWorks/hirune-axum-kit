@@ -10,6 +10,7 @@ pub const DEPLOYMENTS: &[&str] = &[
     "hirune-maintenance",
     "hirune-apisix",
     "hirune-cloudflared",
+    "hirune-edge-valkey",
 ];
 
 #[derive(Clone, Copy, PartialEq)]
@@ -199,7 +200,30 @@ pub fn deploy(deployment: &Deployment, mode: Mode) -> Result<()> {
         "job/hirune-migration",
         "--timeout=600s",
     ]))?;
-    apply(target, select("Deployment"))?;
+    apply(
+        target,
+        deployment
+            .resources
+            .iter()
+            .filter(|r| r["kind"] == "Deployment" && r["metadata"]["name"] == "hirune-edge-valkey")
+            .cloned()
+            .collect(),
+    )?;
+    crate::run(&mut target.kubectl(&[
+        "rollout",
+        "status",
+        "deployment/hirune-edge-valkey",
+        "--timeout=300s",
+    ]))?;
+    apply(
+        target,
+        deployment
+            .resources
+            .iter()
+            .filter(|r| r["kind"] == "Deployment" && r["metadata"]["name"] != "hirune-edge-valkey")
+            .cloned()
+            .collect(),
+    )?;
     for name in DEPLOYMENTS {
         crate::run(&mut target.kubectl(&[
             "rollout",
@@ -239,7 +263,7 @@ fn stop(target: &Target, deployments: &[&str]) -> Result<()> {
     let selector = if deployments == APPLICATIONS {
         "app.kubernetes.io/part-of=hirune-kit,app.kubernetes.io/component in (api,worker,maintenance)"
     } else {
-        "app.kubernetes.io/part-of=hirune-kit,app.kubernetes.io/component in (api,worker,maintenance,gateway,tunnel)"
+        "app.kubernetes.io/part-of=hirune-kit,app.kubernetes.io/component in (api,worker,maintenance,gateway,tunnel,edge-counter)"
     };
     crate::run(&mut target.kubectl(&[
         "wait",

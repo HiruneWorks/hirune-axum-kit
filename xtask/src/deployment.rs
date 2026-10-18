@@ -28,6 +28,22 @@ pub fn verify() -> Result<()> {
             "wrong environment namespace"
         );
         verify_roles(deployment)?;
+        let gateway =
+            &resource(deployment, "hirune-apisix")["spec"]["template"]["spec"]["containers"][0];
+        ensure!(
+            gateway["envFrom"].is_null(),
+            "gateway received the full application Secret"
+        );
+        let secret_keys: Vec<_> = gateway["env"]
+            .as_array()
+            .context("gateway environment missing")?
+            .iter()
+            .filter_map(|entry| entry["valueFrom"]["secretKeyRef"]["key"].as_str())
+            .collect();
+        ensure!(
+            secret_keys == ["INTERNAL_PROXY_SECRET"],
+            "gateway received unrelated application credentials"
+        );
         ensure!(
             resource(deployment, "hirune-api")["spec"]["replicas"] == 2,
             "two API replicas required"
@@ -60,6 +76,40 @@ pub fn verify() -> Result<()> {
         )?;
         let _: Value = serde_json::from_slice(&keys)
             .context("Kubernetes JSON must use raw env-file values")?;
+    }
+    let mut invalid = Deployment::load(root, Environment::Prod)?;
+    let counter = invalid
+        .resources
+        .iter_mut()
+        .find(|r| r["kind"] == "Deployment" && r["metadata"]["name"] == "hirune-edge-valkey")
+        .context("counter missing")?;
+    counter["spec"]["replicas"] = 2.into();
+    ensure!(
+        invalid.validate().is_err(),
+        "independent counter replicas were accepted"
+    );
+    let settings = root.join(".envs/.prod/k3s/gateway.env");
+    fs::write(&settings, "EDGE_RATE_LIMIT_REQUESTS=0\n")?;
+    ensure!(
+        Deployment::load(root, Environment::Prod).is_err(),
+        "invalid edge limit was accepted"
+    );
+    fs::write(&settings, "EDGE_RATE_LIMIT_REQUESTS=120000\n")?;
+    let changed = Deployment::load(root, Environment::Prod)?;
+    ensure!(
+        resource(&prod, "hirune-apisix")["spec"]["template"]
+            != resource(&changed, "hirune-apisix")["spec"]["template"],
+        "edge limit did not replace gateways"
+    );
+    for name in crate::kubernetes::APPLICATIONS
+        .iter()
+        .copied()
+        .chain(["hirune-edge-valkey", "hirune-cloudflared"])
+    {
+        ensure!(
+            resource(&prod, name) == resource(&changed, name),
+            "edge limit changed unrelated runtime state"
+        );
     }
     let secrets = root.join(".envs/.prod/k3s/secrets.env");
     fs::write(
@@ -125,7 +175,7 @@ pub fn verify() -> Result<()> {
         .status()?;
     ensure!(local.success(), "local Compose validation failed");
     println!(
-        "Kubernetes dev/prod isolation, role separation, Secret-triggered rollouts, namespace validation, and local Compose contracts passed."
+        "Kubernetes dev/prod isolation, role separation, Secret-triggered rollouts, singleton Valkey, gateway-only settings, namespace validation, and local Compose contracts passed."
     );
     Ok(())
 }
