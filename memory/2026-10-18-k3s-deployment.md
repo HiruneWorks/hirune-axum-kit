@@ -44,12 +44,21 @@
   rejection passed. API replacement served 809 authenticated requests with zero
   errors and retained the session and shared monthly allocation. A config-only
   gateway replacement served 1351 authenticated requests with zero errors.
+- The final local repeat served 488 API-rollout requests and 1480 gateway-rollout
+  requests with zero errors. The coordinated drain stopped all three application
+  Deployments before migration, restored them, and retained the existing session
+  and exhausted quota. It then failed the ingress test for the confirmed kernel
+  reason below; this repeat is also not a full acceptance pass.
 - **The local full acceptance command did not pass.** Direct-ingress denial
   failed. A separate minimal real-k3s diagnosis confirmed that this managed
   host's kernel 6.18.55 lacks `xt_physdev`: kube-router aborts `iptables-restore`
   with `Extension physdev revision 0 not supported`. Base controller chains and
   successful manifest apply do not establish enforcement. The test keeps this
   failure visible. CI explicitly loads the required modules on its Ubuntu host.
+- Reading `/proc/config.gz` later confirmed both `# CONFIG_MODULES is not set`
+  and `# CONFIG_NETFILTER_XT_MATCH_PHYSDEV is not set`. This host cannot load a
+  separately installed module. Enabling it requires a different host kernel,
+  rather than an additional package inside the k3d containers.
 - Earlier nested-host attempts also exposed missing `/dev/kmsg`, unavailable
   VXLAN/overlay extraction, and disk pressure. The fixture now matches native
   imports, uses host-gw, waits for both nodes to be Ready without disk pressure,
@@ -62,12 +71,24 @@
 - The application source is unchanged from the preceding Tunnel/Caddy milestone.
   Its release-image HTTPS/STARTTLS, restricted-role, and backup/restore acceptance
   already passed there. This milestone does not replace those checks.
+- **Remote CI passed in full** for implementation commit
+  `89ab22d62a4951245c6bf43e38882020fa0a66a6`:
+  [CI run 39093136076](https://github.com/HiruneWorks/hirune-axum-kit/actions/runs/39093136076).
+  Both `verify` and `container` succeeded. This includes all existing regression
+  suites, copied-template verification, and release-image production acceptance.
+- On the CI host, all required kernel modules loaded and the complete real-k3s
+  acceptance passed: two Ready API Pods on distinct nodes; 634 authenticated
+  requests during API replacement and 1266 during a config-only APISIX replacement,
+  all with zero errors; retained sessions/quota; and coordinated drained upgrade.
+  The Tunnel-labelled probe reached APISIX but could not bypass it to the API.
+  The untrusted probe could reach neither gateway nor API. The real Tunnel was
+  still disconnected, as intended by the fixture.
 
 ## Remaining work
 
-- Observe the new remote CI result, including complete policy enforcement and
-  the coordinated drained deployment. Local full ingress acceptance needs a host
-  with `xt_physdev`; do not treat the local partial result as a pass.
+- Full ingress acceptance in this managed workspace requires a different kernel
+  with `physdev` support. The complete CI result above supplies the successful
+  host-level acceptance; the local partial run remains a failed full check.
 - Provision actual production providers, credentials, database grants/backups,
   and cluster capacity. Verify real Tunnel header provenance, public hostname,
   node drain, and any optional integrations on the target cluster. No production
