@@ -65,6 +65,12 @@
 - The environment-only fixture passed actual backup/recovery and persistence
   acceptance. A focused failure check confirmed stdout, stderr, and exception
   redaction for database, repository, and Meilisearch secrets.
+- Remote CI found that Compose Bake rejects the `/dev/null` empty build-secret
+  default outside the build context. Replaced it with a tracked empty CA file
+  inside the context and added a deployment contract for its location and size.
+  The managed fixture also copies its public proxy CA inside its build context.
+- Local Compose Bake passed the default empty-CA build without extra filesystem
+  permissions and actual data acceptance with the managed public proxy CA.
 - Remote CI is pending. No S3/R2 provider, target host firewall, real Tunnel,
   or live production deployment was exercised.
 

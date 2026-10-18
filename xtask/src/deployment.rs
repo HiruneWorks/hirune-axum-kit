@@ -9,6 +9,10 @@ pub fn verify() -> Result<()> {
     let root = temporary.path();
     copy_directory(Path::new("deploy/k3s/base"), &root.join("deploy/k3s/base"))?;
     copy_directory(Path::new("compose/data"), &root.join("compose/data"))?;
+    copy_directory(
+        Path::new("compose/production/postgres"),
+        &root.join("compose/production/postgres"),
+    )?;
     for environment in [Environment::Dev, Environment::Prod] {
         copy_directory(
             &Path::new(".envs/.example")
@@ -25,11 +29,28 @@ pub fn verify() -> Result<()> {
         let data = crate::data::DataDeployment::load(root, environment)?;
         let rendered = data
             .compose(&["config", "--format", "json"])
+            .env_remove("DATA_BUILD_CA_FILE")
             .current_dir(root)
             .output()?;
         ensure!(rendered.status.success(), "data Compose render failed");
         let rendered: Value = serde_json::from_slice(&rendered.stdout)?;
         let services = &rendered["services"];
+        let build_context = Path::new(
+            services["postgres"]["build"]["context"]
+                .as_str()
+                .context("database build context missing")?,
+        )
+        .canonicalize()?;
+        let default_ca = Path::new(
+            rendered["secrets"]["proxy_ca"]["file"]
+                .as_str()
+                .context("database build CA missing")?,
+        )
+        .canonicalize()?;
+        ensure!(
+            default_ca.starts_with(build_context) && fs::metadata(default_ca)?.len() == 0,
+            "default build CA must be empty and inside the build context"
+        );
         for name in ["postgres", "meilisearch"] {
             ensure!(
                 services[name]["ports"][0]["host_ip"] == "10.0.0.10",

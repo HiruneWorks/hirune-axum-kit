@@ -95,7 +95,9 @@ def verify(root):
     for path in [*profile.glob("*.env"), override]:
         assert all(secret not in path.read_text() for secret in fixture_secrets), "Fixture configuration contains a generated secret"
     if environment.get("CODEX_PROXY_CERT"):
-        environment["DATA_BUILD_CA_FILE"] = environment["CODEX_PROXY_CERT"]
+        public_ca = root / "build-proxy-ca.pem"
+        shutil.copyfile(environment["CODEX_PROXY_CERT"], public_ca)
+        environment["DATA_BUILD_CA_FILE"] = str(public_ca)
     base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data/compose.yaml"), "-f", str(override)]
     recovery_volumes = []
 

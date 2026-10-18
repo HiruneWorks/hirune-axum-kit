@@ -102,4 +102,5 @@ volumes:
     external: true
 secrets:
   proxy_ca:
-    file: ${DATA_BUILD_CA_FILE:-/dev/null}
+    # Compose Bake permits this empty default inside the build context.
+    file: ${DATA_BUILD_CA_FILE:-../production/postgres/empty-ca.pem}
