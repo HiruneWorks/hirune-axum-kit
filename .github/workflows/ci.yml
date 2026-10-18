@@ -64,6 +64,9 @@ jobs:
       - run: cargo xtask test-production
         env:
           PRODUCTION_TEST_IMAGE: hirune-kit:ci
+      - run: cargo xtask test-data
+        env:
+          DATA_TEST_APP_IMAGE: hirune-kit:ci
       - name: Install pinned Kubernetes test tools
         run: |
           curl --fail --location --retry 3 --output k3d-linux-amd64 https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64

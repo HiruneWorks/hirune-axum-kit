@@ -36,6 +36,10 @@ must not have UPDATE or TRUNCATE privileges on those tables. It must not own the
 schema or have DDL privileges. Kubernetes injects this role only into maintenance Pods. Provision and verify these database grants in the deployment.
 Separate environment files alone do not enforce permissions. Development Compose
 uses a privileged local role solely for convenience/testing.
+The optional migration-only `MIGRATION_RUNTIME_ROLE` and
+`MIGRATION_MAINTENANCE_ROLE` settings apply restricted grants after migration.
+Set both or neither. The migration Job fails on existing DDL authority or unsafe
+effective table privileges. See [self-hosted data](../deploy/data/README.md).
 
 ## Configuration
 

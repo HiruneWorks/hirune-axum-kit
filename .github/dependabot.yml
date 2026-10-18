@@ -36,3 +36,13 @@ updates:
     directory: /compose/verification
     schedule:
       interval: weekly
+
+  - package-ecosystem: docker
+    directory: /compose/production/postgres
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /compose/data
+    schedule:
+      interval: weekly

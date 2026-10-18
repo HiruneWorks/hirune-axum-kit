@@ -188,7 +188,9 @@ desired replica counts.
 
 API Pods contain no authoritative local data. PostgreSQL, SMTP, optional object
 storage, and optional search are external. Kubernetes does not provision their
-persistence or backups through these manifests. Use read-only mounts for private
+persistence or backups through these manifests. The optional [single-host data
+profile](../data/README.md) supplies Docker Compose PostgreSQL/Meilisearch and
+pgBackRest backups outside k3s on the same machine. Use read-only mounts for private
 SMTP CAs or provider credential files when needed. Enable Kubernetes Secret
 encryption at rest and restrict Secret read access. Coordinate key rotation across
 all processes and retain keys required by stored encrypted data.

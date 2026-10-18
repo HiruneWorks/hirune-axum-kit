@@ -14,6 +14,11 @@ volumes. `just infra-down` preserves development volumes.
 from the repository-root build context. It excludes environment secrets and runs
 as an unprivileged user. See [deployment](../deploy/README.md) for runtime wiring.
 
+`data/compose.yaml` runs optional self-hosted PostgreSQL and Meilisearch outside
+k3s. `production/postgres/Dockerfile` adds pgBackRest and the non-root backup
+scheduler. Use the explicit dev/prod `data-*`, `backup-*`, and new-volume `restore`
+commands in `deploy/justfile`. See the [data runbook](../deploy/data/README.md).
+
 `verification/` contains the disposable production-mode acceptance fixture:
 private TLS certificates, an HTTPS proxy, STARTTLS Mailpit, restricted PostgreSQL
 roles, and database restore checks against the release image. Run it through

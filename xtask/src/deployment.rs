@@ -8,6 +8,7 @@ pub fn verify() -> Result<()> {
     let temporary = tempfile::tempdir()?;
     let root = temporary.path();
     copy_directory(Path::new("deploy/k3s/base"), &root.join("deploy/k3s/base"))?;
+    copy_directory(Path::new("compose/data"), &root.join("compose/data"))?;
     for environment in [Environment::Dev, Environment::Prod] {
         copy_directory(
             &Path::new(".envs/.example")
@@ -15,8 +16,67 @@ pub fn verify() -> Result<()> {
                 .join("k3s"),
             &root.join(format!(".envs/.{}/k3s", environment.name())),
         )?;
+        copy_directory(
+            &Path::new(".envs/.example")
+                .join(environment.name())
+                .join("data"),
+            &root.join(format!(".envs/.{}/data", environment.name())),
+        )?;
+        let data = crate::data::DataDeployment::load(root, environment)?;
+        let rendered = data
+            .compose(&["config", "--format", "json"])
+            .current_dir(root)
+            .output()?;
+        ensure!(rendered.status.success(), "data Compose render failed");
+        let rendered: Value = serde_json::from_slice(&rendered.stdout)?;
+        let services = &rendered["services"];
+        for name in ["postgres", "meilisearch"] {
+            ensure!(
+                services[name]["ports"][0]["host_ip"] == "10.0.0.10",
+                "data ports lost their private binding"
+            );
+        }
+        let scheduler = &services["backup-scheduler"];
+        ensure!(
+            scheduler["user"] == "postgres" && scheduler["read_only"] == true,
+            "backup scheduler must run without root or writable image state"
+        );
+        ensure!(
+            !scheduler["environment"].to_string().contains("PASSWORD"),
+            "backup scheduler received database passwords"
+        );
+        ensure!(
+            scheduler["volumes"]
+                .as_array()
+                .is_some_and(|volumes| volumes
+                    .iter()
+                    .any(|v| v["target"] == "/var/lib/postgresql" && v["read_only"] == true)),
+            "scheduler data access must be read-only"
+        );
     }
     let dev = Deployment::load(root, Environment::Dev)?;
+    let dev_data_path = root.join(".envs/.dev/data/data.env");
+    let original_data = fs::read_to_string(&dev_data_path)?;
+    fs::write(
+        &dev_data_path,
+        format!("{original_data}\nDEPLOY_ENV=prod\n"),
+    )?;
+    ensure!(
+        crate::data::DataDeployment::load(root, Environment::Dev).is_err(),
+        "data environment selector was overridden"
+    );
+    fs::write(&dev_data_path, original_data)?;
+    let prod_data_path = root.join(".envs/.prod/data/data.env");
+    let original_prod_data = fs::read_to_string(&prod_data_path)?;
+    fs::write(
+        &prod_data_path,
+        original_prod_data.replace("hirune-prod-postgres", "hirune-dev-postgres"),
+    )?;
+    ensure!(
+        crate::data::DataDeployment::load(root, Environment::Prod).is_err(),
+        "dev and prod shared a data volume"
+    );
+    fs::write(&prod_data_path, original_prod_data)?;
     let prod = Deployment::load(root, Environment::Prod)?;
     for (deployment, name) in [(&dev, "dev"), (&prod, "prod")] {
         ensure!(
@@ -215,7 +275,12 @@ fn verify_roles(deployment: &Deployment) -> Result<()> {
     ] {
         let values = secret["data"].as_object().context("Secret data missing")?;
         ensure!(
-            values.len() == 1,
+            values.len()
+                == if key == "MIGRATION_DATABASE_URL" {
+                    3
+                } else {
+                    1
+                },
             "database roles must use separate Secrets"
         );
         let value = base64::engine::general_purpose::STANDARD.decode(

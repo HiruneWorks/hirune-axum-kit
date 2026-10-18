@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-18 — Single-host data services and pgBackRest](2026-10-18-single-host-data-backups.md):
+  Docker Compose PostgreSQL/Meilisearch beside k3s, off-host backup configuration,
+  restricted grants, and isolated physical/PITR recovery.
+
 - [2026-10-18 — Shared Valkey edge limits](2026-10-18-shared-valkey-edge-limits.md):
   per-environment shared APISIX IP counters, preserved PostgreSQL authority,
   disposable counter lifecycle, and failure/isolation acceptance coverage.
