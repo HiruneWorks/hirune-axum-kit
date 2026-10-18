@@ -64,8 +64,8 @@ test-production:
 test-k3s:
     cargo xtask test-k3s
 
-deploy-k3s mode:
-    cargo xtask deploy-k3s {{mode}}
+deploy-k3s environment mode="rolling":
+    just --justfile deploy/justfile up {{quote(environment)}} {{quote(mode)}}
 
 load-test:
     cargo xtask load-test

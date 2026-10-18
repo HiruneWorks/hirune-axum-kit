@@ -1,3 +1,4 @@
+use crate::kubernetes_environment::{Deployment, Environment, Target, copy_directory};
 use anyhow::{Context, Result, ensure};
 use base64::Engine;
 use serde_json::{Value, json};
@@ -13,6 +14,7 @@ use std::{
 use tempfile::TempDir;
 use uuid::Uuid;
 
+const NAMESPACE: &str = "hirune-prod";
 const NODE_IMAGE: &str = "rancher/k3s:v1.37.1-k3s1";
 const IMAGES: &[&str] = &[
     "apache/apisix:3.19.0-debian",
@@ -81,7 +83,12 @@ impl Fixture {
         command
             .arg("--kubeconfig")
             .arg(self.directory.path().join("kubeconfig"))
-            .args(["--namespace", crate::kubernetes::NAMESPACE])
+            .args([
+                "--context",
+                &format!("k3d-{}", self.cluster),
+                "--namespace",
+                NAMESPACE,
+            ])
             .args(arguments);
         command
     }
@@ -129,13 +136,14 @@ impl Fixture {
         ])
     }
 
+    fn deployment(&self) -> Result<Deployment> {
+        let mut deployment = Deployment::load(self.directory.path(), Environment::Prod)?;
+        deployment.target.kubeconfig = Some(self.directory.path().join("kubeconfig"));
+        Ok(deployment)
+    }
+
     fn deploy(&self, mode: &str) -> Result<()> {
-        crate::run(
-            Command::new(std::env::current_exe()?)
-                .args(["deploy-k3s", mode])
-                .env("KUBECONFIG", self.directory.path().join("kubeconfig"))
-                .env("K3S_DIRECTORY", self.directory.path().join("profile")),
-        )
+        crate::kubernetes::deploy(&self.deployment()?, crate::kubernetes::Mode::parse(mode)?)
     }
 
     fn verify(&self, image: &str) -> Result<()> {
@@ -213,7 +221,10 @@ impl Fixture {
             "kube-system",
             "--timeout=180s",
         ]))?;
+        // The default context is deliberately unusable. Every deployment operation must bind its target.
+        crate::run(&mut self.kubectl(&["config", "set", "current-context", "hirune-do-not-use"]))?;
         self.prepare(image)?;
+        let dev_before = self.prepare_other_environment()?;
         self.check_unfinished_migration()?;
         self.deploy("rolling")?;
         self.wait_probe("trusted-probe")?;
@@ -297,7 +308,10 @@ impl Fixture {
         self.probe("start-traffic")?;
         let gateway = self.json(&["get", "deployment", "hirune-apisix"])?;
         let api_before_gateway = self.api_pods()?;
-        let route = self.directory.path().join("profile/apisix/apisix.yaml");
+        let route = self
+            .directory
+            .path()
+            .join("deploy/k3s/base/apisix/apisix.yaml");
         let contents =
             fs::read_to_string(&route)?.replace("#END", "# configuration rollout acceptance\n#END");
         fs::write(route, contents)?;
@@ -316,6 +330,13 @@ impl Fixture {
         println!("{}", self.probe("stop-traffic")?.trim());
         self.deploy("drain")?;
         println!("{}", self.probe("retained-authority")?.trim());
+        ensure!(
+            self.other_environment_state()? == dev_before,
+            "prod deployment changed dev workloads"
+        );
+        println!(
+            "Prod rolling and drained deployments left dev Pods and replicas unchanged with an unusable default context."
+        );
         println!("{}", self.probe("private-ingress")?.trim());
         println!(
             "{}",
@@ -329,7 +350,68 @@ impl Fixture {
             ])?
             .trim()
         );
+        crate::run(&mut self.other_target().kubectl(&[
+            "exec",
+            "deployment/hirune-api",
+            "--",
+            "python",
+            "-c",
+            r#"import socket
+for host, port in [('hirune-apisix.hirune-prod.svc.cluster.local', 9080),
+                   ('hirune-api.hirune-prod.svc.cluster.local', 3000)]:
+    address = socket.gethostbyname(host)
+    try:
+        connection = socket.create_connection((address, port), timeout=3)
+    except OSError:
+        continue
+    connection.close()
+    raise AssertionError('cross-namespace ingress was allowed')
+print('Dev tunnel-labelled Pod cannot reach prod gateway or API.')"#,
+        ]))?;
         Ok(())
+    }
+
+    fn other_target(&self) -> Target {
+        Target {
+            context: format!("k3d-{}", self.cluster),
+            namespace: "hirune-dev".into(),
+            kubeconfig: Some(self.directory.path().join("kubeconfig")),
+        }
+    }
+
+    fn other_environment_state(&self) -> Result<Value> {
+        let target = self.other_target();
+        let deployment = target.json(&["get", "deployment", "hirune-api"])?;
+        let pods = target.json(&["get", "pods"])?;
+        Ok(
+            json!({"uid":deployment["metadata"]["uid"],"generation":deployment["metadata"]["generation"],
+            "spec":deployment["spec"],"pods":pods["items"].as_array().context("dev Pods missing")?.iter()
+                .map(|pod| pod["metadata"]["uid"].clone()).collect::<Vec<_>>()}),
+        )
+    }
+
+    fn prepare_other_environment(&self) -> Result<Value> {
+        let target = self.other_target();
+        crate::kubernetes::apply(
+            &target,
+            vec![json!({"apiVersion":"v1","kind":"Namespace","metadata":{"name":"hirune-dev"}})],
+        )?;
+        crate::kubernetes::apply(
+            &target,
+            vec![json!({"apiVersion":"apps/v1","kind":"Deployment",
+            "metadata":{"name":"hirune-api","namespace":"hirune-dev"},"spec":{"replicas":1,
+                "selector":{"matchLabels":{"app.kubernetes.io/part-of":"hirune-kit","app.kubernetes.io/component":"tunnel"}},
+                "template":{"metadata":{"labels":{"app.kubernetes.io/part-of":"hirune-kit","app.kubernetes.io/component":"tunnel"}},
+                    "spec":{"automountServiceAccountToken":false,"containers":[{"name":"sentinel","image":"python:3.14-alpine",
+                        "command":["python","-c","import time; time.sleep(3600)"]}]}}}})],
+        )?;
+        crate::run(&mut target.kubectl(&[
+            "rollout",
+            "status",
+            "deployment/hirune-api",
+            "--timeout=180s",
+        ]))?;
+        self.other_environment_state()
     }
 
     fn api_pods(&self) -> Result<Vec<Value>> {
@@ -377,15 +459,13 @@ impl Fixture {
         self.apply(json!({"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"hirune-migration"},
             "spec":{"suspend":true,"template":{"spec":{"restartPolicy":"Never",
                 "containers":[{"name":"migration","image":"python:3.14-alpine","command":["true"]}]}}}}))?;
-        let output = Command::new(std::env::current_exe()?)
-            .args(["deploy-k3s", "rolling"])
-            .env("KUBECONFIG", self.directory.path().join("kubeconfig"))
-            .env("K3S_DIRECTORY", self.directory.path().join("profile"))
-            .output()?;
+        let error = self
+            .deploy("rolling")
+            .err()
+            .context("unfinished migration did not block deployment")?;
         ensure!(
-            !output.status.success()
-                && String::from_utf8_lossy(&output.stderr).contains("unfinished"),
-            "an unfinished migration must block deployment"
+            error.to_string().contains("unfinished"),
+            "wrong migration guard error"
         );
         crate::run(&mut self.kubectl(&["delete", "job", "hirune-migration", "--wait=true"]))?;
         println!("An unfinished migration Job correctly blocked deployment.");
@@ -402,17 +482,30 @@ impl Fixture {
     }
 
     fn prepare(&self, image: &str) -> Result<()> {
-        let profile = self.directory.path().join("profile");
-        copy_directory(Path::new("deploy/k3s"), &profile)?;
+        copy_directory(
+            Path::new("deploy/k3s/base"),
+            &self.directory.path().join("deploy/k3s/base"),
+        )?;
+        let profile = self.directory.path().join(".envs/.prod/k3s");
+        copy_directory(Path::new(".envs/.example/prod/k3s"), &profile)?;
+        fs::write(
+            profile.join("target.env"),
+            format!(
+                "KUBE_CONTEXT=k3d-{}\nKUBE_NAMESPACE={NAMESPACE}\n",
+                self.cluster
+            ),
+        )?;
         let (name, tag) = image
             .rsplit_once(':')
             .context("K3S_TEST_IMAGE needs an explicit tag")?;
         let path = profile.join("kustomization.yaml");
-        let contents = fs::read_to_string(&path)?
-            .replace("registry.example.com/your-project/hirune-kit", name)
-            .replace("newTag: 0.1.0", &format!("newTag: {tag}"));
-        fs::write(path, contents)?;
-        let path = profile.join("tunnel.yaml");
+        fs::write(
+            &path,
+            fs::read_to_string(&path)?
+                .replace("registry.example.com/your-project/hirune-kit", name)
+                .replace("newTag: 0.1.0", &format!("newTag: {tag}")),
+        )?;
+        let path = self.directory.path().join("deploy/k3s/base/tunnel.yaml");
         fs::write(
             &path,
             fs::read_to_string(&path)?.replace("replicas: 2", "replicas: 0"),
@@ -422,32 +515,58 @@ impl Fixture {
             &path,
             fs::read_to_string(&path)?
                 .replace("APP_ENV=production", "APP_ENV=test")
-                .replace("https://app.example.com/", "http://localhost/")
-                .replace("https://app.example.com", "http://localhost")
+                .replace("https://app.prod.example.com/", "http://localhost/")
+                .replace("https://app.prod.example.com", "http://localhost")
                 .replace("smtp.example.com", "mailpit")
                 .replace("SMTP_PORT=587", "SMTP_PORT=1025")
                 .replace("SMTP_STARTTLS=true", "SMTP_STARTTLS=false"),
         )?;
-        crate::run(&mut self.kubectl(&["apply", "-f", "deploy/k3s/namespace.yaml"]))?;
         let password = auth_core::token::generate_secure_token();
         let url = format!("postgres://kit:{password}@postgres:5432/kit");
         let key = base64::engine::general_purpose::STANDARD.encode([17_u8; 32]);
+        fs::write(
+            profile.join("secrets.env"),
+            format!(
+                "ACTIVE_SECRET_KEY=test-v1\nSECRET_KEYS={{\"test-v1\":\"{key}\"}}\nRATE_LIMIT_KEY={}\nINTERNAL_PROXY_SECRET={}\n",
+                auth_core::token::generate_secure_token(),
+                auth_core::token::generate_secure_token()
+            ),
+        )?;
+        fs::write(profile.join("runtime.env"), format!("DATABASE_URL={url}\n"))?;
+        fs::write(
+            profile.join("maintenance.env"),
+            format!("DATABASE_URL={url}\n"),
+        )?;
+        fs::write(
+            profile.join("migration.env"),
+            format!("MIGRATION_DATABASE_URL={url}\n"),
+        )?;
+        fs::write(
+            profile.join("tunnel.env"),
+            "TUNNEL_TOKEN=not-connected-in-local-test\n",
+        )?;
+        let deployment = self.deployment()?;
+        crate::kubernetes::apply(
+            &deployment.target,
+            deployment
+                .resources
+                .iter()
+                .filter(|r| r["kind"] == "Namespace")
+                .cloned()
+                .collect(),
+        )?;
+        let app_secret = deployment
+            .resources
+            .iter()
+            .find(|r| {
+                r["kind"] == "Secret"
+                    && r["metadata"]["name"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with("hirune-app-secrets-"))
+            })
+            .context("generated application Secret missing")?["metadata"]["name"]
+            .clone();
         let mut resources = vec![
-            secret(
-                "hirune-app-secrets",
-                json!({"ACTIVE_SECRET_KEY":"test-v1", "SECRET_KEYS":json!({"test-v1":key}).to_string(),
-                "RATE_LIMIT_KEY":auth_core::token::generate_secure_token(), "INTERNAL_PROXY_SECRET":auth_core::token::generate_secure_token()}),
-            ),
-            secret("hirune-runtime-database", json!({"DATABASE_URL":url})),
-            secret("hirune-maintenance-database", json!({"DATABASE_URL":url})),
-            secret(
-                "hirune-migration-database",
-                json!({"MIGRATION_DATABASE_URL":url}),
-            ),
-            secret(
-                "hirune-tunnel",
-                json!({"TUNNEL_TOKEN":"not-connected-in-local-test"}),
-            ),
             json!({"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"probe-checks"},
                 "data":{"probe.py":include_str!("../../deploy/k3s/verification/probe.py")}}),
         ];
@@ -480,7 +599,7 @@ impl Fixture {
                 "labels":{"app.kubernetes.io/part-of":"hirune-kit","app.kubernetes.io/component":component}},
                 "spec":{"automountServiceAccountToken":false,"containers":[{"name":"probe","image":"python:3.14-alpine",
                     "command":["python","-c","import time; time.sleep(3600)"],
-                    "envFrom":[{"secretRef":{"name":"hirune-app-secrets"}}],
+                    "envFrom":[{"secretRef":{"name":app_secret}}],
                     "volumeMounts":[{"name":"checks","mountPath":"/checks","readOnly":true}]}],
                     "volumes":[{"name":"checks","configMap":{"name":"probe-checks"}}]}}));
         }
@@ -504,22 +623,4 @@ impl Drop for Fixture {
             .env("KUBECONFIG", self.directory.path().join("kubeconfig"))
             .status();
     }
-}
-
-fn secret(name: &str, data: Value) -> Value {
-    json!({"apiVersion":"v1","kind":"Secret","metadata":{"name":name},"stringData":data})
-}
-
-fn copy_directory(source: &Path, target: &Path) -> Result<()> {
-    fs::create_dir_all(target)?;
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let destination = target.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_directory(&entry.path(), &destination)?;
-        } else {
-            fs::copy(entry.path(), destination)?;
-        }
-    }
-    Ok(())
 }

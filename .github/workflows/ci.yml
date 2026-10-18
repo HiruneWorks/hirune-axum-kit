@@ -31,6 +31,13 @@ jobs:
       - uses: extractions/setup-just@v4
         with:
           just-version: 1.52.0
+      - name: Install pinned Kubernetes manifest tool
+        run: |
+          curl --fail --location --retry 3 --output kubectl https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+          curl --fail --location --retry 3 --output kubectl.sha256 https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl.sha256
+          python3 -c 'import hashlib,pathlib; assert hashlib.sha256(pathlib.Path("kubectl").read_bytes()).hexdigest() == pathlib.Path("kubectl.sha256").read_text().strip()'
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+          rm kubectl kubectl.sha256
       - run: just check
       - run: just test-db
       - run: just test-api

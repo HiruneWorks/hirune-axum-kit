@@ -32,8 +32,7 @@ Runtime audit and API-usage access is append-only: it must not update or delete
 audit_events or api_usage. A separate maintenance role adds deletion on those
 tables for retention. It retains the other permissions needed for cleanup but
 must not have UPDATE or TRUNCATE privileges on those tables. It must not own the
-schema or have DDL privileges. Deployment Compose injects this role only into its
-maintenance service. Provision and verify these database grants in the deployment.
+schema or have DDL privileges. Kubernetes injects this role only into maintenance Pods. Provision and verify these database grants in the deployment.
 Separate environment files alone do not enforce permissions. Development Compose
 uses a privileged local role solely for convenience/testing.
 
@@ -42,7 +41,7 @@ uses a privileged local role solely for convenience/testing.
 `.envs/.example/local/app.env` lists local settings. `just init` generates keys.
 Never reuse public test fixtures. `Settings::from_values` validates explicit
 configuration. Only executables read the injected environment. Root just recipes
-load `.envs/.local/app.env`. Deployment Compose uses explicit env_file paths.
+load `.envs/.local/app.env`. Hosted Kubernetes overlays generate and inject explicit ConfigMaps and Secrets.
 Production requires HTTPS application, origin, and provider URLs plus STARTTLS
 SMTP. Cookie security follows APP_ENV.
 Secrets use redacted Debug representations. Do not log complete settings.

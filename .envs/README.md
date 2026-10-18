@@ -1,30 +1,39 @@
 # Environment files
 
 Commit only `.example/` templates. Git ignores actual `.local/`, `.dev/`, and
-`.production/` settings. Image build contexts exclude these settings.
-Never commit credentials or print rendered production Compose configuration.
+`.prod/` settings. Image build contexts exclude these settings. Never commit
+credentials or print rendered production Kubernetes resources.
 
-- `just init` creates `.local/app.env` from `.example/local/app.env` with fresh keys.
-- Root just commands load `.local/app.env`. Override with `just --dotenv-path <path>`.
-- Production/staging operators copy `.example/production/app.env`, `migration.env`,
-  and `maintenance.env` into `.<environment>/`, then supply real values through
-  their secret-management workflow. API/worker settings must contain neither
-  migration-role nor maintenance-role credentials.
-- Each test process receives explicit settings. Tests do not read developer files.
+- `just init` creates `.local/app.env` with fresh local keys.
+- Root development commands load `.local/app.env`. Override with
+  `just --dotenv-path <path>`.
+- Hosted deployments copy `.example/dev/` to `.dev/` and `.example/prod/` to
+  `.prod/`. Each has a `k3s/` overlay. `deploy/justfile` disables local dotenv
+  loading and selects the named deployment environment explicitly.
+- Tests receive explicit settings and never read developer secrets.
 
-Executables read injected environment variables only. For direct `cargo run`,
-export settings yourself or use `just`. Compose passes an explicit env_file.
-Deployment selectors (image, project, port) live separately under `deploy/`.
-For k3s, copy `.example/production/k3s-secrets.yaml` to
-`.production/k3s-secrets.yaml` and follow the [k3s runbook](../deploy/k3s/README.md).
-Use Secret `stringData` for JSON settings; dotenv quoting is not Kubernetes quoting.
+Each hosted overlay owns its target context/namespace, image, public runtime
+settings, generated application/provider Secrets, three database-role env files,
+and a Tunnel token. Keep databases, keys, origins, and tunnels separate between
+dev and prod. Both hosted environments use `APP_ENV=production` for HTTPS rules.
+See [deployment](../deploy/README.md) and the [k3s runbook](../deploy/k3s/README.md).
 
-`app.env` uses the restricted runtime role, including append-only audit access.
-`migration.env` supplies only migration settings and the schema-owner connection.
-The deployment maintenance process reads `app.env`, then `maintenance.env`.
-The latter's `DATABASE_URL` selects a restricted role that may delete expired
-audit events. Provision and verify the database grants separately. An
-environment-file name does not enforce database privileges.
+Kubernetes generator env files use raw values. Write `OIDC_PROVIDERS=[]` or raw
+JSON with double quotes and no outer single quotes. These files do not expand
+shell variables. Local `.local/app.env` uses dotenv syntax and may quote JSON.
+Do not transfer dotenv quotes into Kubernetes values.
+
+`runtime.env` supplies only the restricted runtime `DATABASE_URL`.
+`maintenance.env` supplies its restricted cleanup `DATABASE_URL`.
+`migration.env` supplies only the schema-owner `MIGRATION_DATABASE_URL`.
+Kustomize creates separate hashed Secrets and resolves their workload references.
+API and worker Pods receive neither maintenance nor schema-owner credentials.
+Provision and verify actual database grants separately. An env-file name does
+not enforce PostgreSQL permissions.
+
+Executables read injected environment variables only. Direct `cargo run` requires
+explicit exports or `just`. Kubernetes injects the selected ConfigMaps and Secrets.
+No executable searches for environment files during startup.
 
 Production ingress requires Cloudflare Tunnel and private gateway/API listeners.
 Set `INTERNAL_PROXY_SECRET` only when an SSR server forwards the original client
@@ -47,8 +56,7 @@ See [runtime settings](../docs/runtime.md) for names and
 supported ranges. There is no password-screening provider configuration.
 
 `OIDC_PROVIDERS` is a JSON array of provider objects, with `[]` as the disabled
-default. Store it as a single quoted line in `app.env` or inject it through secret
-management. Each configured provider has its own client secret. The
+default. Use dotenv quotes in local `app.env`; use raw JSON in hosted `secrets.env`. Each configured provider has its own client secret. The
 [runtime example](../docs/runtime.md) shows two providers; no separate per-provider
 environment variable scheme is needed. Add the optional `native_client_ids` array
 to a provider only when native applications sign in with its SDK.

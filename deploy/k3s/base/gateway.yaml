@@ -33,6 +33,10 @@ spec:
       containers:
         - name: apisix
           image: apache/apisix:3.19.0-debian
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef: {fieldPath: metadata.namespace}
           ports: [{name: http, containerPort: 9080}]
           securityContext:
             allowPrivilegeEscalation: false

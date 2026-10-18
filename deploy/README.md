@@ -1,56 +1,81 @@
 # Deployment
 
-This directory owns runtime wiring and operator commands. Image build files live
-in `compose/`; secret settings live in ignored `.envs/.<environment>/` directories.
-The initial deployment uses an externally provisioned PostgreSQL database and
-SMTP server. Cloudflare Tunnel and a private APISIX gateway provide production
-ingress. Database backups and provider configuration are deployment responsibilities.
+`deploy/justfile` deploys to Kubernetes. It does not start a Compose deployment
+or install k3s. Image build files live in `compose/`. Root `just infra-up` starts
+only local development dependencies with Compose.
 
-Use the [k3s profile](k3s/README.md) for private APISIX, Tunnel replicas,
-two API Pods, migration sequencing, and rolling updates. The instructions below
-describe the separate single-host Compose option.
+The production path is Cloudflare Tunnel → private APISIX → API Service → API
+Pods. The baseline has two API, two APISIX, and two cloudflared replicas.
+One environment-specific Cloudflare Tunnel accepts both cloudflared connectors.
+API scaling does not create tunnels. APISIX uses the same generated routing
+configuration on both Pods. PostgreSQL owns sessions, login limits, API usage,
+and jobs. This profile does not use Redis or forward-auth.
 
-1. Build and publish an application image with `compose/production/app/Dockerfile`
-   and the repository root as context. Publishing is an explicit operator action.
-2. Copy `production.env.example` to `production.env`; set an immutable image tag
-   or digest, unique COMPOSE_PROJECT_NAME, and API_PORT.
-3. Copy the production examples under `.envs/.example/production/` into
-   `.envs/.production/`. Set HTTPS origins, runtime database credentials, SMTP, and
-   independently generated encryption/rate-limit keys. Put the schema-owner URL
-   only in `migration.env`; put the restricted maintenance URL in `maintenance.env`.
-4. From this directory run `just check production`, then `just up production`.
-   The second command runs migrations, drains the old processes, and starts API, worker,
-   and maintenance.
-5. Configure the tunnel, private APISIX gateway, and readiness probe. Verify mail
-   and provider behavior and the maintenance service's restricted role.
+PostgreSQL, SMTP, optional S3 storage, and optional search are external services.
+The production manifests do not install PostgreSQL or allocate a database PVC.
+Provision persistent storage, database grants, backups, and recovery separately.
+A managed PostgreSQL service is a suitable default. An independently operated
+PostgreSQL cluster uses the same connection settings.
 
-A staging environment uses its own selector, project name, ports, database, and
-`.envs/.<environment>/` directory. Production APP_ENV also applies to HTTPS staging.
-Do not share authority tables or secret keys between unrelated environments.
-The API binds to host loopback. Point Cloudflare Tunnel at the private APISIX
-listener and APISIX at the API. Preserve `CF-Connecting-IP` and the optional SSR
-headers described in [proxy trust](../docs/security.md#proxy-and-cache-trust).
-Do not expose APISIX or the API directly to the Internet. Workers can scale
-independently. Configure routing and port allocation for multiple API replicas
-in your deployment system.
-This single-host example does not implement a load balancer.
+## Environments and commands
 
-For one backend, APISIX can use a declarative `apisix.yaml` file with a catch-all
-route to the API Service. New application endpoints do not require gateway routes.
-In Kubernetes, use the internal API Service DNS name instead of Pod addresses.
-The Service distributes connections to ready API replicas. An ingress controller
-is useful when multiple independently deployed services need dynamic routing.
-The application does not depend on a gateway controller or APISIX-specific auth.
+Copy `.envs/.example/dev/` to ignored `.envs/.dev/` and
+`.envs/.example/prod/` to ignored `.envs/.prod/`. Each `k3s/` directory contains:
 
-The single-host `up` recipe applies migrations, stops and drains the old API,
-worker, and maintenance processes, then starts the new generation. This causes a
-brief interruption. Other deployment systems must stop old workers that do not
-filter queues before starting new queue or notification producers. Rolling
-deployment requires compatible versioned job and payload contracts.
+- `target.env`: an explicit Kubernetes context and namespace.
+- `kustomization.yaml`: the namespace, application image, and optional patches.
+- `app.env`: public runtime settings.
+- `secrets.env`: encryption keys, authentication settings, and provider secrets.
+- `runtime.env`, `maintenance.env`, `migration.env`: separate database roles.
+- `tunnel.env`: that environment's Cloudflare Tunnel token.
 
-`just down` preserves database data because this Compose project does not own the
-database. Cleanup and retry operations are explicit. No deployment, image push,
-external messages, or scheduler changes occur when running local checks.
+Use separate databases, encryption/rate-limit keys, origins, and tunnels for dev
+and prod. Both hosted environments use `APP_ENV=production` for HTTPS security.
+The deployment name `dev` does not disable production security rules.
+
+Set `KUBE_CONTEXT` to an existing context from your kubeconfig. Set
+`KUBE_NAMESPACE` to match the overlay's `namespace`. Dev defaults to `hirune-dev`;
+prod defaults to `hirune-prod`. Contexts can select separate clusters or the same
+cluster with separate namespaces. Every operator command validates the rendered
+namespace and supplies both context and namespace explicitly. It does not follow
+the kubeconfig's current context. These settings select targets; Kubernetes RBAC
+must enforce operator permissions.
+
+Set an immutable image tag or digest in each overlay. Replace credential
+placeholders. Kubernetes generator env files use raw values: JSON has no outer
+single quotes, and shell variables are not expanded. See the
+[k3s runbook](k3s/README.md) for cluster and Tunnel preparation.
+
+The just recipes use a POSIX shell for argument forwarding. On Windows, use
+Git for Windows `sh`, or invoke the Rust CLI directly, for example
+`cargo xtask deploy-k3s up prod`. Local development recipes retain their normal
+platform shell.
+
+Run from this directory:
+
+```sh
+just check dev
+just up dev
+just check prod
+just up prod
+just status prod
+just logs prod hirune-api
+just manage prod set-api-client-quota UUID 100 10000
+just cleanup prod
+```
+
+`check` renders and validates locally without displaying Secret values or
+contacting the cluster. `up` creates the namespace and generated settings and
+Secrets, runs one migration Job, waits for success, then rolls out runtime Pods.
+The migration executable applies only pending migrations. API startup does not
+run migrations. `up` defaults to `rolling`. Use `just up prod drain` for an
+incompatible offline upgrade. `just down prod` stops runtime Pods and preserves
+namespace, settings, Secrets, and external database data. Remove active HPAs
+before stopping or draining Pods.
+
+Root `just deploy-k3s prod` delegates to this same `up` entrypoint. All deployment
+commands require `dev` or `prod`; none defaults to production. Do not run concurrent
+releases. Serialize deployment in your release pipeline.
 
 ## SMTP trust
 
@@ -59,8 +84,7 @@ the transport's normal trust store. For a private SMTP CA, set the optional
 `SMTP_CA_CERTIFICATE` to the PEM CA certificate path inside the container, such
 as `/certificates/smtp-ca.crt`. Add a read-only certificate mount to each API,
 worker, manage, and maintenance container that uses this setting. Every application
-bootstrap constructs the mail transport. The default deployment Compose does
-not add this mount automatically. Application user 10001 must be able to read the
+bootstrap constructs the mail transport. The base manifests do not add this mount automatically. Application user 10001 must be able to read the
 file. Mount only the public CA certificate. The application does not need its private key.
 
 An empty or omitted setting uses the normal trust store. Startup fails if the
@@ -84,12 +108,12 @@ Provision three database roles:
 Verify the actual database grants during deployment acceptance. Separate
 environment files do not enforce these permissions.
 
-API, worker, and the ordinary `manage` service read `app.env`. The `maintenance`
-service reads `app.env` followed by `maintenance.env`, overriding `DATABASE_URL`
-for its periodic scheduler/worker. `just cleanup production` invokes a one-off
-`manage cleanup` with those same credentials. Avoid
-running audit cleanup through the runtime `manage` service or giving runtime
-processes broader permissions to make it succeed.
+API and worker receive the generated runtime database Secret. Ordinary `manage`
+commands execute in an API Pod with that runtime role. Maintenance receives its
+own generated database Secret. `just cleanup prod` executes `manage cleanup` in
+a maintenance Pod with that role. Runtime Pods receive neither migration nor
+maintenance database credentials. Do not broaden runtime permissions to run
+maintenance commands.
 
 Defaults retain succeeded jobs for 30 days, failed jobs for 90 days, and audit
 events for 180 days. Set `SUCCEEDED_JOB_RETENTION_DAYS`, `FAILED_JOB_RETENTION_DAYS`,
@@ -104,23 +128,23 @@ Neither role may UPDATE or TRUNCATE this table. Retention never resets request
 counters or grants allocation.
 
 New organization-owned API clients have zero allocation. An authorized operator
-uses `just manage production set-api-client-quota <uuid> <per-minute> <per-month>`
+uses `just manage prod set-api-client-quota <uuid> <per-minute> <per-month>`
 to assign strict fixed-minute and UTC-calendar-month budgets. The owning
 organization can manage scopes and keys but cannot assign itself quota. All keys
 and API instances share PostgreSQL authority; see [API access](../docs/behavior/api-access.md).
 Deploy edge abuse protection separately when exposing a public developer API.
 
 The portable `maintenance` executable schedules cleanup followed by search repair
-using the shared job runtime. `just up production` starts it with API and worker.
+using the shared job runtime. `just up prod` starts it with API and worker.
 Set `MAINTENANCE_INTERVAL_SECONDS` in `app.env` (default 300, range 1–86400). Multiple
 maintenance replicas must use the same interval. The database deduplicates each
 interval's job. Jobs from different intervals or retries may overlap. Handlers
-tolerate repetition. The supervisor restarts the process if scheduling or claiming fails.
+tolerate repetition. Kubernetes restarts the process if scheduling or claiming fails.
 No host cron or systemd timer is required. Existing failed maintenance jobs can
 be inspected and retried explicitly with `manage retry-job <uuid>`.
 
 Grant global administrator status with
-`just manage production set-administrator <uuid> true` only after the account is
+`just manage prod set-administrator <uuid> true` only after the account is
 active, verified, and enrolled in TOTP. Use `false` to demote it. The command
 invalidates existing credentials and audits a changed role. Restrict operator
 access to management commands; there is no public administrator-management API.
