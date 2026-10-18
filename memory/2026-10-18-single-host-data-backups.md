@@ -74,18 +74,32 @@
   The managed fixture also copies its public proxy CA inside its build context.
 - Local Compose Bake passed the default empty-CA build without extra filesystem
   permissions and actual data acceptance with the managed public proxy CA.
-- Final remote data-services acceptance and CodeQL passed. The existing k3s
+- Remote data-services acceptance passed. The existing k3s
   fixture exposed a scheduling race: production preferred spreading allowed both
   replacement API Pods on one node, but acceptance requires distinct nodes.
   A fixture-only hard spread now selects each Pod-template revision independently
   of terminating Pods. Production scheduling policy stays preferred. Astra
   reviewed this correction; distinct-node, availability, and traffic checks remain.
-- Remote CI is pending. No S3/R2 provider, target host firewall, real Tunnel,
-  or live production deployment was exercised.
+- Remote [CI run 39108883562](https://github.com/HiruneWorks/hirune-axum-kit/actions/runs/39108883562)
+  passed for `3e83972579c55c035b48f26897c2670de37de4ca`. General Rust, DB, API,
+  process, file/content, deployment, load, and renamed-template checks passed.
+  The canonical release image passed production acceptance and actual encrypted
+  full/differential backup, latest/PITR recovery, grants, and search persistence.
+- The corrected two-node k3s fixture passed distinct-node API replacement,
+  719 authenticated API-rollout requests and 1,146 gateway-rollout requests with
+  zero errors, shared sessions/quotas and Valkey, counter failure/recovery,
+  dev/prod isolation, and private ingress denial.
+- Python, JavaScript/TypeScript, and Rust CodeQL jobs succeeded on the verified
+  head. Rust extracted 354 files with zero extraction errors and uploaded its
+  analysis successfully. The plaintext-storage review was automatically resolved.
+  GitHub's aggregate CodeQL check remained neutral with a missing baseline Rust
+  configuration warning. Its managed-job rerun API returned 403; this is not a
+  completed aggregate comparison and must not be reported as one.
+- No S3/R2 provider, target host firewall, real Tunnel, or live production
+  deployment was exercised.
 
 ## Remaining work
 
-Complete final local checks and remote CI before merging. Rehearse off-host
-repository access, target-host connectivity/firewall, recovery time, and operator
-cutover on the intended infrastructure. Measure memory, connection, and disk-I/O
+Rehearse off-host repository access, target-host connectivity/firewall, recovery
+time, and operator cutover on the intended infrastructure. Measure memory, connection, and disk-I/O
 budgets before production use.
