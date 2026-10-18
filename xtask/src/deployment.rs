@@ -236,6 +236,26 @@ pub fn verify() -> Result<()> {
             != resource(&changed, "hirune-migration"),
         "migration Job must use the new owner Secret"
     );
+    let production_spread =
+        &resource(&changed, "hirune-api")["spec"]["template"]["spec"]["topologySpreadConstraints"];
+    ensure!(
+        production_spread[0]["whenUnsatisfiable"] == "ScheduleAnyway",
+        "production API spreading must remain preferred"
+    );
+    crate::kubernetes_test::configure_api_spread(&root.join(".envs/.prod/k3s"))?;
+    let fixture = Deployment::load(root, Environment::Prod)?;
+    let fixture_spread =
+        &resource(&fixture, "hirune-api")["spec"]["template"]["spec"]["topologySpreadConstraints"];
+    ensure!(
+        fixture_spread
+            .as_array()
+            .is_some_and(|spread| spread.len() == 1)
+            && fixture_spread[0]["whenUnsatisfiable"] == "DoNotSchedule"
+            && fixture_spread[0]["matchLabelKeys"] == serde_json::json!(["pod-template-hash"])
+            && fixture_spread[0]["labelSelector"]["matchLabels"]["app.kubernetes.io/component"]
+                == "api",
+        "the fixture must spread each API revision independently"
+    );
     fs::write(
         root.join(".envs/.prod/k3s/target.env"),
         "KUBE_CONTEXT=k3s-prod\nKUBE_NAMESPACE=hirune-dev\n",

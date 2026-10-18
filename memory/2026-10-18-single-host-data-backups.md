@@ -74,6 +74,12 @@
   The managed fixture also copies its public proxy CA inside its build context.
 - Local Compose Bake passed the default empty-CA build without extra filesystem
   permissions and actual data acceptance with the managed public proxy CA.
+- Final remote data-services acceptance and CodeQL passed. The existing k3s
+  fixture exposed a scheduling race: production preferred spreading allowed both
+  replacement API Pods on one node, but acceptance requires distinct nodes.
+  A fixture-only hard spread now selects each Pod-template revision independently
+  of terminating Pods. Production scheduling policy stays preferred. Astra
+  reviewed this correction; distinct-node, availability, and traffic checks remain.
 - Remote CI is pending. No S3/R2 provider, target host firewall, real Tunnel,
   or live production deployment was exercised.
 

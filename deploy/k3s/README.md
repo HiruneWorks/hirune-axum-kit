@@ -210,10 +210,13 @@ hosts. Network-policy enforcement stays enabled. It never changes the user's
 kubeconfig. The isolated kubeconfig has an intentionally unusable current context;
 operations must use the explicitly selected context.
 
-The fixture deploys a disposable prod overlay with two API Pods on distinct nodes,
-two APISIX Pods, Valkey, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero. Local
-HTTP/mail and one database owner are fixture-only substitutions. The separate
-production fixture verifies HTTPS, STARTTLS, and restricted database roles.
+The fixture deploys a disposable prod overlay with two API Pods on distinct nodes.
+A fixture-only topology patch requires each new API revision to span these two
+nodes. Terminating old Pods cannot skew placement of the new revision.
+Production uses preferred spreading. The fixture also deploys two APISIX Pods,
+Valkey, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero.
+Local HTTP/mail and one database owner are fixture-only substitutions. The
+separate production fixture verifies HTTPS, STARTTLS, and restricted DB roles.
 
 Acceptance covers an unfinished migration guard, signup and mail, retained
 sessions and API quota, continuous authenticated traffic during API/gateway
