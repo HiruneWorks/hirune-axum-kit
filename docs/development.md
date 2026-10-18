@@ -106,8 +106,11 @@ network paths, and intended concurrency before a capacity decision.
 `APP_ENV=production` inside a uniquely named local Compose project. Set
 `PRODUCTION_TEST_IMAGE` only when deliberately verifying an existing local image.
 Cleanup preserves that image. The fixture uses an internal Docker network, an
-ephemeral private CA, an HTTPS proxy, and Mailpit requiring
-STARTTLS. It checks secure cookies, origins, proxy header replacement, and actual
+ephemeral private CA, a Caddy HTTPS proxy, and Mailpit requiring
+STARTTLS. Caddy uses the fixture's certificate and does not request external
+certificates. It simulates the Cloudflare client-IP header at the private ingress.
+Production uses Cloudflare Tunnel and APISIX. The fixture checks secure cookies,
+origins, proxy header replacement, and actual
 Rust-worker mail delivery, including rejection of an untrusted SMTP certificate
 and a certificate whose hostname does not match. Runtime containers use a
 non-root user and read-only filesystem.

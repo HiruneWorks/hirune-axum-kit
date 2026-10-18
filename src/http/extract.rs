@@ -1,4 +1,4 @@
-use super::{HttpState, error::ApiError, middleware::client_address};
+use super::{HttpState, client_address::client_address, error::ApiError};
 use application::config::SecretString;
 use application::{ApplicationError, identity::AuthenticatedSession};
 use axum::{
@@ -84,8 +84,7 @@ impl FromRequestParts<HttpState> for Session {
     }
 }
 
-/// Client IP address under the trusted-proxy contract. It is absent when the
-/// request has no socket peer, for example in an in-process test.
+/// Client IP address under the Cloudflare Tunnel and SSR proxy contract.
 pub struct ClientAddress(pub Option<std::net::IpAddr>);
 impl FromRequestParts<HttpState> for ClientAddress {
     type Rejection = ApiError;
@@ -97,7 +96,12 @@ impl FromRequestParts<HttpState> for ClientAddress {
             .extensions
             .get::<ConnectInfo<std::net::SocketAddr>>()
             .map(|peer| peer.0.ip());
-        client_address(peer, &parts.headers, &state.settings.trusted_proxy_ips).map(Self)
+        client_address(
+            peer,
+            &parts.headers,
+            state.settings.internal_proxy_secret.as_ref(),
+        )
+        .map(Self)
     }
 }
 

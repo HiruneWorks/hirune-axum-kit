@@ -87,10 +87,10 @@ services:
     volumes:
       - certificate_authorities:/certificates:ro
   proxy:
-    image: nginx:1.31.0-alpine
+    image: caddy:2.11.7-alpine
     network_mode: service:api
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - certificates:/certificates:ro
     depends_on: [api]
   mailpit:

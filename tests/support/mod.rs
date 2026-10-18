@@ -12,7 +12,7 @@ pub fn settings(database: &TestDatabase) -> anyhow::Result<Settings> {
         http: HttpSettings {
             bind_address: "127.0.0.1:0".parse()?,
             allowed_origins: vec!["http://localhost:3000".into()],
-            trusted_proxy_ips: Vec::new(),
+            internal_proxy_secret: None,
             secure_cookies: false,
             timeout_seconds: 15,
             max_concurrent_requests: 32,

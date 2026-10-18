@@ -23,6 +23,13 @@ The latter's `DATABASE_URL` selects a restricted role that may delete expired
 audit events. Provision and verify the database grants separately. An
 environment-file name does not enforce database privileges.
 
+Production ingress requires Cloudflare Tunnel and private gateway/API listeners.
+Set `INTERNAL_PROXY_SECRET` only when an SSR server forwards the original client
+IP. Share the same random value (at least 32 visible ASCII characters) with that
+server and all API replicas. Empty disables SSR overrides. The API still reads
+`CF-Connecting-IP`. Remove the old `TRUSTED_PROXY_IPS` setting. See
+[proxy trust](../docs/security.md#proxy-and-cache-trust).
+
 `MAINTENANCE_INTERVAL_SECONDS` controls periodic registration (300 seconds by
 default). Keep it consistent across maintenance replicas. The same process
 schedules and consumes the dedicated queue; no operating-system scheduler is needed.

@@ -19,6 +19,7 @@ requirements. It does not establish that verification steps passed.
 | Persistence | Prefer SeaORM and SeaQuery, including migrations. Application-generated UUIDv7 entity primary keys and UUID references. |
 | Migrations | One table with its own indexes and constraints per baseline migration. Subsequent migrations have a clear schema responsibility. |
 | Scaling | Replaceable stateless API instances; shared state outside processes; independently scalable workers. Ready work fills available worker slots without a fixed inter-job delay; polling waits apply only after no eligible work is found. |
+| Production ingress | Cloudflare Tunnel reaches private APISIX, then the API. Trust Cloudflare client-IP headers within that boundary. SSR client-IP overrides require a shared proxy secret; proxy Pod IPs do not establish trust. |
 | Authentication | OWASP-informed controls, common password/OIDC account and MFA gate, server-side revocation, durable shared authentication state. |
 | Session lifetime | Defaults are 14 days idle and 90 days absolute. Cookie and bearer sessions use the same values. Deployments can lower them through configuration. |
 | External providers | Multiple OIDC providers may be configured simultaneously, each with an explicit name, issuer, client credentials, and callback URL. |

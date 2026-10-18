@@ -73,6 +73,7 @@ percent-encoding = "2.3.2"
 validator = { version = "0.21.0", features = ["derive"] }
 
 [dependencies]
+auth-core.workspace = true
 validator.workspace = true
 application.workspace = true
 jobs.workspace = true
@@ -105,7 +106,6 @@ aws-sdk-s3.workspace = true
 sentry = { workspace = true, features = ["test"] }
 test-support.workspace = true
 axum-test.workspace = true
-auth-core.workspace = true
 reqwest.workspace = true
 totp-rs.workspace = true
 tempfile.workspace = true

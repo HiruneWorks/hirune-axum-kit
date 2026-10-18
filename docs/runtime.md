@@ -129,9 +129,15 @@ search repair tolerate repeated execution. After a full outage, maintenance does
 not backfill missing buckets. On restart, it resumes queued jobs and registers a
 job for the current bucket. Retention and explicit manual retry cover both queues.
 
-Behind a proxy, configure exact ALLOWED_ORIGINS and the explicit TRUSTED_PROXY_IPS
-contract in [security](security.md). Protect the backend from direct untrusted
-network access. Do not enable forwarding-header trust globally.
+Production ingress uses Cloudflare Tunnel and APISIX. Configure exact
+ALLOWED_ORIGINS and keep both the gateway and API private. The API reads
+`CF-Connecting-IP` without a proxy IP allowlist. SSR servers can preserve the
+original client IP with `X-Real-Client-IP` and the optional shared
+`INTERNAL_PROXY_SECRET` (at least 32 visible ASCII characters). A missing or empty
+secret disables only the SSR override. Keep the secret consistent across API
+replicas and the SSR server. The API ignores `X-Forwarded-For` and rejects the
+removed `TRUSTED_PROXY_IPS` setting. See [proxy trust](security.md#proxy-and-cache-trust)
+for header validation and the required ingress boundary.
 
 ## Optional human verification
 

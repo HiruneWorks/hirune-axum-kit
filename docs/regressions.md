@@ -85,6 +85,10 @@ It also verifies failure detection with deliberate database changes.
 
 ## Additional baseline regressions
 
+- Cloudflare client IP remains stable across proxy Pod replacement. Only a
+  matching shared proxy secret permits SSR client-IP overrides. Selected IP
+  headers reject invalid addresses, lists, and duplicates; IPv4-mapped addresses
+  share the IPv4 budget. SSR headers without a matching secret cannot override it.
 - Atomic caller transaction rollback includes domain rows and durable jobs.
 - Rotation/reset/recovery races cannot reuse credentials or challenges.
 - Authentication cleanup preserves an idle extension committed while deletion

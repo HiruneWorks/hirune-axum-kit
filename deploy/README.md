@@ -3,8 +3,8 @@
 This directory owns runtime wiring and operator commands. Image build files live
 in `compose/`; secret settings live in ignored `.envs/.<environment>/` directories.
 The initial deployment uses an externally provisioned PostgreSQL database and
-SMTP server. Database backups, TLS termination, and provider configuration are
-deployment responsibilities.
+SMTP server. Cloudflare Tunnel and a private APISIX gateway provide production
+ingress. Database backups and provider configuration are deployment responsibilities.
 
 1. Build and publish an application image with `compose/production/app/Dockerfile`
    and the repository root as context. Publishing is an explicit operator action.
@@ -17,16 +17,26 @@ deployment responsibilities.
 4. From this directory run `just check production`, then `just up production`.
    The second command runs migrations, drains the old processes, and starts API, worker,
    and maintenance.
-5. Configure the TLS proxy and readiness probe, verify mail/provider behavior,
-   and confirm the maintenance service is running with its restricted role.
+5. Configure the tunnel, private APISIX gateway, and readiness probe. Verify mail
+   and provider behavior and the maintenance service's restricted role.
 
 A staging environment uses its own selector, project name, ports, database, and
 `.envs/.<environment>/` directory. Production APP_ENV also applies to HTTPS staging.
 Do not share authority tables or secret keys between unrelated environments.
-The API binds to host loopback. Configure a host reverse proxy and explicit proxy
-trust before accepting public traffic. Workers can scale independently. Configure
-routing and port allocation for multiple API replicas in your deployment system.
+The API binds to host loopback. Point Cloudflare Tunnel at the private APISIX
+listener and APISIX at the API. Preserve `CF-Connecting-IP` and the optional SSR
+headers described in [proxy trust](../docs/security.md#proxy-and-cache-trust).
+Do not expose APISIX or the API directly to the Internet. Workers can scale
+independently. Configure routing and port allocation for multiple API replicas
+in your deployment system.
 This single-host example does not implement a load balancer.
+
+For one backend, APISIX can use a declarative `apisix.yaml` file with a catch-all
+route to the API Service. New application endpoints do not require gateway routes.
+In Kubernetes, use the internal API Service DNS name instead of Pod addresses.
+The Service distributes connections to ready API replicas. An ingress controller
+is useful when multiple independently deployed services need dynamic routing.
+The application does not depend on a gateway controller or APISIX-specific auth.
 
 The single-host `up` recipe applies migrations, stops and drains the old API,
 worker, and maintenance processes, then starts the new generation. This causes a

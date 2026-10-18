@@ -31,13 +31,32 @@ describes intended coverage. Milestone notes record whether the test actually ra
 
 ## Proxy and cache trust
 
-Use the actual socket peer for client limits by default. The API ignores forwarding
-headers unless the peer appears in `TRUSTED_PROXY_IPS`. A trusted proxy must overwrite
-`X-Forwarded-For` with exactly one client IP. Multiple values, lists, missing values,
-and invalid addresses from a trusted proxy cause the API to reject the request.
-Restrict direct backend network access when using a trusted proxy. NAT users share
-a client budget. Tune the application's policy for its audience. Network/WAF limits are
-still needed for volumetric attacks before traffic reaches the database.
+Production ingress passes through Cloudflare Tunnel and APISIX. The API trusts
+`CF-Connecting-IP` because the tunnel is the only public ingress. Keep APISIX and
+the API off public listeners. In Kubernetes, use private Services and restrict
+backend access to the gateway. A public origin that bypasses Cloudflare violates
+this contract. No proxy IP allowlist is required.
+
+An SSR server can preserve the original client IP with `X-Real-Client-IP` and
+`X-Internal-Secret`. Configure the same random `INTERNAL_PROXY_SECRET` in the SSR
+server and the API. It must contain at least 32 visible ASCII characters. The API
+compares it in constant time. A matching secret permits the `X-Real-Client-IP`
+override. Missing, incorrect, or repeated secret headers do not permit an override.
+Never expose this secret to browsers or mobile clients.
+
+Otherwise, the API uses `CF-Connecting-IP`, then the connection peer when that
+header is absent, such as in local development. The selected IP header must have
+exactly one valid address. Invalid addresses, lists, and repeated selected headers
+return the common 400 error. IPv4-mapped IPv6 addresses share the IPv4 budget.
+`X-Forwarded-For` does not affect client identity. `TRUSTED_PROXY_IPS` is no longer
+supported; remove it from existing settings.
+
+APISIX must preserve the Cloudflare and SSR headers and apply the same identity
+precedence for any edge IP limit. The SSR server must replace client-supplied
+override headers with the client IP obtained from its own trusted ingress.
+NAT users share a client budget. Tune the application policy for its audience.
+Network/WAF limits protect PostgreSQL from volumetric attacks before application
+authentication or accounting runs.
 
 PostgreSQL is authoritative for authentication state. Redis is not required. The
 OIDC public-key cache has a bounded lifetime, serialized refresh, unknown-key

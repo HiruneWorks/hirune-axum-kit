@@ -14,6 +14,7 @@ use url::Url;
 
 mod environment;
 mod oidc;
+mod proxy;
 mod turnstile;
 
 #[derive(Clone, Debug)]
@@ -26,7 +27,7 @@ pub struct DatabaseSettings {
 pub struct HttpSettings {
     pub bind_address: SocketAddr,
     pub allowed_origins: Vec<String>,
-    pub trusted_proxy_ips: Vec<std::net::IpAddr>,
+    pub internal_proxy_secret: Option<SecretString>,
     pub secure_cookies: bool,
     pub timeout_seconds: u64,
     pub max_concurrent_requests: usize,
@@ -164,11 +165,7 @@ impl Settings {
                 SocketAddr::from(([127, 0, 0, 1], 3000)),
             )?,
             allowed_origins,
-            trusted_proxy_ips: get("TRUSTED_PROXY_IPS", "")
-                .split(',')
-                .filter(|value| !value.trim().is_empty())
-                .map(|value| value.trim().parse().context("invalid TRUSTED_PROXY_IPS"))
-                .collect::<Result<_>>()?,
+            internal_proxy_secret: proxy::parse_internal_proxy_secret(values)?,
             secure_cookies: production,
             timeout_seconds: number(values, "HTTP_TIMEOUT_SECONDS", 15)?,
             max_concurrent_requests: number(values, "HTTP_MAX_CONCURRENT_REQUESTS", 128)?,
