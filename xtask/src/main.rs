@@ -4,6 +4,8 @@ mod deployment;
 mod infrastructure;
 mod kubernetes;
 mod kubernetes_environment;
+mod kubernetes_jobs;
+mod kubernetes_maintenance;
 mod kubernetes_test;
 mod production;
 mod template;

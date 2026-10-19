@@ -242,7 +242,8 @@ impl Fixture {
         self.prepare(image)?;
         let dev_before = self.prepare_other_environment()?;
         self.check_unfinished_migration()?;
-        self.deploy("rolling")?;
+        self.wait_probe("trusted-probe")?;
+        self.check_automatic_migration_recovery()?;
         self.wait_probe("trusted-probe")?;
         self.wait_probe("denied-probe")?;
         let pods = self.api_pods()?;
@@ -331,7 +332,7 @@ impl Fixture {
         let contents =
             fs::read_to_string(&route)?.replace("#END", "# configuration rollout acceptance\n#END");
         fs::write(route, contents)?;
-        self.deploy("rolling")?;
+        self.deploy("auto")?;
         let updated = self.json(&["get", "deployment", "hirune-apisix"])?;
         ensure!(
             gateway["spec"]["template"] != updated["spec"]["template"],
@@ -363,6 +364,7 @@ impl Fixture {
             "application drain replaced Valkey"
         );
         println!("{}", self.probe("retained-authority")?.trim());
+        self.check_failed_preflight()?;
         ensure!(
             self.other_environment_state()? == dev_before,
             "prod deployment changed dev workloads"
@@ -371,6 +373,10 @@ impl Fixture {
             "Prod rolling and drained deployments left dev Pods and replicas unchanged with an unusable default context."
         );
         self.check_edge_limits()?;
+        crate::kubernetes::stop(&self.deployment()?.target, crate::kubernetes::DEPLOYMENTS)?;
+        self.deploy("auto")?;
+        println!("{}", self.probe("retained-authority")?.trim());
+        println!("Automatic cold-start recovery passed with no pending migrations.");
         ensure!(
             self.other_environment_state()? == dev_before,
             "prod counter operations changed dev state"
@@ -676,6 +682,86 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         );
         crate::run(&mut self.kubectl(&["delete", "job", "hirune-migration", "--wait=true"]))?;
         println!("An unfinished migration Job correctly blocked deployment.");
+        Ok(())
+    }
+
+    fn check_automatic_migration_recovery(&self) -> Result<()> {
+        let mut failing = self.deployment()?;
+        let job = failing
+            .resources
+            .iter_mut()
+            .find(|r| r["kind"] == "Job" && r["metadata"]["name"] == "hirune-migration")
+            .context("migration Job missing")?;
+        job["spec"]["template"]["spec"]["containers"][0]["command"] =
+            json!(["sh", "-c", "migration && exit 1"]);
+        let error = crate::kubernetes::deploy(&failing, crate::kubernetes::Mode::Auto)
+            .err()
+            .context("failed migration did not block deployment")?;
+        ensure!(
+            error.to_string().contains("hirune-migration failed"),
+            "unexpected migration failure: {error}"
+        );
+        let check = self.json(&["get", "job", "hirune-migration-check"])?;
+        ensure!(
+            crate::kubernetes_jobs::pending_count(&failing.target, &check)? > 0,
+            "fresh database must select maintenance automatically"
+        );
+        ensure!(
+            self.api_pods()?.is_empty(),
+            "applications started after a failed migration"
+        );
+        let gateways = self.json(&["get", "deployment", "hirune-apisix"])?;
+        ensure!(
+            gateways["status"]["availableReplicas"] == 2,
+            "gateways must stay ready while the API is absent"
+        );
+        println!("{}", self.probe("maintenance")?.trim());
+        ensure!(
+            self.deploy("rolling").is_err(),
+            "explicit rolling bypassed active maintenance"
+        );
+        self.deploy("auto")?;
+        let check = self.json(&["get", "job", "hirune-migration-check"])?;
+        ensure!(
+            crate::kubernetes_jobs::pending_count(&failing.target, &check)? == 0,
+            "retry must recover after the migration was already applied"
+        );
+        println!(
+            "Pending migrations selected maintenance automatically; failed deployment retained it; automatic retry recovered with zero pending migrations."
+        );
+        Ok(())
+    }
+
+    fn check_failed_preflight(&self) -> Result<()> {
+        let before = self.api_pods()?;
+        let mut failing = self.deployment()?;
+        let job = failing
+            .resources
+            .iter_mut()
+            .find(|r| r["kind"] == "Job" && r["metadata"]["name"] == "hirune-migration-check")
+            .context("migration check missing")?;
+        job["spec"]["template"]["spec"]["containers"][0]["command"] = json!(["sh", "-c", "exit 1"]);
+        let error = crate::kubernetes::deploy(&failing, crate::kubernetes::Mode::Auto)
+            .err()
+            .context("failed preflight did not block deployment")?;
+        ensure!(
+            error.to_string().contains("hirune-migration-check failed"),
+            "unexpected preflight failure: {error}"
+        );
+        ensure!(
+            self.api_pods()?.iter().all(|pod| before
+                .iter()
+                .any(|old| old["metadata"]["uid"] == pod["metadata"]["uid"])),
+            "failed preflight replaced running API Pods"
+        );
+        ensure!(
+            !crate::kubernetes_maintenance::active(
+                crate::kubernetes_maintenance::state(&failing.target)?.as_ref()
+            ),
+            "failed preflight changed maintenance state"
+        );
+        self.probe("retained-authority")?;
+        println!("Failed read-only preflight preserved running APIs and open admission.");
         Ok(())
     }
 

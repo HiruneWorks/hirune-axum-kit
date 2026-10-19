@@ -1,3 +1,4 @@
+use sea_orm_migration::MigrationStatus;
 use sea_orm_migration::prelude::*;
 mod columns;
 mod m20261013_000001_create_accounts;
@@ -33,6 +34,33 @@ mod m20261015_000030_create_push_deliveries;
 mod m20261018_000031_create_oauth_native_flows;
 
 pub struct Migrator;
+
+pub async fn pending_migration_count(
+    database: &sea_orm::DatabaseConnection,
+) -> Result<usize, DbErr> {
+    use sea_orm::{AccessMode, IsolationLevel, TransactionTrait};
+    let transaction = database
+        .begin_with_config(
+            Some(IsolationLevel::RepeatableRead),
+            Some(AccessMode::ReadOnly),
+        )
+        .await?;
+    let migrations = Migrator::get_migration_with_status_read_only(&transaction).await?;
+    let mut pending = 0;
+    for migration in migrations {
+        match migration.status() {
+            MigrationStatus::Pending => pending += 1,
+            MigrationStatus::Applied if pending > 0 => {
+                return Err(DbErr::Custom(
+                    "migration history has an unapplied predecessor".into(),
+                ));
+            }
+            MigrationStatus::Applied => {}
+        }
+    }
+    transaction.commit().await?;
+    Ok(pending)
+}
 
 pub async fn require_current_schema(database: &sea_orm::DatabaseConnection) -> Result<(), DbErr> {
     if !Migrator::get_pending_migrations_read_only(database)

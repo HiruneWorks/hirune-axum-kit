@@ -107,22 +107,58 @@ with coordinated primary failover and adapt the gateway connection configuration
 
 From `deploy/`, run `just check prod`, then `just up prod`.
 All resources are rendered and validated once before any cluster mutation.
-The command applies the namespace and prerequisites, creates one migration Job,
-waits for its success, starts and waits for Valkey, then applies the other runtime
-Deployments. `just down <environment>` stops Valkey with the other Deployments.
-A finished migration Job is replaced on the next release. An unfinished Job
-blocks another deployment, including a Job that is pending or suspended.
+`auto` is the default. A preflight Job uses the new image's
+`migration --check-pending` command in a read-only PostgreSQL transaction. It
+checks migration history without creating the history table. Missing history
+means all compiled migrations are pending. Unknown versions and gaps fail the
+check. A failed or invalid check stops deployment before runtime changes.
+
+| Condition | Automatic deployment |
+| --- | --- |
+| Pending migrations, active maintenance, or stopped application Deployments | Maintenance and coordinated drain |
+| Current schema, maintenance off, and running application Deployments | Rolling update |
+
+Every pending migration selects an interruption, including additive changes.
+This policy does not classify SQL compatibility. A preflight success is not a
+migration dry run or proof that a migration will succeed. The migration Job
+changes the real database after applications have stopped.
+
+Completed check and migration Jobs are replaced on the next release. An
+unfinished Job blocks another deployment, including pending or suspended Jobs.
 A failed migration blocks runtime rollout. Inspect it with the selected target:
 
 ```sh
 kubectl --context k3s-prod --namespace hirune-prod logs job/hirune-migration
 ```
 
-`rolling` is the default. Existing API and worker Pods keep running during the
-migration. New code, schema, settings, HTTP, and job payloads must work with both
-generations. For example, add a new column first, deploy code that no longer uses
-an old column, and delete the old column in a later compatible release. Automatic
-migration execution does not establish compatibility with running old code.
+For a planned interruption, the helper enables APISIX maintenance, upgrades old
+gateways if needed, and verifies actual maintenance responses from every live
+gateway Pod. It then stops API, worker, and periodic-maintenance Pods and waits
+for exit. After migration success, it restores runtime Deployments and verifies
+backend readiness through every gateway before disabling maintenance. It checks
+that all gateways observed the change. An unsuccessful off operation requests
+maintenance again. Failures before off leave maintenance enabled.
+
+APISIX returns `503` with `error.code: maintenance`, `Retry-After: 30`, a generated
+request ID, `Cache-Control: no-store`, and credentialed CORS for allowed origins.
+Valid browser preflights return local `204` with the backend's allowed methods
+and headers. The subsequent application request receives the maintenance `503`.
+The stable `hirune-gateway-maintenance` ConfigMap is operator state. Ordinary
+manifest application does not reset it. Gateways read its projected directory
+dynamically; missing or invalid state keeps application admission closed.
+`/health/gateway` checks the gateway independently of API or database health, so
+the APISIX Service can serve maintenance while APIs are absent. `/health/live`
+and `/health/ready` retain their backend health behavior.
+
+After a failure, correct the cause and repeat `just up prod`. Active maintenance
+selects drain even if the migration already completed. New deployments and
+`down` followed by `up` also keep admission closed until recovery completes.
+`just down <environment>` stops Valkey and the other Deployments; it retains the
+namespace, settings, Secrets, maintenance state, and external data.
+
+An explicit `just up prod rolling` rejects pending migrations, active
+maintenance, and stopped applications. During a rolling update, schema, settings,
+HTTP, and job payloads must work with old and new processes at the same time.
 
 The API uses `maxUnavailable: 0` and `maxSurge: 1`. HTTP readiness gates Service
 traffic. TCP liveness avoids restarting healthy processes during database failure
@@ -131,18 +167,29 @@ time to converge. The API then drains for at most 30 seconds. The 45-second
 termination grace also covers the default 35-second worker drain. Increase grace
 when increasing the worker drain; pre-stop consumes that budget.
 
-If old code cannot use the new schema or job contract, schedule an interruption:
+For an incompatible job or configuration change without a migration, force an
+interruption:
 
 ```sh
 just up prod drain
 ```
 
-This stops all API, worker, and maintenance Pods and waits for exit before
-migration. It then restores desired replicas. A migration failure leaves those
-processes stopped. APISIX, Tunnel connectors, and Valkey keep running. Correct the cause and repeat the drained deployment. Remove
-HPAs from both the overlay and selected namespace before this operation; an HPA
+APISIX, Tunnel connectors, and Valkey keep running during application drain.
+Remove HPAs from both the overlay and selected namespace before an interruption;
+the helper rejects them before enabling maintenance. An HPA
 can restore old replicas while the database is changing. A per-Deployment
 `Recreate` strategy does not coordinate all application roles.
+
+Recovery overrides are explicit:
+
+```sh
+just maintenance prod status
+just maintenance prod on
+just maintenance prod off
+```
+
+`off` requires backend readiness through every live gateway. Use normal `up`
+for release recovery so worker and scheduler rollout also complete before off.
 
 Serialize release commands. This helper is not a distributed deployment lock.
 Do not deploy with a plain `kubectl apply -k`: it does not wait for migration and
@@ -218,7 +265,11 @@ Valkey, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero.
 Local HTTP/mail and one database owner are fixture-only substitutions. The
 separate production fixture verifies HTTPS, STARTTLS, and restricted DB roles.
 
-Acceptance covers an unfinished migration guard, signup and mail, retained
+Acceptance covers an unfinished migration guard, automatic maintenance for a
+fresh schema, failed deployment after migration with automatic recovery, failed
+preflight preserving running APIs, and cold-start recovery with current schema.
+It checks typed maintenance through the Service while APIs are absent, signup
+and mail, retained
 sessions and API quota, continuous authenticated traffic during API/gateway
 replacement, config-only gateway rollout, coordinated application drain, and
 private ingress. Direct requests to both gateways verify one combined IP budget,

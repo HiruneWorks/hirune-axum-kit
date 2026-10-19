@@ -1,6 +1,9 @@
 #[path = "schema_consistency/mod.rs"]
 mod schema_consistency;
 
+#[path = "schema_consistency/migration_preflight.rs"]
+mod migration_preflight;
+
 use anyhow::{Result, ensure};
 use schema_consistency::{catalog, enums};
 use sea_orm::{ConnectionTrait, TransactionTrait};

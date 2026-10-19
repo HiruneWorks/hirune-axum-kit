@@ -46,6 +46,12 @@ Errors have this shape:
 
 The server generates a UUIDv7 request ID and returns `X-Request-Id`. Caller-supplied
 request IDs are not trusted. Expected failures use 400, 401, 403, 404, 409, or 429.
+During planned deployment maintenance, APISIX returns `503` with code
+`maintenance`, the common error envelope, and `Retry-After: 30`. Allowed browser
+origins receive credentialed CORS and can read `Retry-After` and `X-Request-ID`.
+Clients can show a maintenance message and retry later.
+The gateway answers valid allowed-origin CORS preflights locally during maintenance.
+
 Storage/provider unavailability uses 503. The API never returns internal details
 or secrets. Middleware normalizes router and extractor errors too. All API responses
 use `Cache-Control: no-store`, `nosniff`, a restrictive CSP, and no-referrer.

@@ -233,5 +233,8 @@ See [environment layout](../.envs/README.md), [container files](../compose/READM
 and [deployment commands](../deploy/README.md) for the canonical paths.
 The [k3s profile](../deploy/k3s/README.md) supplies two API replicas, a private
 APISIX Service, shared Valkey edge counters, Tunnel replicas, readiness, graceful rollout, migration sequencing,
-and an optional HPA. Compatible upgrades can roll. Incompatible schema or job
-changes require a coordinated drain before migration.
+and an optional HPA. Deployment defaults to `auto`: pending migrations select
+verified gateway maintenance and coordinated drain before migration. Current
+schema releases roll unless maintenance is active or applications are stopped.
+Incompatible job or configuration changes without migrations require explicit
+drain. Remove active HPAs before any deployment that needs drain.

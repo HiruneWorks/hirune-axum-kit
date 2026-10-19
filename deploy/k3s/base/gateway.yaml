@@ -58,7 +58,7 @@ spec:
             periodSeconds: 2
             failureThreshold: 60
           readinessProbe:
-            httpGet: {path: /health/ready, port: http}
+            httpGet: {path: /health/gateway, port: http}
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
@@ -69,6 +69,9 @@ spec:
             preStop:
               exec: {command: [sh, -c, sleep 5]}
           volumeMounts:
+            - name: maintenance
+              mountPath: /run/hirune-maintenance
+              readOnly: true
             - name: configuration
               mountPath: /usr/local/apisix/conf/hirune_edge.lua
               subPath: hirune_edge.lua
@@ -82,6 +85,8 @@ spec:
               subPath: apisix.yaml
               readOnly: true
       volumes:
+        - name: maintenance
+          configMap: {name: hirune-gateway-maintenance}
         - name: configuration
           configMap: {name: hirune-apisix}
 ---

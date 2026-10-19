@@ -141,7 +141,13 @@ impl Deployment {
                 );
             }
         }
-        for (kind, name) in std::iter::once(("Job", "hirune-migration")).chain(
+        for (kind, name) in [
+            ("Job", "hirune-migration"),
+            ("Job", "hirune-migration-check"),
+            ("ConfigMap", "hirune-gateway-maintenance"),
+        ]
+        .into_iter()
+        .chain(
             crate::kubernetes::DEPLOYMENTS
                 .iter()
                 .map(|name| ("Deployment", *name)),
