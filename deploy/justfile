@@ -10,13 +10,17 @@ default:
 check environment:
     cargo xtask deploy-k3s check "$1"
 
-# Migrate once, then roll out. Use drain only for an offline upgrade.
-up environment mode="rolling":
+# Auto: pending migrations use maintenance and drain; other releases roll.
+up environment mode="auto":
     cargo xtask deploy-k3s up "$1" "$2"
 
 # Stop runtime Pods and keep namespace, settings, secrets, and external data.
 down environment:
     cargo xtask deploy-k3s down "$1"
+
+# Recovery override. Normal deployments control gateway maintenance automatically.
+maintenance environment action="status":
+    cargo xtask deploy-k3s maintenance "$1" "$2"
 
 status environment:
     cargo xtask deploy-k3s status "$1"

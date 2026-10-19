@@ -70,13 +70,19 @@ just cleanup prod
 ```
 
 `check` renders and validates locally without displaying Secret values or
-contacting the cluster. `up` creates the namespace and generated settings and
-Secrets, runs one migration Job, waits for success, then rolls out runtime Pods.
-The migration executable applies only pending migrations. API startup does not
-run migrations. `up` defaults to `rolling`. Use `just up prod drain` for an
-incompatible offline upgrade. `just down prod` stops runtime Pods and preserves
-namespace, settings, Secrets, and external database data. Remove active HPAs
-before stopping or draining Pods.
+contacting the cluster. `up` defaults to `auto`. A read-only Job checks pending
+migrations with the selected release image before runtime changes. Pending
+migrations, active gateway maintenance, or stopped applications select a planned
+interruption: verify APISIX maintenance, drain applications, migrate, restore
+runtime readiness, then disable maintenance. Other releases roll normally.
+API startup does not run migrations. Use `just up prod drain` to force an offline
+upgrade, including incompatible job or configuration changes without a migration.
+Failures retain maintenance; repeat `just up prod` after correcting the cause.
+`just down prod` stops runtime Pods and preserves
+namespace, settings, Secrets, and external database data. HPAs remain installed
+during down and drain. The helper saves positive replica counts, verifies native
+HPA deactivation at zero, and restores counts after migration success. HPA
+minimums must be positive. No manual HPA removal or restoration is required.
 
 Root `just deploy-k3s prod` delegates to this same `up` entrypoint. All deployment
 commands require `dev` or `prod`; none defaults to production. Do not run concurrent

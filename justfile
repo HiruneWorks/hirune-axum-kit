@@ -67,7 +67,7 @@ test-data-services:
 test-k3s:
     cargo xtask test-k3s
 
-deploy-k3s environment mode="rolling":
+deploy-k3s environment mode="auto":
     just --justfile deploy/justfile up {{quote(environment)}} {{quote(mode)}}
 
 load-test:
