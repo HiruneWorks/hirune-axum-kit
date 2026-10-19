@@ -1,3 +1,4 @@
+use crate::kubernetes_autoscaling::Autoscaling;
 use crate::kubernetes_environment::{Deployment, Environment, Target};
 use crate::{kubernetes_jobs as jobs, kubernetes_maintenance as maintenance};
 use anyhow::{Context, Result, bail, ensure};
@@ -216,16 +217,7 @@ pub fn deploy(deployment: &Deployment, mode: Mode) -> Result<()> {
             "rolling"
         }
     );
-    if mode == Mode::Drain {
-        ensure!(
-            !deployment
-                .resources
-                .iter()
-                .any(|r| r["kind"] == "HorizontalPodAutoscaler"),
-            "remove autoscalers from the overlay before a drained upgrade"
-        );
-        require_no_autoscalers(target)?;
-    }
+    let autoscaling = Autoscaling::inspect(target, &deployment.resources, DEPLOYMENTS)?;
     apply(
         target,
         deployment
@@ -243,7 +235,7 @@ pub fn deploy(deployment: &Deployment, mode: Mode) -> Result<()> {
         maintenance::request(target, true)?;
     }
     // Upgrade old gateways to the maintenance-aware configuration before stopping apps.
-    apply(
+    autoscaling.apply(
         target,
         vec![resource(deployment, "Deployment", "hirune-apisix")?.clone()],
     )?;
@@ -257,7 +249,7 @@ pub fn deploy(deployment: &Deployment, mode: Mode) -> Result<()> {
         resource(deployment, "Job", "hirune-migration")?.clone(),
         Duration::from_secs(630),
     )?;
-    apply(
+    autoscaling.apply(
         target,
         deployment
             .resources
@@ -272,7 +264,7 @@ pub fn deploy(deployment: &Deployment, mode: Mode) -> Result<()> {
         "deployment/hirune-edge-valkey",
         "--timeout=300s",
     ]))?;
-    apply(
+    autoscaling.apply(
         target,
         deployment
             .resources
@@ -307,17 +299,9 @@ fn rollout(target: &Target, name: &str) -> Result<()> {
     ]))
 }
 
-fn require_no_autoscalers(target: &Target) -> Result<()> {
-    let autoscalers = target.json(&["get", "hpa"])?;
-    ensure!(
-        autoscalers["items"].as_array().is_some_and(Vec::is_empty),
-        "remove autoscalers from the selected namespace before stopping replicas"
-    );
-    Ok(())
-}
-
 pub(crate) fn stop(target: &Target, deployments: &[&str]) -> Result<()> {
-    require_no_autoscalers(target)?;
+    let autoscaling = Autoscaling::inspect(target, &[], deployments)?;
+    autoscaling.remember(target)?;
     for name in deployments {
         let existing = target
             .kubectl(&[
@@ -349,7 +333,8 @@ pub(crate) fn stop(target: &Target, deployments: &[&str]) -> Result<()> {
         "--selector",
         selector,
         "--timeout=300s",
-    ]))
+    ]))?;
+    autoscaling.wait_stopped(target)
 }
 
 #[cfg(test)]

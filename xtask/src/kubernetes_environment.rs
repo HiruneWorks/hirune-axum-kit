@@ -120,6 +120,7 @@ impl Deployment {
     }
 
     pub fn validate(&self) -> Result<()> {
+        crate::kubernetes_autoscaling::Autoscaling::validate(&self.resources)?;
         let namespaces: Vec<_> = self
             .resources
             .iter()

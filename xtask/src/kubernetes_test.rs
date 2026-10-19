@@ -14,6 +14,8 @@ use std::{
 use tempfile::TempDir;
 use uuid::Uuid;
 
+mod autoscaling;
+
 const NAMESPACE: &str = "hirune-prod";
 const NODE_IMAGE: &str = "rancher/k3s:v1.37.1-k3s1";
 const IMAGES: &[&str] = &[
@@ -183,7 +185,7 @@ impl Fixture {
             "--kubeconfig-update-default=false",
             "--kubeconfig-switch-context=false",
             "--k3s-arg",
-            "--disable=traefik,servicelb,metrics-server,local-storage@server:0",
+            "--disable=traefik,servicelb,local-storage@server:0",
             "--k3s-arg",
             "--snapshotter=native@all",
             "--k3s-arg",
@@ -202,13 +204,23 @@ impl Fixture {
         for image in std::iter::once(image).chain(IMAGES.iter().copied()) {
             self.import_image(image)?;
         }
-        // Import the distribution's exact DNS image for hosts whose node containers cannot pull.
-        let dns = self.json(&["get", "deployment", "coredns", "-n", "kube-system"])?;
-        let dns_image = dns["spec"]["template"]["spec"]["containers"][0]["image"]
-            .as_str()
-            .context("CoreDNS image missing")?;
-        crate::run(Command::new("docker").args(["pull", dns_image]))?;
-        self.import_image(dns_image)?;
+        // Import the distribution's exact system images for nodes that cannot pull.
+        for name in ["coredns", "metrics-server"] {
+            crate::run(&mut self.kubectl(&[
+                "wait",
+                "--for=create",
+                &format!("deployment/{name}"),
+                "-n",
+                "kube-system",
+                "--timeout=180s",
+            ]))?;
+            let system = self.json(&["get", "deployment", name, "-n", "kube-system"])?;
+            let system_image = system["spec"]["template"]["spec"]["containers"][0]["image"]
+                .as_str()
+                .context("system image missing")?;
+            crate::run(Command::new("docker").args(["pull", system_image]))?;
+            self.import_image(system_image)?;
+        }
         crate::run(&mut self.kubectl(&[
             "wait",
             "--for=condition=Ready",
@@ -233,6 +245,14 @@ impl Fixture {
             "rollout",
             "status",
             "deployment/coredns",
+            "-n",
+            "kube-system",
+            "--timeout=180s",
+        ]))?;
+        crate::run(&mut self.kubectl(&[
+            "rollout",
+            "status",
+            "deployment/metrics-server",
             "-n",
             "kube-system",
             "--timeout=180s",
@@ -344,6 +364,7 @@ impl Fixture {
             "a gateway-only config change replaced API Pods"
         );
         println!("{}", self.probe("stop-traffic")?.trim());
+        let autoscaler = self.enable_autoscaling()?;
         let counter_before_drain = self.json(&[
             "get",
             "pods",
@@ -351,7 +372,7 @@ impl Fixture {
             "app.kubernetes.io/component=edge-counter",
         ])?["items"][0]["metadata"]["uid"]
             .clone();
-        self.deploy("drain")?;
+        self.check_autoscaled_migration_recovery(&autoscaler)?;
         ensure!(
             self.json(&[
                 "get",
@@ -372,7 +393,7 @@ impl Fixture {
             "Prod rolling and drained deployments left dev Pods and replicas unchanged with an unusable default context."
         );
         self.check_edge_limits()?;
-        self.check_cold_start()?;
+        self.check_cold_start(&autoscaler)?;
         ensure!(
             self.other_environment_state()? == dev_before,
             "prod counter operations changed dev state"
@@ -759,28 +780,6 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         );
         self.probe("retained-authority")?;
         println!("Failed read-only preflight preserved running APIs and open admission.");
-        Ok(())
-    }
-
-    fn check_cold_start(&self) -> Result<()> {
-        // The persistent test client must not join the runtime deletion selector.
-        crate::run(&mut self.kubectl(&[
-            "label",
-            "pod/trusted-probe",
-            "app.kubernetes.io/part-of-",
-        ]))?;
-        let stopped =
-            crate::kubernetes::stop(&self.deployment()?.target, crate::kubernetes::DEPLOYMENTS);
-        let restored = crate::run(&mut self.kubectl(&[
-            "label",
-            "pod/trusted-probe",
-            "app.kubernetes.io/part-of=hirune-kit",
-        ]));
-        stopped?;
-        restored?;
-        self.deploy("auto")?;
-        println!("{}", self.probe("retained-authority")?.trim());
-        println!("Automatic cold-start recovery passed with no pending migrations.");
         Ok(())
     }
 

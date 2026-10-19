@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-19 — HPA maintenance recovery](2026-10-19-hpa-maintenance-recovery.md):
+  native HPA deactivation, durable replica recovery, and automatic replica
+  ownership transfer; supersedes manual HPA removal for maintenance.
+
 - [2026-10-19 — Automatic maintenance deployments](2026-10-19-automatic-maintenance-deployments.md):
   read-only migration preflight, automatic maintenance and drain, verified gateway
   admission, and failure/retry recovery.

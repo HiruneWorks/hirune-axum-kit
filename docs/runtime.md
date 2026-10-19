@@ -237,4 +237,6 @@ and an optional HPA. Deployment defaults to `auto`: pending migrations select
 verified gateway maintenance and coordinated drain before migration. Current
 schema releases roll unless maintenance is active or applications are stopped.
 Incompatible job or configuration changes without migrations require explicit
-drain. Remove active HPAs before any deployment that needs drain.
+drain. HPAs with positive minimums remain installed during drain. The helper
+verifies native deactivation at zero, retains recovery counts, and restores
+positive counts after migration success. Rolling preserves HPA-owned replicas.

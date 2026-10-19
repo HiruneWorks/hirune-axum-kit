@@ -79,8 +79,10 @@ API startup does not run migrations. Use `just up prod drain` to force an offlin
 upgrade, including incompatible job or configuration changes without a migration.
 Failures retain maintenance; repeat `just up prod` after correcting the cause.
 `just down prod` stops runtime Pods and preserves
-namespace, settings, Secrets, and external database data. Remove active HPAs
-before stopping or draining Pods.
+namespace, settings, Secrets, and external database data. HPAs remain installed
+during down and drain. The helper saves positive replica counts, verifies native
+HPA deactivation at zero, and restores counts after migration success. HPA
+minimums must be positive. No manual HPA removal or restoration is required.
 
 Root `just deploy-k3s prod` delegates to this same `up` entrypoint. All deployment
 commands require `dev` or `prod`; none defaults to production. Do not run concurrent

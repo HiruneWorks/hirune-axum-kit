@@ -3,6 +3,7 @@ mod data_services;
 mod deployment;
 mod infrastructure;
 mod kubernetes;
+mod kubernetes_autoscaling;
 mod kubernetes_environment;
 mod kubernetes_jobs;
 mod kubernetes_maintenance;

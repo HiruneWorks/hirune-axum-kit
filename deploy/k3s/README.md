@@ -175,10 +175,21 @@ just up prod drain
 ```
 
 APISIX, Tunnel connectors, and Valkey keep running during application drain.
-Remove HPAs from both the overlay and selected namespace before an interruption;
-the helper rejects them before enabling maintenance. An HPA
-can restore old replicas while the database is changing. A per-Deployment
+HPAs remain installed. The helper records each autoscaled Deployment's positive
+replica count in its `hirune.axum-kit/resume-replicas` annotation before stopping
+it. With `minReplicas > 0`, Kubernetes deactivates HPA adjustment when the target
+replica count is zero. The helper verifies `ScalingActive=False` with reason
+`ScalingDisabled` before migration. After migration success, it restores a
+positive count within the current HPA minimum and maximum. The HPA then resumes
+normal control. Failed migrations keep applications stopped and maintenance on;
+retry and repeated `down` retain the saved count. No HPA deletion or manual
+restoration is required. A per-Deployment
 `Recreate` strategy does not coordinate all application roles.
+
+The helper inspects both live and rendered HPAs for its Deployments. Their
+minimum must be positive; scale-to-zero HPAs cannot use this native maintenance
+mechanism. Unrelated HPAs are left alone. See the
+[Kubernetes maintenance behavior](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#implicit-maintenance-mode-deactivation).
 
 Recovery overrides are explicit:
 
@@ -219,19 +230,21 @@ aligned with application upload settings.
 API, worker, APISIX, and cloudflared replica counts are independent. The optional
 `autoscaling.yaml` uses CPU to scale API replicas from two to four. Copy it into an
 environment overlay and add it to that overlay's `resources`. Keep metrics-server
-enabled. When enabling HPA, remove the API Deployment's `spec.replicas` with an
-overlay patch so later applies do not reset the autoscaled count. Follow the
-[Kubernetes field-ownership migration steps](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling)
-when changing an existing Deployment to HPA control.
+enabled. The deployment helper omits `spec.replicas` for HPA-controlled
+Deployments. When enabling HPA, it first removes that field from the existing
+client-side last-applied annotation without changing the live count. This follows
+the [Kubernetes field-ownership migration steps](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling).
+Rolling updates preserve the current scale. Recovery from zero uses the saved
+count, or the HPA minimum for a new Deployment. An overlay may also omit replicas.
 Removing a resource from an overlay does not delete it from Kubernetes;
-remove an active HPA explicitly with the correct context and namespace.
+delete the HPA explicitly only when permanently disabling automatic scaling.
 
 With pools of 10, two API Pods plus one API surge, one worker, and one maintenance
 process need 50 database connections. At the HPA maximum, budget at least 70,
 plus migration, management, worker/maintenance surges, and reserve. Check complete
 concurrent rollout capacity before increasing replicas or pool sizes. Manual
-scaling must also be reflected in the overlay, because deployment reapplies the
-desired replica counts.
+scaling for Deployments without HPA must also be reflected in the overlay,
+because deployment reapplies their desired replica counts.
 
 API Pods contain no authoritative local data. PostgreSQL, SMTP, optional object
 storage, and optional search are external. Kubernetes does not provision their
@@ -268,6 +281,12 @@ separate production fixture verifies HTTPS, STARTTLS, and restricted DB roles.
 Acceptance covers an unfinished migration guard, automatic maintenance for a
 fresh schema, failed deployment after migration with automatic recovery, failed
 preflight preserving running APIs, and cold-start recovery with current schema.
+It enables metrics-server and a real HPA controller. It verifies replica ownership
+transfer from two configured replicas to three autoscaled replicas, preservation
+during rolling traffic, native HPA deactivation across controller reconciliations,
+failed migration and retry, repeated down/up, and resumed HPA scaling. The fixture
+uses equal minimum and maximum bounds of three for deterministic capacity checks;
+the example's production bounds remain two to four.
 It checks typed maintenance through the Service while APIs are absent, signup
 and mail, retained
 sessions and API quota, continuous authenticated traffic during API/gateway
