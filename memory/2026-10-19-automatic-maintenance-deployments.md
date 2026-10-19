@@ -47,6 +47,14 @@
   deleted before acceptance; this is not a passing k3s result. Final remote CI
   must verify the canonical image on two actual k3s nodes.
 - No live environment or external Tunnel was changed.
+- First remote k3s attempt stopped before maintenance checks: the fixture waited
+  for a probe Pod before deployment created its application Secret. Move that
+  readiness wait after deployment prerequisites. The acceptance assertions stay
+  unchanged; the corrected head needs a new full CI run.
+- Astra also found that the fixture's standalone tunnel-labelled client would
+  join the full-down Pod deletion selector. Temporarily detach only its part-of
+  label for down, then restore it before auto up. This keeps its session state,
+  the production stop selector, and the production NetworkPolicies unchanged.
 
 ## Remaining work
 

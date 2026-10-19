@@ -242,7 +242,6 @@ impl Fixture {
         self.prepare(image)?;
         let dev_before = self.prepare_other_environment()?;
         self.check_unfinished_migration()?;
-        self.wait_probe("trusted-probe")?;
         self.check_automatic_migration_recovery()?;
         self.wait_probe("trusted-probe")?;
         self.wait_probe("denied-probe")?;
@@ -373,10 +372,7 @@ impl Fixture {
             "Prod rolling and drained deployments left dev Pods and replicas unchanged with an unusable default context."
         );
         self.check_edge_limits()?;
-        crate::kubernetes::stop(&self.deployment()?.target, crate::kubernetes::DEPLOYMENTS)?;
-        self.deploy("auto")?;
-        println!("{}", self.probe("retained-authority")?.trim());
-        println!("Automatic cold-start recovery passed with no pending migrations.");
+        self.check_cold_start()?;
         ensure!(
             self.other_environment_state()? == dev_before,
             "prod counter operations changed dev state"
@@ -715,6 +711,7 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
             gateways["status"]["availableReplicas"] == 2,
             "gateways must stay ready while the API is absent"
         );
+        self.wait_probe("trusted-probe")?;
         println!("{}", self.probe("maintenance")?.trim());
         ensure!(
             self.deploy("rolling").is_err(),
@@ -762,6 +759,28 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         );
         self.probe("retained-authority")?;
         println!("Failed read-only preflight preserved running APIs and open admission.");
+        Ok(())
+    }
+
+    fn check_cold_start(&self) -> Result<()> {
+        // The persistent test client must not join the runtime deletion selector.
+        crate::run(&mut self.kubectl(&[
+            "label",
+            "pod/trusted-probe",
+            "app.kubernetes.io/part-of-",
+        ]))?;
+        let stopped =
+            crate::kubernetes::stop(&self.deployment()?.target, crate::kubernetes::DEPLOYMENTS);
+        let restored = crate::run(&mut self.kubectl(&[
+            "label",
+            "pod/trusted-probe",
+            "app.kubernetes.io/part-of=hirune-kit",
+        ]));
+        stopped?;
+        restored?;
+        self.deploy("auto")?;
+        println!("{}", self.probe("retained-authority")?.trim());
+        println!("Automatic cold-start recovery passed with no pending migrations.");
         Ok(())
     }
 
