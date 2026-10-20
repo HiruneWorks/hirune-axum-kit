@@ -161,6 +161,9 @@ acceptance, or production capacity.
 
 Preserve unrelated user changes. Commit finished work in coherent units with
 concise English messages. Use descriptive branches without a `codex/` prefix.
+Open a draft PR after the first reviewable commit on a work branch. Continue
+implementation and validation on that PR. Keep its description and check results
+current; do not wait until the changes are finished before opening it.
 Do not rewrite commits or run destructive Git operations without explicit user
 authorization. Update `memory/` and its index at completed milestones using its
 template; record durable facts, decisions, and verification limits, never secrets.

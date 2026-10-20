@@ -78,6 +78,9 @@
 - Disable k6 raw log output in the optional native diagnostic as well. A prior
   failed native run confirmed signed URLs in automatic request-warning messages.
   Typed summaries and process error-code counters remain available.
+- Opened draft PR #21 for the complete presigned-transfer and Kubernetes E2E
+  change. Project instructions now require a draft PR after the first reviewable
+  branch commit, with further implementation and validation on that PR.
 
 ## Remaining work
 

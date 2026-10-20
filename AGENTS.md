@@ -8,6 +8,7 @@
 - Validate changes with relevant tests, checks, formatting, and builds. Never claim validation that was not performed.
 - Commit completed changes in coherent logical units with concise English messages. Do not rewrite commits or use destructive Git operations unless explicitly requested.
 - Use descriptive branch names without `codex/` or another tool or agent prefix.
+- Open a draft pull request as soon as a work branch has its first reviewable commit. Continue implementation and validation on that PR; do not wait until the work is finished.
 
 ## Code Quality
 
