@@ -81,6 +81,9 @@
 - Opened draft PR #21 for the complete presigned-transfer and Kubernetes E2E
   change. Project instructions now require a draft PR after the first reviewable
   branch commit, with further implementation and validation on that PR.
+- Astra's follow-up review found the same terminal-Pod drain issue for the k6
+  Job's tunnel label. Delete that Job with foreground propagation after its
+  summary and thresholds are checked, before deleting its client Secret.
 
 ## Remaining work
 

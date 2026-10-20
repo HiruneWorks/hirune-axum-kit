@@ -164,6 +164,14 @@ impl Fixture {
                 && summary.p95_milliseconds < 2000.0,
             "deployed Kubernetes workflow thresholds failed"
         );
+        // The terminal tunnel-labelled Pod must not block the later full shutdown.
+        crate::run(&mut self.kubectl(&[
+            "delete",
+            "job",
+            "fixture-workflows",
+            "--cascade=foreground",
+            "--wait=true",
+        ]))?;
         // Credentials are scoped to this one Job and are not reused after token rotation.
         crate::run(&mut self.kubectl(&["delete", "secret", "fixture-workflow-accounts"]))?;
         Ok(())
