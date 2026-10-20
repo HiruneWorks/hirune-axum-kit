@@ -46,6 +46,9 @@
 - The first native diagnostic run failed with a storage-unavailable response and
   exceeded the latency threshold while a release build was running. This is not
   passing load evidence.
+- After the image build completed, `just load-test-local` passed: 148 requests,
+  two completed attached-content workflows, two session revocations, no failed
+  requests/checks/workflows, and 403.81 ms p95. Its isolated providers were removed.
 - The earlier branch CI failed native direct uploads on Linux. Inspection found
   that the bridge client could not reach loopback-only provider ports. The native
   diagnostic now uses host networking on Linux; deployed E2E uses cluster services.
@@ -59,6 +62,12 @@
   remove the older local fixture before rerunning the rebuilt test configuration.
 - Full deployed execution and new remote CI remain pending. No production
   deployment occurred.
+- The rebuilt local attempt stopped at PostgreSQL image import because a cached
+  multi-platform index referenced a digest absent from its archive. Restrict
+  Docker export to the daemon's native Linux platform with `--platform=linux`.
+  Kubernetes acceptance requires Docker API 1.48 or newer for that option.
+- A direct PostgreSQL export/archive inspection passed with all 11 referenced
+  blobs present and only `linux/amd64`, the current daemon platform.
 
 ## Remaining work
 

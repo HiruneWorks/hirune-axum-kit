@@ -257,7 +257,8 @@ all processes and retain keys required by stored encrypted data.
 
 ## Acceptance
 
-On a Linux Docker host, install `k3d v5.9.0` and `kubectl v1.37.1`, build the
+On a Linux Docker host with API 1.48 or newer, install `k3d v5.9.0` and
+`kubectl v1.37.1`, build the
 canonical release image, and reserve at least 20 GiB for native snapshots:
 
 ```sh
@@ -266,7 +267,9 @@ K3S_TEST_IMAGE=hirune-kit:local just test-k3s
 
 The Rust fixture creates and removes its own two-node k3d cluster. It uses a native
 container snapshotter, Flannel host-gw, and a null kernel-message device for nested
-hosts. Network-policy enforcement stays enabled. It never changes the user's
+hosts. Image export selects the daemon's native Linux platform. Cached image
+indexes must not import references to absent architecture variants.
+Network-policy enforcement stays enabled. It never changes the user's
 kubeconfig. The isolated kubeconfig has an intentionally unusable current context;
 operations must use the explicitly selected context.
 

@@ -143,7 +143,8 @@ of this command or its CI step does not establish that it passed.
 
 ## Kubernetes fixture scope
 
-`K3S_TEST_IMAGE=hirune-kit:local just test-k3s` needs Docker, k3d v5.9.0, and
+`K3S_TEST_IMAGE=hirune-kit:local just test-k3s` needs Docker API 1.48 or newer,
+k3d v5.9.0, and
 kubectl v1.37.1. Build the canonical release image first. The fixture creates an
 isolated two-node k3s cluster and removes it afterward. It applies the production
 profile with local HTTP/mail substitutions and no real Tunnel connection.
