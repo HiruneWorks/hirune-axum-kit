@@ -28,13 +28,7 @@ pub async fn request_context(
         .get::<MatchedPath>()
         .map_or("unmatched", MatchedPath::as_str)
         .to_owned();
-    let timeout_seconds = if request.method() == Method::PUT
-        && route == "/api/v1/organizations/{organization_id}/files/{file_id}/content"
-    {
-        state.app.files.upload_timeout_seconds()
-    } else {
-        state.settings.timeout_seconds
-    };
+    let timeout_seconds = state.settings.timeout_seconds;
     let span = tracing::info_span!("http_request", request_id=%request_id, method=%request.method(), route, status=tracing::field::Empty, duration_ms=tracing::field::Empty);
     async move {
         let started = Instant::now();

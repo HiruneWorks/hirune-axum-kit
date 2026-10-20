@@ -37,18 +37,51 @@ impl From<FileSummary> for FileOutput {
     }
 }
 
-pub struct FileBytes;
-impl utoipa::PartialSchema for FileBytes {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        use utoipa::openapi::schema::{KnownFormat, ObjectBuilder, SchemaFormat, Type};
-        ObjectBuilder::new()
-            .schema_type(Type::String)
-            .format(Some(SchemaFormat::KnownFormat(KnownFormat::Binary)))
-            .build()
-            .into()
+#[derive(Serialize, ToSchema)]
+pub struct PresignedTransferOutput {
+    /// A bearer URL. Do not log or persist it. Send no API credentials to storage.
+    pub url: String,
+    pub method: TransferMethod,
+    /// Send these unchanged. The browser sets the signed Content-Length from File/Blob.
+    pub headers: Vec<TransferHeaderOutput>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TransferHeaderOutput {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TransferMethod {
+    Put,
+    Get,
+    Head,
+}
+
+impl From<application::files::PresignedTransfer> for PresignedTransferOutput {
+    fn from(transfer: application::files::PresignedTransfer) -> Self {
+        Self {
+            url: transfer.url,
+            method: match transfer.method {
+                application::files::TransferMethod::Put => TransferMethod::Put,
+                application::files::TransferMethod::Get => TransferMethod::Get,
+                application::files::TransferMethod::Head => TransferMethod::Head,
+            },
+            headers: transfer
+                .headers
+                .into_iter()
+                .map(|header| TransferHeaderOutput {
+                    name: header.name,
+                    value: header.value,
+                })
+                .collect(),
+            expires_at: transfer.expires_at,
+        }
     }
 }
-impl ToSchema for FileBytes {}
 
 #[derive(Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

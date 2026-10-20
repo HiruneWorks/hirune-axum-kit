@@ -41,10 +41,11 @@ fn main() -> Result<()> {
         Some("test-data-services") => {
             crate::run(Command::new("python3").arg("compose/data-services/verify.py"))
         }
-        Some("load-test") => infrastructure::run_load_test(),
+        Some("load-test") => kubernetes_test::verify(),
+        Some("load-test-local") => infrastructure::run_load_test(),
         Some("template-check") => template::verify(root),
         _ => anyhow::bail!(
-            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|test-data-services|data-services <action> <dev|prod>|deploy-k3s <action> <dev|prod>|test-k3s|load-test|template-check>"
+            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|test-data-services|data-services <action> <dev|prod>|deploy-k3s <action> <dev|prod>|test-k3s|load-test|load-test-local|template-check>"
         ),
     }
 }

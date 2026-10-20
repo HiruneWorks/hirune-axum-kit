@@ -53,12 +53,14 @@ impl Fixture {
             settings.profile_search = Some(search("profiles"));
             settings.files.storage = Some(S3Settings {
                 endpoint: storage,
+                public_endpoint: None,
                 bucket: format!("content-{}", Uuid::now_v7().simple()),
                 region: "us-east-1".into(),
                 access_key: SecretString::new("kit-local-access"),
                 secret_key: SecretString::new("kit-local-development-secret-only"),
                 allow_http: true,
             });
+            settings.files.browser_origins = vec!["http://localhost:3000".into()];
         }
         if fcm {
             settings.fcm = Some(application::notifications::fcm::FcmSettings {

@@ -5,14 +5,14 @@ use aws_sdk_s3::{
         BehaviorVersion, Credentials, Region, RequestChecksumCalculation,
         ResponseChecksumValidation, retry::RetryConfig, timeout::TimeoutConfig,
     },
-    primitives::ByteStream,
 };
-use std::{ops::Range, path::Path, time::Duration};
+use std::time::Duration;
 use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct S3Settings {
     pub endpoint: Url,
+    pub public_endpoint: Option<Url>,
     pub bucket: String,
     pub region: String,
     pub access_key: SecretString,
@@ -22,6 +22,12 @@ pub struct S3Settings {
 
 impl S3Settings {
     pub fn validate(&self) -> ApplicationResult<()> {
+        if let Some(endpoint) = &self.public_endpoint {
+            let mut public = self.clone();
+            public.endpoint = endpoint.clone();
+            public.public_endpoint = None;
+            public.validate()?;
+        }
         if !(self.endpoint.scheme() == "https"
             || (self.allow_http && self.endpoint.scheme() == "http"))
             || self.endpoint.host_str().is_none()
@@ -46,8 +52,9 @@ impl S3Settings {
 
 #[derive(Clone)]
 pub(super) struct FileStorage {
-    client: Client,
-    bucket: String,
+    pub(super) client: Client,
+    pub(super) signing_client: Client,
+    pub(super) bucket: String,
 }
 
 impl FileStorage {
@@ -75,49 +82,21 @@ impl FileStorage {
             .response_checksum_validation(ResponseChecksumValidation::WhenRequired)
             .build();
         Self {
-            client: Client::from_conf(config),
+            client: Client::from_conf(config.clone()),
+            signing_client: Client::from_conf(
+                config
+                    .to_builder()
+                    .endpoint_url(
+                        settings
+                            .public_endpoint
+                            .as_ref()
+                            .unwrap_or(&settings.endpoint)
+                            .as_str(),
+                    )
+                    .build(),
+            ),
             bucket: settings.bucket.clone(),
         }
-    }
-
-    pub async fn put_original(&self, key: &str, path: &Path, size: u64) -> ApplicationResult<()> {
-        let body = ByteStream::from_path(path)
-            .await
-            .map_err(ApplicationError::internal)?;
-        // One streamed PutObject avoids abandoned multipart parts; keys are single-use.
-        self.client
-            .put_object()
-            .bucket(&self.bucket)
-            .key(key)
-            .content_type("application/octet-stream")
-            .content_length(size as i64)
-            .if_none_match("*")
-            .body(body)
-            .send()
-            .await
-            .map_err(|_| ApplicationError::IntegrationUnavailable)?;
-        Ok(())
-    }
-
-    pub async fn get_original(
-        &self,
-        key: &str,
-        range: Range<u64>,
-    ) -> ApplicationResult<ByteStream> {
-        let request = self.client.get_object().bucket(&self.bucket).key(key);
-        let request = if range.is_empty() {
-            request
-        } else {
-            request.range(format!("bytes={}-{}", range.start, range.end - 1))
-        };
-        let response = request
-            .send()
-            .await
-            .map_err(|_| ApplicationError::IntegrationUnavailable)?;
-        if response.content_length() != Some((range.end - range.start) as i64) {
-            return Err(ApplicationError::IntegrationUnavailable);
-        }
-        Ok(response.body)
     }
 
     pub async fn delete_original(&self, key: &str) -> ApplicationResult<()> {
@@ -131,7 +110,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn require_original_size(
+    pub async fn require_original_metadata(
         &self,
         key: &str,
         expected_bytes: u64,
@@ -143,9 +122,23 @@ impl FileStorage {
             .key(key)
             .send()
             .await
-            .map_err(|_| ApplicationError::IntegrationUnavailable)?;
-        if response.content_length() != Some(expected_bytes as i64) {
-            return Err(ApplicationError::IntegrationUnavailable);
+            .map_err(|error| {
+                if error
+                    .as_service_error()
+                    .is_some_and(|error| error.is_not_found())
+                {
+                    ApplicationError::Conflict
+                } else {
+                    ApplicationError::IntegrationUnavailable
+                }
+            })?;
+        if response.content_length() != Some(expected_bytes as i64)
+            || response.content_type() != Some("application/octet-stream")
+            || response.content_encoding() != Some("identity")
+        {
+            return Err(ApplicationError::InvalidInput(
+                "uploaded object does not match reservation",
+            ));
         }
         Ok(())
     }

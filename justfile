@@ -73,6 +73,10 @@ deploy-k3s environment mode="auto":
 load-test:
     cargo xtask load-test
 
+# Optional host-process diagnostic. Deployed acceptance uses test-k3s/load-test.
+load-test-local:
+    cargo xtask load-test-local
+
 openapi:
     cargo xtask openapi
 

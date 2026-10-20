@@ -1,6 +1,6 @@
 use super::{
-    FileContent, FileSettings, FileSummary, ReserveFile, TransferStream, entities::file,
-    repository, search::FileSearch, storage::FileStorage, transfer,
+    DownloadMethod, FileSettings, FileSummary, PresignedTransfer, ReserveFile, entities::file,
+    repository, search::FileSearch, storage::FileStorage,
 };
 use crate::{
     ApplicationError, ApplicationResult,
@@ -11,13 +11,10 @@ use crate::{
     pagination::{Page, PageRequest},
 };
 use chrono::Duration;
-use futures_util::StreamExt;
 use jobs::TraceContext;
 use sea_orm::{DatabaseTransaction, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use std::{ops::Range, sync::Arc};
-use tokio::sync::Semaphore;
-use tokio_util::io::ReaderStream;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub const FILE_DELETE_JOB: &str = "files.delete_original";
@@ -36,7 +33,6 @@ pub struct FileService {
     pub(super) storage: Option<FileStorage>,
     pub(super) search: Option<FileSearch>,
     pub(super) settings: Arc<FileSettings>,
-    transfer_permits: Arc<Semaphore>,
 }
 
 impl FileService {
@@ -69,18 +65,16 @@ impl FileService {
             search: settings.search.clone().map(FileSearch::new).transpose()?,
             identity,
             organizations,
-            transfer_permits: Arc::new(Semaphore::new(settings.transfer_concurrency)),
             settings: Arc::new(settings),
         })
-    }
-
-    pub fn upload_timeout_seconds(&self) -> u64 {
-        self.settings.transfer_seconds + 65
     }
 
     pub async fn initialize_integrations(&self) -> ApplicationResult<()> {
         if let Some(storage) = &self.storage {
             storage.create_bucket().await?;
+            storage
+                .configure_browser_transfers(&self.settings.browser_origins)
+                .await?;
         }
         if let Some(search) = &self.search {
             search.configure_index().await?;
@@ -126,7 +120,7 @@ impl FileService {
             return Err(ApplicationError::FileQuotaExceeded);
         }
         let expires_at =
-            now + Duration::seconds(900.max(self.settings.transfer_seconds as i64 + 120));
+            now + Duration::seconds(900.max(self.settings.upload_url_seconds as i64 + 120));
         let file = repository::insert_reservation(
             &transaction,
             organization_id,
@@ -140,16 +134,14 @@ impl FileService {
     }
 
     #[tracing::instrument(skip_all, fields(file_id = %file_id, request_id = %trace.request_id))]
-    pub async fn upload_original(
+    pub async fn create_upload_url(
         &self,
         actor: &AuthenticatedSession,
         organization_id: Uuid,
         file_id: Uuid,
-        body: TransferStream,
         trace: TraceContext,
-    ) -> ApplicationResult<FileSummary> {
+    ) -> ApplicationResult<PresignedTransfer> {
         let storage = self.require_storage()?;
-        let _permit = transfer::acquire_transfer(&self.transfer_permits)?;
         let transaction = self.identity.database.begin().await?;
         self.organizations
             .require_member_in_transaction(&transaction, actor, organization_id)
@@ -162,21 +154,53 @@ impl FileService {
         if file.uploader_id != actor.account_id() {
             return Err(ApplicationError::Forbidden);
         }
-        if file.state != FileState::Uploading || file.upload_expires_at <= now {
+        if !matches!(file.state, FileState::Uploading | FileState::Transferring)
+            || file.upload_expires_at <= now
+        {
             return Err(ApplicationError::Conflict);
         }
-        let transferring =
-            repository::set_state(&transaction, file, FileState::Transferring, now, None).await?;
+        let transferring = if file.state == FileState::Uploading {
+            repository::set_state(&transaction, file, FileState::Transferring, now, None).await?
+        } else {
+            file
+        };
         transaction.commit().await?;
-        let (temporary, content_hash) =
-            transfer::spool_original(body, transferring.byte_size as u64, &self.settings).await?;
         storage
-            .put_original(
+            .presign_upload(
                 &transferring.object_key,
-                temporary.path(),
+                &transferring.filename,
                 transferring.byte_size as u64,
+                now,
+                transferring
+                    .upload_expires_at
+                    .min(now + Duration::seconds(self.settings.upload_url_seconds as i64)),
             )
-            .await?;
+            .await
+    }
+
+    #[tracing::instrument(skip_all, fields(file_id = %file_id, request_id = %trace.request_id))]
+    pub async fn complete_upload(
+        &self,
+        actor: &AuthenticatedSession,
+        organization_id: Uuid,
+        file_id: Uuid,
+        trace: TraceContext,
+    ) -> ApplicationResult<FileSummary> {
+        let snapshot = self.get_file(actor, organization_id, file_id).await?;
+        if snapshot.uploader_id != actor.account_id() {
+            return Err(ApplicationError::Forbidden);
+        }
+        if snapshot.state != FileState::Ready {
+            if snapshot.state != FileState::Transferring {
+                return Err(ApplicationError::Conflict);
+            }
+            self.require_storage()?
+                .require_original_metadata(
+                    &format!("originals/{organization_id}/{file_id}"),
+                    snapshot.byte_size,
+                )
+                .await?;
+        }
         let transaction = self.identity.database.begin().await?;
         self.organizations
             .require_member_in_transaction(&transaction, actor, organization_id)
@@ -186,20 +210,21 @@ impl FileService {
             organization_id,
         )?;
         let now = database_time(&transaction).await?;
+        if current.uploader_id != actor.account_id() {
+            return Err(ApplicationError::Forbidden);
+        }
+        if current.state == FileState::Ready {
+            transaction.commit().await?;
+            return Ok(current.into());
+        }
         if current.state != FileState::Transferring
-            || current.version != transferring.version
+            || current.version != snapshot.version
             || current.upload_expires_at <= now
         {
             return Err(ApplicationError::Conflict);
         }
-        let ready = repository::set_state(
-            &transaction,
-            current,
-            FileState::Ready,
-            now,
-            Some(content_hash),
-        )
-        .await?;
+        let ready =
+            repository::set_state(&transaction, current, FileState::Ready, now, None).await?;
         self.enqueue_search(&transaction, file_id, trace).await?;
         transaction.commit().await?;
         Ok(ready.into())
@@ -252,15 +277,14 @@ impl FileService {
         ))
     }
 
-    pub async fn download_original(
+    pub async fn create_download_url(
         &self,
         actor: &AuthenticatedSession,
         organization_id: Uuid,
         file_id: Uuid,
-        range: Option<Range<u64>>,
-    ) -> ApplicationResult<FileContent> {
+        method: DownloadMethod,
+    ) -> ApplicationResult<PresignedTransfer> {
         let storage = self.require_storage()?;
-        let permit = transfer::acquire_transfer(&self.transfer_permits)?;
         let transaction = self.identity.database.begin().await?;
         self.organizations
             .require_member_in_transaction(&transaction, actor, organization_id)
@@ -272,38 +296,17 @@ impl FileService {
         if file.state != FileState::Ready {
             return Err(ApplicationError::NotFound);
         }
+        let now = database_time(&transaction).await?;
         transaction.commit().await?;
-        let range = range.unwrap_or(0..file.byte_size as u64);
-        if range.start > range.end || range.end > file.byte_size as u64 {
-            return Err(ApplicationError::InvalidInput("invalid file range"));
-        }
-        let byte_length = range.end - range.start;
-        let body = storage.get_original(&file.object_key, range).await?;
-        let stream = ReaderStream::with_capacity(body.into_async_read(), 64 * 1024).boxed();
-        Ok(FileContent {
-            file: file.into(),
-            byte_length,
-            stream: transfer::bounded_download(stream, permit, byte_length, &self.settings),
-        })
-    }
-
-    pub async fn original_metadata(
-        &self,
-        actor: &AuthenticatedSession,
-        organization_id: Uuid,
-        file_id: Uuid,
-    ) -> ApplicationResult<FileSummary> {
-        let file = self.get_file(actor, organization_id, file_id).await?;
-        if file.state != FileState::Ready {
-            return Err(ApplicationError::NotFound);
-        }
-        self.require_storage()?
-            .require_original_size(
-                &format!("originals/{organization_id}/{file_id}"),
-                file.byte_size,
+        storage
+            .presign_download(
+                &file.object_key,
+                &file.filename,
+                method,
+                now,
+                now + Duration::seconds(self.settings.download_url_seconds as i64),
             )
-            .await?;
-        Ok(file)
+            .await
     }
 
     #[tracing::instrument(skip_all, fields(file_id = %file_id, request_id = %trace.request_id))]

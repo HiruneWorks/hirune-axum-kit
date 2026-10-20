@@ -148,8 +148,10 @@ file, CI, Dockerfile, and documentation together.
 
 Use `just` and the locked Cargo workspace. Choose checks by the changed contract:
 unit checks, real PostgreSQL and concurrency tests, production-router API tests,
-separate-process and SMTP tests, OpenAPI drift, and k6 load checks. Commands and
-their prerequisites live in [development](development.md). Do not substitute a
+separate-process and SMTP contracts, and OpenAPI drift. Run deployed E2E and k6
+workflows in the two-node Kubernetes fixture through the release image, APISIX,
+and actual storage/search services. Host-process load is an optional diagnostic.
+Commands and prerequisites live in [development](development.md). Do not substitute a
 test router or authentication bypass for the real application path.
 
 Keep documentation, migrations, API schemas, examples, configuration, and tests
@@ -159,6 +161,9 @@ acceptance, or production capacity.
 
 Preserve unrelated user changes. Commit finished work in coherent units with
 concise English messages. Use descriptive branches without a `codex/` prefix.
+Open a draft PR after the first reviewable commit on a work branch. Continue
+implementation and validation on that PR. Keep its description and check results
+current; do not wait until the changes are finished before opening it.
 Do not rewrite commits or run destructive Git operations without explicit user
 authorization. Update `memory/` and its index at completed milestones using its
 template; record durable facts, decisions, and verification limits, never secrets.

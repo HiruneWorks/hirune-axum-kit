@@ -178,8 +178,11 @@ The maintenance service registers search repair as well as cleanup; file deletio
 and indexing jobs use the application queue and require a normal worker. Back up
 PostgreSQL and file originals. Rebuild the search index from database metadata when needed.
 
-The container has a 512 MiB temporary filesystem for bounded upload spooling.
-Default four concurrent 100 MiB uploads fit within it. Increasing file size or
-transfer concurrency requires increasing temporary capacity or mounting a
-dedicated temporary directory and setting `FILE_TEMPORARY_DIRECTORY`. The private
-temporary directory must not be a served or executable application path.
+File bytes bypass the API through presigned S3 URLs. Set S3_PUBLIC_ENDPOINT when
+clients cannot reach S3_ENDPOINT. Preserve the signed host, path, and query. Keep
+the bucket private. Provision its CORS rules from ALLOWED_ORIGINS through
+`manage initialize-integrations`. Set `X-Content-Type-Options: nosniff` on the
+storage ingress and omit signed queries from logs and error reports. Enforce a
+maximum total PUT duration no greater than FILE_UPLOAD_GRACE_SECONDS (one hour
+by default). Deleting files retain their quota through that writer horizon.
+See [the file contract](../docs/behavior/files-and-search.md).

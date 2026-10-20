@@ -1,10 +1,10 @@
 import { sleep } from 'k6';
 import { Counter } from 'k6/metrics';
-import { request, requireCheck } from './helpers.js';
+import { diagnosticStatuses, request, requireCheck } from './helpers.js';
 import { verifyOrganizationPagination, renameOrganization } from './workflows/organizations.js';
 import { verifySessions } from './workflows/sessions.js';
 import { verifyExternalApi } from './workflows/external_api.js';
-import { transferOriginal } from './workflows/files.js';
+import { transferOriginal, deleteOriginal } from './workflows/files.js';
 import { runContentWorkflow } from './workflows/content.js';
 
 const accounts = JSON.parse(__ENV.LOAD_ACCOUNTS);
@@ -24,6 +24,9 @@ const thresholds = {
 };
 for (let virtualUser = 1; virtualUser <= virtualUsers; virtualUser += 1) {
   thresholds[`completed_workflows{virtual_user:${virtualUser}}`] = ['count>0'];
+}
+for (const status of diagnosticStatuses) {
+  thresholds[`unexpected_http_responses{status:${status}}`] = ['count==0'];
 }
 
 export const options = {
@@ -59,8 +62,9 @@ function runWorkflow() {
   request(secondApi, 'GET', foreignOrganizationPath, 'foreign_organization_rejected', currentToken, null, 404);
   currentToken = verifySessions(firstApi, secondApi, account, currentToken);
   verifyExternalApi(firstApi, secondApi, account);
-  transferOriginal(firstApi, secondApi, organizationPath, foreignOrganizationPath, currentToken);
-  runContentWorkflow(firstApi, secondApi, organizationPath, foreignOrganizationPath, account, currentToken);
+  const original = transferOriginal(firstApi, secondApi, organizationPath, foreignOrganizationPath, currentToken);
+  runContentWorkflow(firstApi, secondApi, organizationPath, foreignOrganizationPath, account, currentToken, original.id);
+  deleteOriginal(firstApi, secondApi, original, currentToken);
   completedWorkflows.add(1, { virtual_user: String(__VU) });
   // Pace reservations below the ordinary per-account limit without weakening it.
   sleep(Math.max(0, 5 - (Date.now() - started) / 1000));
@@ -74,4 +78,30 @@ export default function () {
     workflowFailures.add(1);
     throw error;
   }
+}
+
+export function handleSummary(data) {
+  const values = name => data.metrics[name]?.values || {};
+  const result = {
+    requests: values('http_reqs').count || 0,
+    failed_requests: values('http_req_failed').rate || 0,
+    failed_checks: values('checks').fails || 0,
+    workflow_failures: values('workflow_failures').count || 0,
+    completed_workflows: values('completed_workflows').count || 0,
+    session_revocations: values('session_revocations').count || 0,
+    p95_milliseconds: values('http_req_duration')['p(95)'] || 0,
+    failed_assertions: data.root_group.checks.filter(check => check.fails > 0)
+      .map(check => ({ name: check.name, failures: check.fails })),
+    unexpected_statuses: diagnosticStatuses.map(status => ({
+      status, count: values(`unexpected_http_responses{status:${status}}`).count || 0,
+    })).filter(result => result.count > 0),
+    client_errors: {
+      minimum_code: values('unexpected_client_error_codes').min || 0,
+      maximum_code: values('unexpected_client_error_codes').max || 0,
+      first_iteration: values('unexpected_client_error_iterations').min || 0,
+      last_iteration: values('unexpected_client_error_iterations').max || 0,
+      eof_count: values('unexpected_client_eof').count || 0,
+    },
+  };
+  return { stdout: `K3S_E2E_RESULT ${JSON.stringify(result)}\n` };
 }

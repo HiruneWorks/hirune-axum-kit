@@ -1,5 +1,12 @@
 import http from 'k6/http';
 import { check, fail } from 'k6';
+import { Counter, Trend } from 'k6/metrics';
+
+export const diagnosticStatuses = ['0', '400', '401', '403', '404', '408', '409', '412', '429', '500', '502', '503', '504', 'other'];
+const unexpectedResponses = new Counter('unexpected_http_responses');
+const clientErrorCodes = new Trend('unexpected_client_error_codes');
+const clientErrorIterations = new Trend('unexpected_client_error_iterations');
+const clientEof = new Counter('unexpected_client_eof');
 
 export function requireCheck(condition, name) {
   if (!check(condition, { [name]: value => value })) {
@@ -9,13 +16,20 @@ export function requireCheck(condition, name) {
 
 export function request(baseUrl, method, path, name, token, body = null, expectedStatus = 200, extraHeaders = {}) {
   const response = http.request(method, `${baseUrl}${path}`, body, {
-    headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
+    headers: { ...(__ENV.K3S_E2E === 'true' ? { 'CF-Connecting-IP': `198.51.100.${70 + __VU}` } : {}), Authorization: `Bearer ${token}`, ...extraHeaders },
     tags: { name },
     timeout: '15s',
     redirects: 0,
     responseCallback: http.expectedStatuses(expectedStatus),
   });
   if (response.status !== expectedStatus) {
+    const status = String(response.status);
+    unexpectedResponses.add(1, { status: diagnosticStatuses.includes(status) ? status : 'other' });
+    if (response.status === 0) {
+      clientErrorCodes.add(response.error_code || 0);
+      clientErrorIterations.add(__ITER);
+      if (/\bEOF\b/.test(response.error || '')) clientEof.add(1);
+    }
     let errorCode = 'unparsed_response';
     try {
       const candidate = response.json('error.code');

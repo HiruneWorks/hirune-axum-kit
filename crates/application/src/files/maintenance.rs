@@ -41,6 +41,7 @@ impl FileService {
         if !matches!(snapshot.state, FileState::Deleting | FileState::Deleted) {
             return Ok(());
         }
+        let deletion_started_at = database_time(&self.identity.database).await?;
         self.require_storage()?
             .delete_original(&snapshot.object_key)
             .await?;
@@ -48,8 +49,13 @@ impl FileService {
         let Some(current) = repository::lock(&transaction, file_id).await? else {
             return Ok(());
         };
-        if current.state == FileState::Deleting {
-            let now = database_time(&transaction).await?;
+        let now = database_time(&transaction).await?;
+        // A signed PUT can still finish after expiry. Keep its quota until ingress's deadline.
+        if current.state == FileState::Deleting
+            && current.upload_expires_at
+                + chrono::Duration::seconds(self.settings.upload_grace_seconds as i64)
+                < deletion_started_at
+        {
             repository::set_state(&transaction, current, FileState::Deleted, now, None).await?;
             self.enqueue_search(&transaction, file_id, TraceContext::default())
                 .await?;
@@ -58,7 +64,7 @@ impl FileService {
         file::Entity::update_many()
             .col_expr(file::Column::CleanupCompletedAt, Expr::value(Some(now)))
             .filter(file::Column::Id.eq(file_id))
-            .filter(file::Column::State.eq(FileState::Deleted))
+            .filter(file::Column::State.is_in([FileState::Deleting, FileState::Deleted]))
             .exec(&transaction)
             .await?;
         transaction.commit().await?;
@@ -107,7 +113,10 @@ impl FileService {
                 file::Column::UpdatedAt
                     .lt(now - chrono::Duration::days(self.settings.tombstone_days)),
             )
-            .filter(file::Column::UploadExpiresAt.lt(now))
+            .filter(
+                file::Column::UploadExpiresAt
+                    .lt(now - chrono::Duration::seconds(self.settings.upload_grace_seconds as i64)),
+            )
             .filter(file::Column::CleanupCompletedAt.gte(now - chrono::Duration::days(1)));
         let purge = purge.limit(100).into_query();
         file::Entity::delete_many()

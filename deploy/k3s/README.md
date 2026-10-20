@@ -257,7 +257,8 @@ all processes and retain keys required by stored encrypted data.
 
 ## Acceptance
 
-On a Linux Docker host, install `k3d v5.9.0` and `kubectl v1.37.1`, build the
+On a Linux Docker host with API 1.48 or newer, install `k3d v5.9.0` and
+`kubectl v1.37.1`, build the
 canonical release image, and reserve at least 20 GiB for native snapshots:
 
 ```sh
@@ -266,7 +267,9 @@ K3S_TEST_IMAGE=hirune-kit:local just test-k3s
 
 The Rust fixture creates and removes its own two-node k3d cluster. It uses a native
 container snapshotter, Flannel host-gw, and a null kernel-message device for nested
-hosts. Network-policy enforcement stays enabled. It never changes the user's
+hosts. Image export selects the daemon's native Linux platform. Cached image
+indexes must not import references to absent architecture variants.
+Network-policy enforcement stays enabled. It never changes the user's
 kubeconfig. The isolated kubeconfig has an intentionally unusable current context;
 operations must use the explicitly selected context.
 
@@ -274,9 +277,24 @@ The fixture deploys a disposable prod overlay with two API Pods on distinct node
 A fixture-only topology patch requires each new API revision to span these two
 nodes. Terminating old Pods cannot skew placement of the new revision.
 Production uses preferred spreading. The fixture also deploys two APISIX Pods,
-Valkey, PostgreSQL, Mailpit, and probes. Real cloudflared replicas are zero.
-Local HTTP/mail and one database owner are fixture-only substitutions. The
-separate production fixture verifies HTTPS, STARTTLS, and restricted DB roles.
+Valkey, PostgreSQL, Mailpit, SeaweedFS, Meilisearch, a separate storage ingress,
+probes, and a k6 Job. Real cloudflared replicas are zero. Local HTTP/mail are
+fixture-only substitutions. Separate schema-owner, runtime, and maintenance
+database roles use the real migration grants. The separate production fixture
+verifies HTTPS, STARTTLS, and backup/restore.
+
+The deployed workflow creates users through signup and worker mail, then verifies
+organizations, sessions, external API access, presigned transfers, attached posts,
+comments, profiles, notifications, and search. The client Job uses APISIX for API
+requests and a separate Caddy endpoint for S3 bytes. It has no storage credentials.
+Caddy preserves the signed Host and enforces a 30-second total body-read timeout.
+Private provider ports reject direct client access. Retained originals and post
+attachments remain readable after API replacement and coordinated maintenance.
+Deletion denies new URLs and removes bytes through the worker. Quota-release and
+late-upload horizons remain focused provider tests without database time changes
+in the deployed fixture. `just load-test` runs this same acceptance command;
+`K6_PROFILE=extended` selects twenty users for two minutes. Native process load is
+available only as the optional `just load-test-local` diagnostic.
 
 Acceptance covers an unfinished migration guard, automatic maintenance for a
 fresh schema, failed deployment after migration with automatic recovery, failed

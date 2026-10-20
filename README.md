@@ -54,7 +54,7 @@ database restoration fixtures. It does not deploy the application.
 
 Run `just infra-up-files`, enable the commented S3/Meilisearch settings in
 `.envs/.local/app.env`, and run `just manage initialize-integrations` after
-migrations. The API stores original bytes in the private S3 bucket. PostgreSQL
+migrations. Clients transfer original bytes directly to the private S3 bucket through short-lived presigned URLs. The API authorizes issuance and verifies upload completion. PostgreSQL
 controls attachment access. Separate Meilisearch projections support filename,
 published-post, and organization-user search. Run the worker
 for deletion and indexing, and run `maintenance` for periodic cleanup and search

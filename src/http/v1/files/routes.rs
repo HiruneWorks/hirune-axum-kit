@@ -1,6 +1,6 @@
 use super::{
-    delete_file, download_original, get_file, head_original, list_files, reserve_file,
-    search_files, upload_original,
+    complete_upload, create_download_url, create_upload_url, delete_file, get_file, list_files,
+    reserve_file, search_files,
 };
 use crate::http::HttpState;
 
@@ -19,9 +19,15 @@ pub(in crate::http::v1) fn routes() -> axum::Router<HttpState> {
             axum::routing::get(get_file::get_file).delete(delete_file::delete_file),
         )
         .route(
-            "/organizations/{organization_id}/files/{file_id}/content",
-            axum::routing::get(download_original::download_original)
-                .head(head_original::head_original)
-                .put(upload_original::upload_original),
+            "/organizations/{organization_id}/files/{file_id}/upload-url",
+            axum::routing::post(create_upload_url::create_upload_url),
+        )
+        .route(
+            "/organizations/{organization_id}/files/{file_id}/complete-upload",
+            axum::routing::post(complete_upload::complete_upload),
+        )
+        .route(
+            "/organizations/{organization_id}/files/{file_id}/download-url",
+            axum::routing::post(create_download_url::create_download_url),
         )
 }
