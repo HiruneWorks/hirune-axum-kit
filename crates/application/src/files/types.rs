@@ -1,12 +1,7 @@
 use super::{S3Settings, SearchSettings, entities::file};
 use crate::{ApplicationError, ApplicationResult, files::FileState};
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use futures_util::stream::BoxStream;
-use std::path::PathBuf;
 use uuid::Uuid;
-
-pub type TransferStream = BoxStream<'static, Result<Bytes, std::io::Error>>;
 
 #[derive(Clone, Debug)]
 pub struct FileSettings {
@@ -18,10 +13,10 @@ pub struct FileSettings {
     pub pending_file_limit: u64,
     pub reservations_per_minute: u64,
     pub tombstone_days: i64,
-    pub transfer_concurrency: usize,
-    pub transfer_seconds: u64,
-    pub idle_seconds: u64,
-    pub temporary_directory: PathBuf,
+    pub upload_url_seconds: u64,
+    pub download_url_seconds: u64,
+    pub upload_grace_seconds: u64,
+    pub browser_origins: Vec<String>,
 }
 
 impl Default for FileSettings {
@@ -35,10 +30,10 @@ impl Default for FileSettings {
             pending_file_limit: 100,
             reservations_per_minute: 30,
             tombstone_days: 30,
-            transfer_concurrency: 4,
-            transfer_seconds: 300,
-            idle_seconds: 30,
-            temporary_directory: std::env::temp_dir(),
+            upload_url_seconds: 300,
+            download_url_seconds: 60,
+            upload_grace_seconds: 3600,
+            browser_origins: Vec::new(),
         }
     }
 }
@@ -52,10 +47,9 @@ impl FileSettings {
             || !(1..=self.organization_file_limit).contains(&self.pending_file_limit)
             || !(1..=10_000).contains(&self.reservations_per_minute)
             || !(1..=3650).contains(&self.tombstone_days)
-            || !(1..=64).contains(&self.transfer_concurrency)
-            || !(30..=3600).contains(&self.transfer_seconds)
-            || !(1..=self.transfer_seconds).contains(&self.idle_seconds)
-            || !self.temporary_directory.is_absolute()
+            || !(1..=3600).contains(&self.upload_url_seconds)
+            || !(1..=300).contains(&self.download_url_seconds)
+            || !(30..=86400).contains(&self.upload_grace_seconds)
         {
             return Err(ApplicationError::InvalidInput("invalid file settings"));
         }
@@ -64,6 +58,17 @@ impl FileSettings {
         }
         if let Some(search) = &self.search {
             search.validate()?;
+        }
+        for origin in &self.browser_origins {
+            let url = url::Url::parse(origin)
+                .map_err(|_| ApplicationError::InvalidInput("invalid storage browser origin"))?;
+            if !matches!(url.scheme(), "http" | "https")
+                || url.origin().ascii_serialization() != *origin
+            {
+                return Err(ApplicationError::InvalidInput(
+                    "invalid storage browser origin",
+                ));
+            }
         }
         Ok(())
     }
@@ -107,8 +112,49 @@ impl From<file::Model> for FileSummary {
     }
 }
 
-pub struct FileContent {
-    pub file: FileSummary,
-    pub stream: TransferStream,
-    pub byte_length: u64,
+#[derive(Clone, Copy)]
+pub enum DownloadMethod {
+    Get,
+    Head,
+}
+
+#[derive(Clone, Copy)]
+pub enum TransferMethod {
+    Put,
+    Get,
+    Head,
+}
+
+impl TransferMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Put => "PUT",
+            Self::Get => "GET",
+            Self::Head => "HEAD",
+        }
+    }
+}
+
+pub struct PresignedTransfer {
+    pub url: String,
+    pub method: TransferMethod,
+    /// Browser clients set Content-Length from the exact File/Blob body.
+    pub headers: Vec<TransferHeader>,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl std::fmt::Debug for PresignedTransfer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PresignedTransfer")
+            .field("url", &"[REDACTED]")
+            .field("method", &self.method.as_str())
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+pub struct TransferHeader {
+    pub name: String,
+    pub value: String,
 }

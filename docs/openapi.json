@@ -267,6 +267,25 @@
         ],
         "type": "object"
       },
+      "CreateDownloadUrlInput": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "$ref": "#/components/schemas/DownloadMethod"
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "type": "object"
+      },
+      "DownloadMethod": {
+        "enum": [
+          "GET",
+          "HEAD"
+        ],
+        "type": "string"
+      },
       "EmailInput": {
         "additionalProperties": false,
         "properties": {
@@ -354,10 +373,6 @@
           "version"
         ],
         "type": "object"
-      },
-      "FileBytes": {
-        "format": "binary",
-        "type": "string"
       },
       "FileOutput": {
         "properties": {
@@ -1011,6 +1026,35 @@
         ],
         "type": "string"
       },
+      "PresignedTransferOutput": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "headers": {
+            "description": "Send these unchanged. The browser sets the signed Content-Length from File/Blob.",
+            "items": {
+              "$ref": "#/components/schemas/TransferHeaderOutput"
+            },
+            "type": "array"
+          },
+          "method": {
+            "$ref": "#/components/schemas/TransferMethod"
+          },
+          "url": {
+            "description": "A bearer URL. Do not log or persist it. Send no API credentials to storage.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "method",
+          "headers",
+          "expires_at"
+        ],
+        "type": "object"
+      },
       "ProfileInput": {
         "additionalProperties": false,
         "properties": {
@@ -1461,6 +1505,29 @@
           "authenticator_url"
         ],
         "type": "object"
+      },
+      "TransferHeaderOutput": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "TransferMethod": {
+        "enum": [
+          "PUT",
+          "GET",
+          "HEAD"
+        ],
+        "type": "string"
       },
       "UnreadOutput": {
         "properties": {
@@ -8848,9 +8915,9 @@
         ]
       }
     },
-    "/api/v1/organizations/{organization_id}/files/{file_id}/content": {
-      "get": {
-        "operationId": "download_original",
+    "/api/v1/organizations/{organization_id}/files/{file_id}/complete-upload": {
+      "post": {
+        "operationId": "complete_upload",
         "parameters": [
           {
             "in": "path",
@@ -8868,60 +8935,20 @@
             "schema": {
               "format": "uuid",
               "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Range",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Range",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
             }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileBytes"
-                }
-              }
-            }
-          },
-          "206": {
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileBytes"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
+                  "$ref": "#/components/schemas/FileOutput"
                 }
               }
-            },
-            "description": "Invalid input"
+            }
           },
+          "400": {},
           "401": {
             "content": {
               "application/json": {
@@ -8932,26 +8959,8 @@
             },
             "description": "Authentication required"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Access denied"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
+          "403": {},
+          "404": {},
           "408": {
             "content": {
               "application/json": {
@@ -8962,156 +8971,7 @@
             },
             "description": "Request deadline elapsed"
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Conflicting state"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Body too large"
-          },
-          "416": {
-            "description": "Unsatisfiable or unsupported byte range"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Too many attempts"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Internal error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Service unavailable"
-          }
-        },
-        "security": [
-          {
-            "cookieAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "tags": [
-          "Files"
-        ]
-      },
-      "head": {
-        "operationId": "head_original",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "organization_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "file_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {},
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Invalid input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Authentication required"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Access denied"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "408": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Request deadline elapsed"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Conflicting state"
-          },
+          "409": {},
           "413": {
             "content": {
               "application/json": {
@@ -9142,16 +9002,7 @@
             },
             "description": "Internal error"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Service unavailable"
-          }
+          "503": {}
         },
         "security": [
           {
@@ -9164,9 +9015,11 @@
         "tags": [
           "Files"
         ]
-      },
-      "put": {
-        "operationId": "upload_original",
+      }
+    },
+    "/api/v1/organizations/{organization_id}/files/{file_id}/download-url": {
+      "post": {
+        "operationId": "create_download_url",
         "parameters": [
           {
             "in": "path",
@@ -9189,9 +9042,9 @@
         ],
         "requestBody": {
           "content": {
-            "application/octet-stream": {
+            "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FileBytes"
+                "$ref": "#/components/schemas/CreateDownloadUrlInput"
               }
             }
           },
@@ -9202,7 +9055,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FileOutput"
+                  "$ref": "#/components/schemas/PresignedTransferOutput"
                 }
               }
             }
@@ -9237,16 +9090,7 @@
             },
             "description": "Access denied"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOutput"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
+          "404": {},
           "408": {
             "content": {
               "application/json": {
@@ -9297,7 +9141,55 @@
             },
             "description": "Internal error"
           },
-          "503": {
+          "503": {}
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organization_id}/files/{file_id}/upload-url": {
+      "post": {
+        "operationId": "create_upload_url",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignedTransferOutput"
+                }
+              }
+            }
+          },
+          "400": {
             "content": {
               "application/json": {
                 "schema": {
@@ -9305,8 +9197,62 @@
                 }
               }
             },
-            "description": "Service unavailable"
-          }
+            "description": "Invalid input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {},
+          "404": {},
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Request deadline elapsed"
+          },
+          "409": {},
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Body too large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Too many attempts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {}
         },
         "security": [
           {

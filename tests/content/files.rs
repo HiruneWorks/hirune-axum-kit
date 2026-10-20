@@ -1,21 +1,16 @@
 use super::fixture::Fixture;
 use application::{
     ApplicationError,
-    files::{ReserveFile, TransferStream, entities::file},
+    files::{ReserveFile, entities::file},
     posts::{
         PostPublication, SavePost,
         entities::{post, post_attachment},
     },
 };
-use bytes::Bytes;
-use futures_util::{StreamExt, stream};
 use jobs::TraceContext;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, sea_query::Expr};
 use uuid::Uuid;
 
-fn original() -> TransferStream {
-    stream::once(async { Ok::<_, std::io::Error>(Bytes::from_static(b"content")) }).boxed()
-}
 async fn uploaded(f: &Fixture, organization_id: Uuid) -> anyhow::Result<Uuid> {
     let reserved = f
         .app
@@ -31,13 +26,35 @@ async fn uploaded(f: &Fixture, organization_id: Uuid) -> anyhow::Result<Uuid> {
             TraceContext::default(),
         )
         .await?;
-    f.app
+    let transfer = f
+        .app
         .files
-        .upload_original(
+        .create_upload_url(
             &f.owner,
             organization_id,
             reserved.id,
-            original(),
+            TraceContext::default(),
+        )
+        .await?;
+    let mut request = reqwest::Client::new().put(&transfer.url).body("content");
+    for header in &transfer.headers {
+        request = request.header(&header.name, &header.value);
+    }
+    anyhow::ensure!(
+        request
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("direct PUT failed"))?
+            .status()
+            .is_success(),
+        "direct PUT refused"
+    );
+    f.app
+        .files
+        .complete_upload(
+            &f.owner,
+            organization_id,
+            reserved.id,
             TraceContext::default(),
         )
         .await?;
@@ -117,6 +134,14 @@ async fn attachments_reject_cross_organization_files_and_cleanup_cascades_only_l
             1,
             TraceContext::default(),
         )
+        .await?;
+    file::Entity::update_many()
+        .col_expr(
+            file::Column::UploadExpiresAt,
+            Expr::value(chrono::Utc::now() - chrono::Duration::hours(2)),
+        )
+        .filter(file::Column::Id.is_in([first, second]))
+        .exec(&f.database.connection)
         .await?;
     f.drain().await?;
     let now = chrono::Utc::now();

@@ -2,17 +2,22 @@ mod support;
 
 #[path = "files/locking.rs"]
 mod locking;
+#[path = "files/presigned.rs"]
+mod presigned;
 
 use anyhow::Context;
 use application::{
     ApplicationError,
-    files::{FileSettings, ReserveFile, S3Settings, SearchSettings, entities::file},
+    files::{
+        DownloadMethod, FileSettings, FileSummary, PresignedTransfer, ReserveFile, S3Settings,
+        SearchSettings, entities::file,
+    },
     organizations::entities::membership,
 };
 use axum::http::{StatusCode, header};
 use axum_test::TestServer;
 use bytes::Bytes;
-use futures_util::{StreamExt, stream};
+use futures_util::stream;
 use jobs::TraceContext;
 use kit::{
     bootstrap::{Application, bootstrap},
@@ -36,6 +41,7 @@ fn integration_settings() -> anyhow::Result<FileSettings> {
     Ok(FileSettings {
         storage: Some(S3Settings {
             endpoint,
+            public_endpoint: None,
             bucket: "kit-files".into(),
             region: "us-east-1".into(),
             access_key: application::config::SecretString::new("kit-local-access"),
@@ -52,13 +58,112 @@ fn integration_settings() -> anyhow::Result<FileSettings> {
         }),
         max_file_bytes: 1024 * 1024,
         organization_quota_bytes: 4 * 1024 * 1024,
+        browser_origins: vec!["http://localhost:3000".into()],
         ..Default::default()
     })
 }
 
-fn body(bytes: impl Into<Bytes>) -> application::files::TransferStream {
+fn signed_request(transfer: &PresignedTransfer) -> reqwest::RequestBuilder {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap();
+    let mut request = client.request(
+        reqwest::Method::from_bytes(transfer.method.as_str().as_bytes()).unwrap(),
+        &transfer.url,
+    );
+    for header in &transfer.headers {
+        request = request.header(&header.name, &header.value);
+    }
+    request
+}
+
+async fn send_signed(request: reqwest::RequestBuilder) -> anyhow::Result<reqwest::Response> {
+    request
+        .send()
+        .await
+        .map_err(|_| anyhow::anyhow!("direct storage request failed"))
+}
+
+async fn upload(
+    app: &Application,
+    actor: &application::identity::AuthenticatedSession,
+    organization_id: Uuid,
+    file_id: Uuid,
+    bytes: impl Into<Bytes>,
+) -> anyhow::Result<FileSummary> {
+    let transfer = app
+        .files
+        .create_upload_url(actor, organization_id, file_id, TraceContext::default())
+        .await?;
     let bytes = bytes.into();
-    stream::once(async move { Ok(bytes) }).boxed()
+    let response = send_signed(
+        signed_request(&transfer)
+            .header("content-length", bytes.len())
+            .body(bytes),
+    )
+    .await?;
+    let status = response.status();
+    let error_code = if status.is_success() {
+        String::new()
+    } else {
+        let body = response.text().await.unwrap_or_default();
+        body.split_once("<Code>")
+            .and_then(|(_, rest)| rest.split_once("</Code>"))
+            .map(|(code, _)| code.to_owned())
+            .unwrap_or_default()
+    };
+    anyhow::ensure!(
+        status.is_success(),
+        "direct PUT failed: {status}, {error_code}"
+    );
+    Ok(app
+        .files
+        .complete_upload(actor, organization_id, file_id, TraceContext::default())
+        .await?)
+}
+
+async fn reserve(
+    app: &Application,
+    actor: &application::identity::AuthenticatedSession,
+    organization_id: Uuid,
+    size: u64,
+) -> anyhow::Result<FileSummary> {
+    Ok(app
+        .files
+        .reserve_file(
+            actor,
+            organization_id,
+            ReserveFile {
+                filename: "original.bin".into(),
+                media_type: None,
+                byte_size: size,
+            },
+            TraceContext::default(),
+        )
+        .await?)
+}
+
+fn transfer_from_json(value: Value) -> PresignedTransfer {
+    PresignedTransfer {
+        method: match value["method"].as_str().unwrap() {
+            "PUT" => application::files::TransferMethod::Put,
+            "HEAD" => application::files::TransferMethod::Head,
+            "GET" => application::files::TransferMethod::Get,
+            _ => panic!("unknown transfer method"),
+        },
+        url: value["url"].as_str().unwrap().into(),
+        expires_at: value["expires_at"].as_str().unwrap().parse().unwrap(),
+        headers: value["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|header| application::files::TransferHeader {
+                name: header["name"].as_str().unwrap().into(),
+                value: header["value"].as_str().unwrap().into(),
+            })
+            .collect(),
+    }
 }
 
 async fn drain_file_jobs(app: &Application) -> anyhow::Result<()> {
@@ -76,7 +181,7 @@ async fn expire_file(database: &TestDatabase, file_id: Uuid) -> anyhow::Result<(
     file::Entity::update_many()
         .col_expr(
             file::Column::UploadExpiresAt,
-            sea_orm::sea_query::Expr::value(chrono::Utc::now() - chrono::Duration::minutes(1)),
+            sea_orm::sea_query::Expr::value(chrono::Utc::now() - chrono::Duration::hours(2)),
         )
         .filter(file::Column::Id.eq(file_id))
         .exec(&database.connection)
@@ -101,253 +206,6 @@ fn s3_client(settings: &FileSettings) -> aws_sdk_s3::Client {
             .force_path_style(true)
             .build(),
     )
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL, SeaweedFS and Meilisearch; run just test-files"]
-async fn original_bytes_ranges_and_filename_search_use_the_production_router() -> anyhow::Result<()>
-{
-    let database = TestDatabase::create().await?;
-    let mut settings = support::settings(&database)?;
-    settings.files = integration_settings()?;
-    let app = bootstrap(&settings).await?;
-    app.files
-        .initialize_integrations()
-        .await
-        .context("initial file integration provisioning")?;
-    app.files
-        .initialize_integrations()
-        .await
-        .context("repeated file integration provisioning")?;
-    let (actor, credentials) = database.verified_account(&app.identity).await?;
-    let (_, outsider) = database.verified_account(&app.identity).await?;
-    let organization = app
-        .organizations
-        .create_organization(&actor, "Originals".into())
-        .await?;
-    let server = TestServer::new(build_router(app.clone(), settings.http));
-    let authorization = format!("Bearer {}", credentials.token);
-    let preflight = server
-        .method(
-            axum::http::Method::OPTIONS,
-            "/api/v1/organizations/test/files/test/content",
-        )
-        .add_header(header::ORIGIN, "http://localhost:3000")
-        .add_header(header::ACCESS_CONTROL_REQUEST_METHOD, "HEAD")
-        .add_header(header::ACCESS_CONTROL_REQUEST_HEADERS, "authorization")
-        .await;
-    assert!(
-        preflight.headers()[header::ACCESS_CONTROL_ALLOW_METHODS]
-            .to_str()?
-            .contains("HEAD")
-    );
-    let collection = format!("/api/v1/organizations/{}/files", organization.id);
-    let bytes = Bytes::from(
-        [
-            b"<script>serverMustNotExecute()</script>".as_slice(),
-            &vec![0_u8; 40_000],
-        ]
-        .concat(),
-    );
-    let reserved = server.post(&collection).add_header(header::AUTHORIZATION, &authorization)
-        .json(&json!({"filename": "proposal-original.html", "media_type": "text/html", "byte_size": bytes.len()})).await;
-    reserved.assert_status(StatusCode::CREATED);
-    let metadata: Value = reserved.json();
-    let file_id = metadata["id"].as_str().unwrap();
-    let item = format!("{collection}/{file_id}");
-    let content = format!("{item}/content");
-    server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await
-        .assert_status_not_found();
-    server
-        .put(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .bytes(bytes.clone())
-        .await
-        .assert_status_ok();
-    server
-        .put(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .bytes(bytes.clone())
-        .await
-        .assert_status_conflict();
-    let downloaded = server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await;
-    downloaded.assert_status_ok();
-    assert_eq!(downloaded.as_bytes(), &bytes);
-    assert_eq!(
-        downloaded.headers()[header::CONTENT_TYPE],
-        "application/octet-stream"
-    );
-    assert!(
-        downloaded.headers()[header::CONTENT_DISPOSITION]
-            .to_str()?
-            .starts_with("attachment;")
-    );
-    assert_eq!(downloaded.headers()["x-content-type-options"], "nosniff");
-    let head = server
-        .method(axum::http::Method::HEAD, &content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await;
-    head.assert_status_ok();
-    assert_eq!(
-        head.headers()[header::CONTENT_LENGTH].to_str()?,
-        bytes.len().to_string()
-    );
-    assert!(head.as_bytes().is_empty());
-    let ranged = server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .add_header(header::RANGE, "bytes=0-7")
-        .await;
-    ranged.assert_status(StatusCode::PARTIAL_CONTENT);
-    assert_eq!(ranged.as_bytes().as_ref(), &bytes[..8]);
-    let suffix = server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .add_header(header::RANGE, "bytes=-6")
-        .await;
-    suffix.assert_status(StatusCode::PARTIAL_CONTENT);
-    assert_eq!(suffix.as_bytes().as_ref(), &bytes[bytes.len() - 6..]);
-    let invalid_range = server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .add_header(header::RANGE, "bytes=999999-")
-        .await;
-    invalid_range.assert_status(StatusCode::RANGE_NOT_SATISFIABLE);
-    assert_eq!(
-        invalid_range.headers()[header::CONTENT_RANGE].to_str()?,
-        format!("bytes */{}", bytes.len())
-    );
-    server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, format!("Bearer {}", outsider.token))
-        .await
-        .assert_status_not_found();
-    drain_file_jobs(&app).await?;
-    let search: Value = server
-        .get(&format!("{collection}/search?q=proposal"))
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await
-        .json();
-    assert_eq!(search["items"][0]["id"], file_id);
-    assert!(search.get("estimatedTotalHits").is_none());
-    server
-        .delete(&item)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await
-        .assert_status_no_content();
-    server
-        .get(&content)
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await
-        .assert_status_not_found();
-    let stale_search: Value = server
-        .get(&format!("{collection}/search?q=proposal"))
-        .add_header(header::AUTHORIZATION, &authorization)
-        .await
-        .json();
-    assert_eq!(stale_search["items"], json!([]));
-    drain_file_jobs(&app).await?;
-    assert_eq!(
-        file::Entity::find_by_id(Uuid::parse_str(file_id)?)
-            .one(&database.connection)
-            .await?
-            .unwrap()
-            .state,
-        application::files::FileState::Deleted
-    );
-    app.close().await?;
-    database.finish().await
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL, SeaweedFS and Meilisearch; run just test-files"]
-async fn mismatched_uploads_expire_and_empty_files_remain_valid_originals() -> anyhow::Result<()> {
-    let database = TestDatabase::create().await?;
-    let mut settings = support::settings(&database)?;
-    settings.files = integration_settings()?;
-    let app = bootstrap(&settings).await?;
-    app.files.initialize_integrations().await?;
-    let (actor, _) = database.verified_account(&app.identity).await?;
-    let organization = app
-        .organizations
-        .create_organization(&actor, "Lengths".into())
-        .await?;
-    for bytes in ["x", "too many bytes"] {
-        let reservation = app
-            .files
-            .reserve_file(
-                &actor,
-                organization.id,
-                ReserveFile {
-                    filename: "unchanged.bin".into(),
-                    media_type: None,
-                    byte_size: 2,
-                },
-                TraceContext::default(),
-            )
-            .await?;
-        assert!(
-            app.files
-                .upload_original(
-                    &actor,
-                    organization.id,
-                    reservation.id,
-                    body(bytes),
-                    TraceContext::default()
-                )
-                .await
-                .is_err()
-        );
-        assert!(matches!(
-            app.files
-                .download_original(&actor, organization.id, reservation.id, None)
-                .await,
-            Err(ApplicationError::NotFound)
-        ));
-        expire_file(&database, reservation.id).await?;
-    }
-    assert_eq!(app.files.reconcile_files().await?, 2);
-    drain_file_jobs(&app).await?;
-    let empty = app
-        .files
-        .reserve_file(
-            &actor,
-            organization.id,
-            ReserveFile {
-                filename: "empty.bin".into(),
-                media_type: None,
-                byte_size: 0,
-            },
-            TraceContext::default(),
-        )
-        .await?;
-    app.files
-        .upload_original(
-            &actor,
-            organization.id,
-            empty.id,
-            body(Bytes::new()),
-            TraceContext::default(),
-        )
-        .await?;
-    let content = app
-        .files
-        .download_original(&actor, organization.id, empty.id, None)
-        .await?;
-    assert_eq!(content.byte_length, 0);
-    assert!(content.stream.collect::<Vec<_>>().await.is_empty());
-    app.files
-        .delete_file(&actor, organization.id, empty.id, TraceContext::default())
-        .await?;
-    drain_file_jobs(&app).await?;
-    app.close().await?;
-    database.finish().await
 }
 
 #[tokio::test]
@@ -426,230 +284,6 @@ async fn concurrent_members_cannot_overreserve_organization_quota() -> anyhow::R
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL, SeaweedFS and Meilisearch; run just test-files"]
-async fn deletion_defeats_late_upload_completion_and_reconciliation_removes_its_bytes()
--> anyhow::Result<()> {
-    let database = TestDatabase::create().await?;
-    let mut settings = support::settings(&database)?;
-    settings.files = integration_settings()?;
-    let client = s3_client(&settings.files);
-    let app = bootstrap(&settings).await?;
-    app.files.initialize_integrations().await?;
-    let (actor, _) = database.verified_account(&app.identity).await?;
-    let organization = app
-        .organizations
-        .create_organization(&actor, "Delete race".into())
-        .await?;
-    let reservation = app
-        .files
-        .reserve_file(
-            &actor,
-            organization.id,
-            ReserveFile {
-                filename: "late.bin".into(),
-                media_type: None,
-                byte_size: 4,
-            },
-            TraceContext::default(),
-        )
-        .await?;
-    let release = Arc::new(tokio::sync::Notify::new());
-    let upload = tokio::spawn({
-        let files = app.files.clone();
-        let actor = actor.clone();
-        let release = release.clone();
-        async move {
-            files
-                .upload_original(
-                    &actor,
-                    organization.id,
-                    reservation.id,
-                    stream::once(async move {
-                        release.notified().await;
-                        Ok(Bytes::from_static(b"late"))
-                    })
-                    .boxed(),
-                    TraceContext::default(),
-                )
-                .await
-        }
-    });
-    for _ in 0..100 {
-        if file::Entity::find_by_id(reservation.id)
-            .one(&database.connection)
-            .await?
-            .unwrap()
-            .state
-            == application::files::FileState::Transferring
-        {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    app.files
-        .delete_file(
-            &actor,
-            organization.id,
-            reservation.id,
-            TraceContext::default(),
-        )
-        .await?;
-    drain_file_jobs(&app).await?;
-    release.notify_one();
-    assert!(matches!(upload.await?, Err(ApplicationError::Conflict)));
-    let key = format!("originals/{}/{}", organization.id, reservation.id);
-    assert!(
-        client
-            .head_object()
-            .bucket("kit-files")
-            .key(&key)
-            .send()
-            .await
-            .is_ok()
-    );
-    assert!(app.files.reconcile_files().await? >= 1);
-    drain_file_jobs(&app).await?;
-    assert!(
-        client
-            .head_object()
-            .bucket("kit-files")
-            .key(&key)
-            .send()
-            .await
-            .is_err()
-    );
-    app.close().await?;
-    database.finish().await
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL, SeaweedFS and Meilisearch; run just test-files"]
-async fn cancellation_removes_temporary_bytes_and_downloads_hold_transfer_slots()
--> anyhow::Result<()> {
-    let database = TestDatabase::create().await?;
-    let temporary = tempfile::tempdir()?;
-    let mut settings = support::settings(&database)?;
-    settings.files = integration_settings()?;
-    settings.files.transfer_concurrency = 1;
-    settings.files.temporary_directory = temporary.path().to_owned();
-    let app = bootstrap(&settings).await?;
-    app.files.initialize_integrations().await?;
-    let (actor, _) = database.verified_account(&app.identity).await?;
-    let organization = app
-        .organizations
-        .create_organization(&actor, "Transfer lifetime".into())
-        .await?;
-    let canceled = app
-        .files
-        .reserve_file(
-            &actor,
-            organization.id,
-            ReserveFile {
-                filename: "cancel.bin".into(),
-                media_type: None,
-                byte_size: 4,
-            },
-            TraceContext::default(),
-        )
-        .await?;
-    let upload = tokio::spawn({
-        let files = app.files.clone();
-        let actor = actor.clone();
-        async move {
-            files
-                .upload_original(
-                    &actor,
-                    organization.id,
-                    canceled.id,
-                    stream::pending().boxed(),
-                    TraceContext::default(),
-                )
-                .await
-        }
-    });
-    for _ in 0..100 {
-        if std::fs::read_dir(temporary.path())?.next().is_some() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    assert!(std::fs::read_dir(temporary.path())?.next().is_some());
-    upload.abort();
-    assert!(matches!(upload.await, Err(error) if error.is_cancelled()));
-    assert!(std::fs::read_dir(temporary.path())?.next().is_none());
-    expire_file(&database, canceled.id).await?;
-    app.files.reconcile_files().await?;
-    drain_file_jobs(&app).await?;
-    let ready = app
-        .files
-        .reserve_file(
-            &actor,
-            organization.id,
-            ReserveFile {
-                filename: "ready.bin".into(),
-                media_type: None,
-                byte_size: 4,
-            },
-            TraceContext::default(),
-        )
-        .await?;
-    app.files
-        .upload_original(
-            &actor,
-            organization.id,
-            ready.id,
-            body("data"),
-            TraceContext::default(),
-        )
-        .await?;
-    let first = app
-        .files
-        .download_original(&actor, organization.id, ready.id, None)
-        .await?;
-    assert!(matches!(
-        app.files
-            .download_original(&actor, organization.id, ready.id, None)
-            .await,
-        Err(ApplicationError::IntegrationUnavailable)
-    ));
-    drop(first);
-    let second = app
-        .files
-        .download_original(&actor, organization.id, ready.id, None)
-        .await?;
-    drop(second);
-    membership::Entity::delete_many()
-        .filter(membership::Column::OrganizationId.eq(organization.id))
-        .filter(membership::Column::AccountId.eq(actor.account_id()))
-        .exec(&database.connection)
-        .await?;
-    assert!(matches!(
-        app.files.get_file(&actor, organization.id, ready.id).await,
-        Err(ApplicationError::NotFound)
-    ));
-    assert!(matches!(
-        app.files
-            .search_files(&actor, organization.id, "ready")
-            .await,
-        Err(ApplicationError::NotFound)
-    ));
-    membership::ActiveModel {
-        id: Set(Uuid::now_v7()),
-        organization_id: Set(organization.id),
-        account_id: Set(actor.account_id()),
-        role: Set(application::organizations::MembershipRole::Owner),
-    }
-    .insert(&database.connection)
-    .await?;
-    app.files
-        .delete_file(&actor, organization.id, ready.id, TraceContext::default())
-        .await?;
-    drain_file_jobs(&app).await?;
-    app.close().await?;
-    database.finish().await
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL, SeaweedFS and Meilisearch; run just test-files"]
 async fn zero_byte_reservations_are_rate_limited_and_old_confirmed_tombstones_are_purged()
 -> anyhow::Result<()> {
     let database = TestDatabase::create().await?;
@@ -678,15 +312,7 @@ async fn zero_byte_reservations_are_rate_limited_and_old_confirmed_tombstones_ar
             .await,
         Err(ApplicationError::RateLimited)
     ));
-    app.files
-        .upload_original(
-            &actor,
-            organization.id,
-            original.id,
-            body(Bytes::new()),
-            TraceContext::default(),
-        )
-        .await?;
+    upload(&app, &actor, organization.id, original.id, Bytes::new()).await?;
     drain_file_jobs(&app).await?;
     let mut disabled_settings = settings.files.clone();
     disabled_settings.search = None;
@@ -703,6 +329,7 @@ async fn zero_byte_reservations_are_rate_limited_and_old_confirmed_tombstones_ar
             TraceContext::default(),
         )
         .await?;
+    expire_file(&database, original.id).await?;
     while let Some(claim) = app.queue.claim(30, 120).await? {
         search_disabled
             .execute_job(&claim)

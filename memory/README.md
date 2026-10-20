@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-20 — Presigned original-file transfers](2026-10-20-presigned-file-transfers.md):
+  direct private S3 PUT/GET/HEAD, authorized URL issuance and completion, immutable
+  originals, quota-safe late-write cleanup, and the updated client contract.
+
 - [2026-10-18 — Single-host data services and pgBackRest](2026-10-18-single-host-data-backups.md):
   Docker Compose PostgreSQL/Meilisearch beside k3s, off-host backup configuration,
   restricted grants, and isolated physical/PITR recovery.

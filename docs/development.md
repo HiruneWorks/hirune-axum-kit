@@ -30,7 +30,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-db` | Real PostgreSQL identity, queue, and schema-consistency tests, including transaction/concurrency failures, immediate slot refill across 1/2/4 worker pools, empty-queue polling bounds, and entity/enum drift detection. |
 | `just test-api` | Production-router API and local signed OIDC tests; external API scope, shared quota concurrency, window rollover, authority races, transaction rollback, and retention; Turnstile-protected identity routes against a local fake siteverify server. |
 | `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
-| `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, range downloads, tenant access, quota races, cancellation, and late-upload deletion. |
+| `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, direct range downloads, tenant access, quota races, conditional PUT races, and late-upload deletion. |
 | `just test-content` | Real PostgreSQL/SeaweedFS/Meilisearch content, profiles, Cedar, revision conflicts, scoped pagination/search, transactional inbox, session-bound push devices, and provider-independent push gates. |
 | `just test-deployment` | Validate local Compose, isolated dev/prod Kubernetes overlays, database-role separation, and Secret-triggered rollouts using temporary examples. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
@@ -94,7 +94,9 @@ run. The check also rejects p95 latency at or above two seconds. Thresholds requ
 Every virtual user must complete a full workflow and revoke its separate session
 once. Search visibility must remain below ten seconds for each workflow, with a
 matching p95 threshold.
-After k6 exits, originals must reach the deleted state and pending work must drain.
+After k6 exits, the isolated fixture advances expired writer deadlines. Originals
+must then reach the deleted state and pending work must drain. This fixture step
+does not establish a production storage-ingress timeout.
 Any failed background attempt also fails the check, even if a later retry succeeds.
 
 `K6_PROFILE=extended` uses twenty users for two minutes. Set the environment in

@@ -11,7 +11,7 @@ use jobs::{
     entities::{job, job_attempt},
 };
 use reqwest::Client;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, sea_query::Expr};
 use serde::Serialize;
 use std::{collections::BTreeMap, time::Duration};
 use test_support::{TEST_PASSWORD, TestDatabase};
@@ -111,6 +111,8 @@ fn configure_file_integrations(environment: &mut ProcessEnvironment) -> Result<(
         .context("load tests require TEST_S3_ENDPOINT; run just load-test")?;
     let search_endpoint = std::env::var("TEST_MEILISEARCH_URL")
         .context("load tests require TEST_MEILISEARCH_URL; run just load-test")?;
+    let mut public_storage_endpoint: url::Url = storage_endpoint.parse()?;
+    public_storage_endpoint.set_host(Some("host.docker.internal"))?;
     for endpoint in [&storage_endpoint, &search_endpoint] {
         let url: url::Url = endpoint.parse()?;
         ensure!(
@@ -121,6 +123,7 @@ fn configure_file_integrations(environment: &mut ProcessEnvironment) -> Result<(
     environment.values.extend(
         [
             ("S3_ENDPOINT", storage_endpoint),
+            ("S3_PUBLIC_ENDPOINT", public_storage_endpoint.to_string()),
             ("S3_BUCKET", "kit-files".into()),
             ("S3_REGION", "us-east-1".into()),
             ("S3_ACCESS_KEY", "kit-local-access".into()),
@@ -146,10 +149,7 @@ fn configure_file_integrations(environment: &mut ProcessEnvironment) -> Result<(
             ("MEILISEARCH_ALLOW_HTTP", "true".into()),
             ("WORKER_CONCURRENCY", "4".into()),
             ("WORKER_POLL_MILLISECONDS", "50".into()),
-            (
-                "FILE_TEMPORARY_DIRECTORY",
-                environment.directory.path().to_string_lossy().into_owned(),
-            ),
+            ("FILE_UPLOAD_GRACE_SECONDS", "30".into()),
         ]
         .into_iter()
         .map(|(key, value)| (key.to_owned(), value)),
@@ -299,6 +299,22 @@ async fn mixed_workload() -> Result<()> {
                 "load workflow admission history is incomplete"
             );
         }
+        // This isolated fixture advances the writer horizon after all k6 PUTs finish.
+        file::Entity::update_many()
+            .col_expr(
+                file::Column::UploadExpiresAt,
+                Expr::value(chrono::Utc::now() - chrono::Duration::hours(2)),
+            )
+            .col_expr(
+                file::Column::CleanupScheduledAt,
+                Expr::value(None::<chrono::DateTime<chrono::Utc>>),
+            )
+            .filter(file::Column::State.eq(application::files::FileState::Deleting))
+            .exec(&database.connection)
+            .await?;
+        let cleanup = kit::bootstrap::bootstrap(&settings).await?;
+        while cleanup.files.reconcile_files().await? > 0 {}
+        cleanup.close().await?;
         wait_for_file_cleanup(&database, &mut worker).await
     }
     .await;

@@ -206,12 +206,23 @@ impl Settings {
         };
         worker.validate()?;
         let supplied = |name: &str| values.get(name).is_some_and(|value| !value.is_empty());
-        let storage = if ["S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"]
-            .iter()
-            .any(|name| supplied(name))
+        let storage = if [
+            "S3_ENDPOINT",
+            "S3_PUBLIC_ENDPOINT",
+            "S3_BUCKET",
+            "S3_ACCESS_KEY",
+            "S3_SECRET_KEY",
+        ]
+        .iter()
+        .any(|name| supplied(name))
         {
             Some(S3Settings {
                 endpoint: Url::parse(&required("S3_ENDPOINT")?).context("invalid S3_ENDPOINT")?,
+                public_endpoint: values
+                    .get("S3_PUBLIC_ENDPOINT")
+                    .filter(|value| !value.is_empty())
+                    .map(|value| Url::parse(value).context("invalid S3_PUBLIC_ENDPOINT"))
+                    .transpose()?,
                 bucket: required("S3_BUCKET")?,
                 region: get("S3_REGION", "us-east-1"),
                 access_key: SecretString::new(required("S3_ACCESS_KEY")?),
@@ -280,12 +291,22 @@ impl Settings {
                 "FILE_ORGANIZATION_QUOTA_BYTES",
                 defaults.organization_quota_bytes,
             )?,
-            transfer_concurrency: number(
+            upload_url_seconds: number(
                 values,
-                "FILE_TRANSFER_CONCURRENCY",
-                defaults.transfer_concurrency,
+                "FILE_UPLOAD_URL_SECONDS",
+                defaults.upload_url_seconds,
             )?,
-            transfer_seconds: number(values, "FILE_TRANSFER_SECONDS", defaults.transfer_seconds)?,
+            download_url_seconds: number(
+                values,
+                "FILE_DOWNLOAD_URL_SECONDS",
+                defaults.download_url_seconds,
+            )?,
+            upload_grace_seconds: number(
+                values,
+                "FILE_UPLOAD_GRACE_SECONDS",
+                defaults.upload_grace_seconds,
+            )?,
+            browser_origins: http.allowed_origins.clone(),
             organization_file_limit: number(
                 values,
                 "FILE_ORGANIZATION_LIMIT",
@@ -298,11 +319,6 @@ impl Settings {
                 defaults.reservations_per_minute,
             )?,
             tombstone_days: number(values, "FILE_TOMBSTONE_DAYS", defaults.tombstone_days)?,
-            idle_seconds: number(values, "FILE_TRANSFER_IDLE_SECONDS", defaults.idle_seconds)?,
-            temporary_directory: values
-                .get("FILE_TEMPORARY_DIRECTORY")
-                .map(std::path::PathBuf::from)
-                .unwrap_or(defaults.temporary_directory),
         };
         files.validate()?;
         let oidc = oidc::parse_providers(values, production)?;
