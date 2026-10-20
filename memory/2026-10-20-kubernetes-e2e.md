@@ -50,10 +50,15 @@
   that the bridge client could not reach loopback-only provider ports. The native
   diagnostic now uses host networking on Linux; deployed E2E uses cluster services.
 - Final workspace Clippy passed with warnings denied.
-- The first deployed attempt reached two ready k3s nodes, then stopped because
-  the release image was still building and was not available for import. Add an
-  image preflight to fail before cluster creation in that case. Full deployed
-  execution and new remote CI remain pending. No production deployment occurred.
+- The canonical local release image build passed. An early deployed attempt
+  reached two ready nodes before the image existed; image preflight now rejects
+  that case before cluster creation.
+- Follow-up review found that Caddy's `http.request.host` removes the client port.
+  Use `http.request.hostport` to preserve the complete signed authority. Caddy
+  validation and Astra's pinned-source review confirmed the correction. Stop and
+  remove the older local fixture before rerunning the rebuilt test configuration.
+- Full deployed execution and new remote CI remain pending. No production
+  deployment occurred.
 
 ## Remaining work
 

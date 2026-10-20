@@ -21,7 +21,8 @@
 		max_size 100MB
 	}
 	reverse_proxy seaweedfs:8333 {
-		header_up Host {http.request.host}
+		# S3 signatures include the original authority and its non-default port.
+		header_up Host {http.request.hostport}
 		transport http {
 			dial_timeout 5s
 			response_header_timeout 30s
