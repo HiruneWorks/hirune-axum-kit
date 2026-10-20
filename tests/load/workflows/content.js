@@ -20,7 +20,7 @@ function waitForSearch(baseUrl, path, name, token, isVisible) {
   return page;
 }
 
-export function runContentWorkflow(firstApi, secondApi, organizationPath, foreignOrganizationPath, account, token) {
+export function runContentWorkflow(firstApi, secondApi, organizationPath, foreignOrganizationPath, account, token, attachmentId) {
   const marker = 'contentvu' + __VU + 'iteration' + __ITER;
   const profileMarker = 'profilevu' + __VU + 'iteration' + __ITER;
   const profile = json(jsonRequest(firstApi, 'PUT', '/api/v1/account/profile',
@@ -51,13 +51,16 @@ export function runContentWorkflow(firstApi, secondApi, organizationPath, foreig
   const posts = ['published', 'published', 'draft'].map((state, index) =>
     json(jsonRequest(firstApi, 'POST', postsPath, 'post_create', token, {
       title: marker + ' item ' + index, body: 'Organization content',
-      state, attachment_ids: [], expected_version: 0,
+      state, attachment_ids: index === 0 ? [attachmentId] : [], expected_version: 0,
     }, 201)));
   const postPath = postsPath + '/' + posts[0].id;
   posts[0] = json(jsonRequest(secondApi, 'PUT', postPath, 'post_update', token, {
     title: marker + ' revised', body: 'Updated organization content',
-    state: 'published', attachment_ids: [], expected_version: 1,
+    state: 'published', attachment_ids: [attachmentId], expected_version: 1,
   }));
+  const attached = json(request(firstApi, 'GET', postPath, 'post_attachment_read', token));
+  requireCheck(attached.attachment_ids.length === 1 && attached.attachment_ids[0] === attachmentId,
+    'deployed post hydrates its completed original attachment');
   requireCheck(posts[0].version === 2, 'post update advances its revision');
   jsonRequest(firstApi, 'PUT', postPath, 'post_stale_write', token, {
     title: marker, body: 'Stale change', state: 'published', attachment_ids: [], expected_version: 1,

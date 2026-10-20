@@ -148,8 +148,10 @@ file, CI, Dockerfile, and documentation together.
 
 Use `just` and the locked Cargo workspace. Choose checks by the changed contract:
 unit checks, real PostgreSQL and concurrency tests, production-router API tests,
-separate-process and SMTP tests, OpenAPI drift, and k6 load checks. Commands and
-their prerequisites live in [development](development.md). Do not substitute a
+separate-process and SMTP contracts, and OpenAPI drift. Run deployed E2E and k6
+workflows in the two-node Kubernetes fixture through the release image, APISIX,
+and actual storage/search services. Host-process load is an optional diagnostic.
+Commands and prerequisites live in [development](development.md). Do not substitute a
 test router or authentication bypass for the real application path.
 
 Keep documentation, migrations, API schemas, examples, configuration, and tests

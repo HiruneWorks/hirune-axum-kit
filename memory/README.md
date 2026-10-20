@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-20 — Deployed Kubernetes E2E](2026-10-20-kubernetes-e2e.md):
+  canonical two-node acceptance with real providers, direct presigned transfers,
+  attached content, retained state, restricted roles, and a Kubernetes k6 Job.
+
 - [2026-10-20 — Presigned original-file transfers](2026-10-20-presigned-file-transfers.md):
   direct private S3 PUT/GET/HEAD, authorized URL issuance and completion, immutable
   originals, quota-safe late-write cleanup, and the updated client contract.

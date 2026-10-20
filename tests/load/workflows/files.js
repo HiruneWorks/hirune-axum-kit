@@ -17,7 +17,7 @@ export function transferOriginal(firstApi, secondApi, organizationPath, foreignO
   const upload = json(request(firstApi, 'POST', `${filePath}/upload-url`, 'file_upload_url', token));
   const uploadHeaders = Object.fromEntries(upload.headers.map(header => [header.name, header.value]));
   const sent = http.put(upload.url, payload, { headers: uploadHeaders, tags: { name: 'storage_upload', url: 'storage_upload' }, redirects: 0 });
-  requireCheck(sent.status === 200, 'direct upload completes');
+  requireCheck(sent.status === 200, `direct upload completes (HTTP ${sent.status})`);
   const uploaded = json(request(firstApi, 'POST', `${filePath}/complete-upload`, 'file_complete', token));
   requireCheck(uploaded.state === 'ready' && uploaded.byte_size === payload.length,
     'completion verifies the declared size');
@@ -51,9 +51,14 @@ export function transferOriginal(firstApi, secondApi, organizationPath, foreignO
   requireCheck(visible && visibilityMilliseconds < 10000,
     'worker makes the filename searchable within the bounded wait');
 
+  return { id: reserved.id, filePath, searchPath };
+}
+
+export function deleteOriginal(firstApi, secondApi, original, token) {
+  const { id, filePath, searchPath } = original;
   request(firstApi, 'DELETE', filePath, 'file_delete', token, null, 204);
   jsonRequest(secondApi, 'POST', `${filePath}/download-url`, 'deleted_file_rejected', token, { method: 'GET' }, 404);
   const afterDelete = json(request(secondApi, 'GET', searchPath, 'file_search_after_delete', token));
-  requireCheck(afterDelete.items.every(file => file.id !== reserved.id),
+  requireCheck(afterDelete.items.every(file => file.id !== id),
     'deleted file disappears immediately even before index reconciliation');
 }

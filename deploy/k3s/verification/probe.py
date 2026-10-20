@@ -49,11 +49,12 @@ def session_headers():
     return {"Authorization": "Bearer " + state()["session"]}
 
 
-def prepare():
+def verified_account(client_ip="203.0.113.8"):
     email = "k3s-" + secrets.token_hex(8) + "@example.test"
     password = "k3s acceptance " + secrets.token_urlsafe(24)
     credentials = {"email": email, "password": password, "transport": "bearer"}
-    request("POST", "/api/v1/auth/signup", {"email": email, "password": password}, expected=202)
+    identity_headers = {"CF-Connecting-IP": client_ip}
+    request("POST", "/api/v1/auth/signup", {"email": email, "password": password}, headers=identity_headers, expected=202)
     deadline = time.monotonic() + 90
     token = None
     while time.monotonic() < deadline and token is None:
@@ -66,19 +67,26 @@ def prepare():
         if token is None:
             time.sleep(0.2)
     assert token is not None, "worker did not deliver verification mail"
-    request("POST", "/api/v1/auth/verification/confirm", {"token": token}, expected=204)
-    login, _ = request("POST", "/api/v1/auth/login", credentials)
+    request("POST", "/api/v1/auth/verification/confirm", {"token": token}, headers=identity_headers, expected=204)
+    login, _ = request("POST", "/api/v1/auth/login", credentials, headers=identity_headers)
     assert login["status"] == "authenticated"
     session = {"Authorization": "Bearer " + login["token"]}
     account, _ = request("GET", "/api/v1/account", headers=session)
     assert account["verified"] is True
+    return account, login, credentials
+
+
+def prepare():
+    account, login, credentials = verified_account()
+    session = {"Authorization": "Bearer " + login["token"]}
     organization, _ = request("POST", "/api/v1/organizations", {"name": "k3s acceptance"}, headers=session, expected=201)
     client_path = f"/api/v1/organizations/{organization['id']}/api-clients"
     client, _ = request("POST", client_path, {"name": "k3s partner", "scopes": ["organizations:read"]}, headers=session, expected=201)
     issued, _ = request("POST", client_path + "/" + client["id"] + "/keys",
                         {"name": "k3s key", "expires_in_days": 1}, headers=session, expected=201)
     STATE.write_text(json.dumps({"session": login["token"], "client": client["id"],
-                                 "key": issued["credential"], "credentials": credentials}))
+                                 "key": issued["credential"], "credentials": credentials,
+                                 "account_id": account["id"], "organization_id": organization["id"]}))
     STATE.chmod(0o600)
     # APISIX must preserve both the CF header and the secret-authenticated SSR override.
     request("POST", "/api/v1/auth/login", credentials,
@@ -204,6 +212,8 @@ def private_ingress():
     request("GET", "/health/ready", expected=204)
     cannot_connect("hirune-api", 3000)
     cannot_connect("hirune-edge-valkey", 6379)
+    cannot_connect("seaweedfs", 8333)
+    cannot_connect("meilisearch", 7700)
     print("Tunnel-labelled Pod can reach APISIX and cannot bypass it to the API or Valkey.")
 
 
@@ -211,14 +221,21 @@ def denied_ingress():
     cannot_connect("hirune-apisix", 9080)
     cannot_connect("hirune-api", 3000)
     cannot_connect("hirune-edge-valkey", 6379)
+    cannot_connect("storage-public", 8081)
     print("Untrusted Pod cannot connect to APISIX, the API, or Valkey.")
 
 
-{
-    "prepare": prepare, "client-id": lambda: print(state()["client"]),
-    "consume-two": consume_two, "after-rollout": after_rollout,
-    "retained-authority": retained_authority,
-    "maintenance": maintenance,
-    "traffic": traffic, "start-traffic": start_traffic, "stop-traffic": stop_traffic,
-    "private-ingress": private_ingress, "denied-ingress": denied_ingress,
-}[sys.argv[1]]()
+if __name__ == "__main__":
+    import files
+    import workflows
+
+    {
+        "prepare": prepare, "client-id": lambda: print(state()["client"]),
+        "consume-two": consume_two, "after-rollout": after_rollout,
+        "retained-authority": retained_authority,
+        "maintenance": maintenance,
+        "files-prepare": files.prepare, "files-retained": files.retained, "files-delete": files.delete,
+        "workflow-seed": workflows.seed, "workflow-accounts": workflows.accounts,
+        "traffic": traffic, "start-traffic": start_traffic, "stop-traffic": stop_traffic,
+        "private-ingress": private_ingress, "denied-ingress": denied_ingress,
+    }[sys.argv[1]]()

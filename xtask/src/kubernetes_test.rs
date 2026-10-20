@@ -15,6 +15,9 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 mod autoscaling;
+mod database;
+mod services;
+mod workflows;
 
 const NAMESPACE: &str = "hirune-prod";
 const NODE_IMAGE: &str = "rancher/k3s:v1.37.1-k3s1";
@@ -24,6 +27,10 @@ const IMAGES: &[&str] = &[
     "postgres:18-alpine",
     "axllent/mailpit:v1.31.5",
     "python:3.14-alpine",
+    "chrislusf/seaweedfs:4.48",
+    "getmeili/meilisearch:v1.55.0",
+    "caddy:2.11.7-alpine",
+    "grafana/k6:2.2.0",
     "rancher/mirrored-pause:3.10.2",
     "rancher/klipper-helm:v0.13.3-build20260727",
 ];
@@ -44,8 +51,18 @@ pub(crate) fn configure_api_spread(profile: &Path) -> Result<()> {
 }
 
 pub fn verify() -> Result<()> {
+    workflows::profile()?;
     let image = std::env::var("K3S_TEST_IMAGE")
         .context("set K3S_TEST_IMAGE to the canonical release application image")?;
+    ensure!(
+        Command::new("docker")
+            .args(["image", "inspect", &image])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?
+            .success(),
+        "build the canonical release image before Kubernetes acceptance: {image} is not local"
+    );
     let fixture = Fixture {
         cluster: format!("kit-{}", &Uuid::now_v7().simple().to_string()[..12]),
         directory: tempfile::tempdir()?,
@@ -85,7 +102,7 @@ pub fn verify() -> Result<()> {
     }
     result?;
     println!(
-        "Two-node k3s acceptance passed: two API replicas, live rolling updates, shared sessions and quota, two gateways sharing Valkey, counter failure and recovery, environment isolation, and private ingress policies. Real Cloudflare Tunnel was not connected."
+        "Two-node k3s acceptance passed: deployed file/content/notification/search workflows and k6, retained attachments across replacement, two API replicas, live rolling updates, shared sessions and quota, two gateways sharing Valkey, counter failure and recovery, environment isolation, and private ingress policies. Real Cloudflare Tunnel was not connected."
     );
     Ok(())
 }
@@ -271,7 +288,10 @@ impl Fixture {
             "the two API replicas must run on different nodes"
         );
         println!("API replicas are ready on two distinct k3s nodes.");
+        self.initialize_file_integrations()?;
+        self.verify_database_roles()?;
         println!("{}", self.probe("prepare")?.trim());
+        println!("{}", self.probe("files-prepare")?.trim());
         let client_id = self.probe("client-id")?;
         let client_id = client_id.trim();
         Uuid::parse_str(client_id)?;
@@ -341,6 +361,7 @@ impl Fixture {
         );
         println!("{}", self.probe("stop-traffic")?.trim());
         println!("{}", self.probe("after-rollout")?.trim());
+        println!("{}", self.probe("files-retained")?.trim());
         self.probe("start-traffic")?;
         let gateway = self.json(&["get", "deployment", "hirune-apisix"])?;
         let api_before_gateway = self.api_pods()?;
@@ -384,6 +405,7 @@ impl Fixture {
             "application drain replaced Valkey"
         );
         println!("{}", self.probe("retained-authority")?.trim());
+        println!("{}", self.probe("files-retained")?.trim());
         self.check_failed_preflight()?;
         ensure!(
             self.other_environment_state()? == dev_before,
@@ -392,6 +414,8 @@ impl Fixture {
         println!(
             "Prod rolling and drained deployments left dev Pods and replicas unchanged with an unusable default context."
         );
+        self.verify_workflows()?;
+        println!("{}", self.probe("files-delete")?.trim());
         self.check_edge_limits()?;
         self.check_cold_start(&autoscaler)?;
         ensure!(
@@ -834,25 +858,44 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
                 .replace("SMTP_PORT=587", "SMTP_PORT=1025")
                 .replace("SMTP_STARTTLS=true", "SMTP_STARTTLS=false"),
         )?;
+        let mut app_environment = fs::OpenOptions::new().append(true).open(&path)?;
+        writeln!(
+            app_environment,
+            "\nS3_ENDPOINT=http://seaweedfs:8333/\nS3_PUBLIC_ENDPOINT=http://storage-public:8081/\nS3_BUCKET=kit-files\nS3_REGION=us-east-1\nS3_ALLOW_HTTP=true\nMEILISEARCH_URL=http://meilisearch:7700/\nMEILISEARCH_ALLOW_HTTP=true\nMEILISEARCH_INDEX=files\nMEILISEARCH_POSTS_INDEX=posts\nMEILISEARCH_PROFILES_INDEX=profiles"
+        )?;
         let password = auth_core::token::generate_secure_token();
-        let url = format!("postgres://kit:{password}@postgres:5432/kit");
+        let schema_password = auth_core::token::generate_secure_token();
+        let runtime_password = auth_core::token::generate_secure_token();
+        let maintenance_password = auth_core::token::generate_secure_token();
+        let storage_access = auth_core::token::generate_secure_token();
+        let storage_secret = auth_core::token::generate_secure_token();
+        let runtime_url = format!("postgres://runtime:{runtime_password}@postgres:5432/kit");
+        let maintenance_url =
+            format!("postgres://maintenance:{maintenance_password}@postgres:5432/kit");
+        let migration_url = format!("postgres://schema_owner:{schema_password}@postgres:5432/kit");
         let key = base64::engine::general_purpose::STANDARD.encode([17_u8; 32]);
         fs::write(
             profile.join("secrets.env"),
             format!(
-                "ACTIVE_SECRET_KEY=test-v1\nSECRET_KEYS={{\"test-v1\":\"{key}\"}}\nRATE_LIMIT_KEY={}\nINTERNAL_PROXY_SECRET={}\n",
+                "ACTIVE_SECRET_KEY=test-v1\nSECRET_KEYS={{\"test-v1\":\"{key}\"}}\nRATE_LIMIT_KEY={}\nINTERNAL_PROXY_SECRET={}\nS3_ACCESS_KEY={storage_access}\nS3_SECRET_KEY={storage_secret}\nMEILISEARCH_API_KEY={}\n",
+                auth_core::token::generate_secure_token(),
                 auth_core::token::generate_secure_token(),
                 auth_core::token::generate_secure_token()
             ),
         )?;
-        fs::write(profile.join("runtime.env"), format!("DATABASE_URL={url}\n"))?;
+        fs::write(
+            profile.join("runtime.env"),
+            format!("DATABASE_URL={runtime_url}\n"),
+        )?;
         fs::write(
             profile.join("maintenance.env"),
-            format!("DATABASE_URL={url}\n"),
+            format!("DATABASE_URL={maintenance_url}\n"),
         )?;
         fs::write(
             profile.join("migration.env"),
-            format!("MIGRATION_DATABASE_URL={url}\n"),
+            format!(
+                "MIGRATION_DATABASE_URL={migration_url}\nMIGRATION_RUNTIME_ROLE=runtime\nMIGRATION_MAINTENANCE_ROLE=maintenance\n"
+            ),
         )?;
         fs::write(
             profile.join("tunnel.env"),
@@ -864,7 +907,7 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
             deployment
                 .resources
                 .iter()
-                .filter(|r| r["kind"] == "Namespace")
+                .filter(|r| matches!(r["kind"].as_str(), Some("Namespace" | "Secret")))
                 .cloned()
                 .collect(),
         )?;
@@ -882,15 +925,22 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         let mut resources = vec![
             json!({"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"probe-checks"},
                 "data":{"probe.py":include_str!("../../deploy/k3s/verification/probe.py"),
-                    "edge.py":include_str!("../../deploy/k3s/verification/edge.py")}}),
+                    "edge.py":include_str!("../../deploy/k3s/verification/edge.py"),
+                    "files.py":include_str!("../../deploy/k3s/verification/files.py"),
+                    "workflows.py":include_str!("../../deploy/k3s/verification/workflows.py")}}),
         ];
+        resources.extend(self.file_service_resources(
+            &app_secret,
+            &storage_access,
+            &storage_secret,
+        ));
         for (name, image, port, env) in [
             (
                 "postgres",
                 "postgres:18-alpine",
                 5432,
                 json!([
-                {"name":"POSTGRES_USER","value":"kit"},{"name":"POSTGRES_DB","value":"kit"},
+                {"name":"POSTGRES_USER","value":"bootstrap"},{"name":"POSTGRES_DB","value":"postgres"},
                 {"name":"POSTGRES_PASSWORD","value":password} ]),
             ),
             ("mailpit", "axllent/mailpit:v1.31.5", 1025, json!([])),
@@ -913,12 +963,19 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
                 "labels":{"app.kubernetes.io/part-of":"hirune-kit","app.kubernetes.io/component":component}},
                 "spec":{"automountServiceAccountToken":false,"containers":[{"name":"probe","image":"python:3.14-alpine",
                     "command":["python","-c","import time; time.sleep(3600)"],
-                    "envFrom":[{"secretRef":{"name":app_secret}}],
+                    "env":[{"name":"K6_PROFILE","value":workflows::profile()?},
+                        {"name":"INTERNAL_PROXY_SECRET","valueFrom":{"secretKeyRef":{"name":app_secret,"key":"INTERNAL_PROXY_SECRET"}}}],
                     "volumeMounts":[{"name":"checks","mountPath":"/checks","readOnly":true}]}],
                     "volumes":[{"name":"checks","configMap":{"name":"probe-checks"}}]}}));
         }
         self.apply(json!({"apiVersion":"v1","kind":"List","items":resources}))?;
-        for name in ["postgres", "mailpit"] {
+        for name in [
+            "postgres",
+            "mailpit",
+            "seaweedfs",
+            "meilisearch",
+            "storage-public",
+        ] {
             crate::run(&mut self.kubectl(&[
                 "rollout",
                 "status",
@@ -926,6 +983,7 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
                 "--timeout=180s",
             ]))?;
         }
+        self.create_database_roles(&schema_password, &runtime_password, &maintenance_password)?;
         Ok(())
     }
 }

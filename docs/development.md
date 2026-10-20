@@ -35,9 +35,10 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-deployment` | Validate local Compose, isolated dev/prod Kubernetes overlays, database-role separation, and Secret-triggered rollouts using temporary examples. |
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
 | `just test-data-services` | Actual PostgreSQL/pgBackRest and Meilisearch Compose services: restricted migration grants, encrypted full/differential backup, isolated latest/PITR recovery, live-volume rejection, and persistent state across replacement. Uses a disposable local repository. |
-| `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, two APISIX gateways sharing Valkey, counter failure/recovery, environment isolation, and ingress policies. Requires `K3S_TEST_IMAGE`. |
+| `just test-k3s` | Canonical deployed E2E: two k3d nodes, release image, APISIX, restricted DB roles, worker/mail, direct presigned transfers, attached content, search, retained state across rollouts, k6, HPA, shared counters, and ingress policies. Requires `K3S_TEST_IMAGE`. |
 | `cd deploy; just up dev` / `just up prod` | Deploy to an explicit Kubernetes target. Defaults to auto: pending migrations use maintenance and drain; other running releases roll. Use `drain` to force an interruption. |
-| `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
+| `just load-test` | Same deployed Kubernetes acceptance as `just test-k3s`, including the selected k6 profile. Requires `K3S_TEST_IMAGE`. |
+| `just load-test-local` | Optional diagnostic: shared k6 workflows against two host API processes and local Compose providers. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
 | `just template-check` | Copy/rename the source into a temporary directory and run its workspace and identity/database tests. |
 
@@ -71,8 +72,10 @@ enum-column bindings, supported checks, and verification limits.
 
 The k6 entry point is `tests/load/mixed.js`. Shared HTTP assertions live in
 `helpers.js`. Organization, session, file, external API, and content workflows
-each have their own module. The process fixture mounts this script directory read-only
-into the k6 container.
+each have their own module. The Kubernetes fixture mounts these scripts read-only
+into a k6 Job. It seeds accounts through signup, worker mail verification, and
+login, then allocates client quotas through the real operator command. A temporary
+Secret supplies client credentials. The Job receives no storage signing keys.
 
 The default k6 profile uses two virtual users for ten seconds, each with its own
 account and organizations. It exercises scoped reads and pagination, optimistic
@@ -81,9 +84,10 @@ and original-file upload/download/search/deletion. Each VU also has a separate
 commenter account in its primary organization. It creates and updates published
 posts plus a private draft, traverses user/post/comment/inbox cursors, reads
 notifications, searches current post/profile revisions with numbered pages,
-and deletes the content. Two API keys per client also exercise the external
-organization and published-post routes across both instances and verify their
-shared monthly counter. The fixture checks PostgreSQL admission records after the run.
+and deletes the content. The first published post attaches the uploaded original
+and verifies attachment hydration. Two API keys per client also exercise external
+organization and published-post routes through both gateway Pods and verify their
+shared monthly counter. Gateway routing uses the real API Service.
 These fixture clients receive explicit operator allocation, independent of the
 ordinary session and file limits.
 
@@ -94,13 +98,16 @@ run. The check also rejects p95 latency at or above two seconds. Thresholds requ
 Every virtual user must complete a full workflow and revoke its separate session
 once. Search visibility must remain below ten seconds for each workflow, with a
 matching p95 threshold.
-After k6 exits, the isolated fixture advances expired writer deadlines. Originals
-must then reach the deleted state and pending work must drain. This fixture step
-does not establish a production storage-ingress timeout.
-Any failed background attempt also fails the check, even if a later retry succeeds.
+The Kubernetes fixture does not rewrite database deadlines. A separate retained
+file/post fixture checks access after rolling replacement and maintenance, then
+checks immediate API denial and worker removal of object bytes after deletion.
+Focused provider tests cover late uploads, reservation horizons, and quota release.
+The optional native diagnostic additionally inspects admission/job rows and
+advances fixture writer deadlines to verify cleanup completion.
 
-`K6_PROFILE=extended` uses twenty users for two minutes. Set the environment in
-your shell before `just load-test`. The workflow dispatch input selects that
+`K6_PROFILE=extended` uses twenty users for two minutes. Set this and
+`K3S_TEST_IMAGE` before `just load-test` or `just test-k3s`. CI runs this fixture once;
+the workflow dispatch input selects its
 profile in CI. Thresholds are regression gates, not a production capacity promise.
 Benchmark production builds, realistic data, distinct user populations, deployed
 network paths, and intended concurrency before a capacity decision.
@@ -139,12 +146,19 @@ of this command or its CI step does not establish that it passed.
 `K3S_TEST_IMAGE=hirune-kit:local just test-k3s` needs Docker, k3d v5.9.0, and
 kubectl v1.37.1. Build the canonical release image first. The fixture creates an
 isolated two-node k3s cluster and removes it afterward. It applies the production
-profile with local database/mail substitutions and no real Tunnel connection.
+profile with local HTTP/mail substitutions and no real Tunnel connection.
 It checks two API Pods on separate nodes, real APISIX routing, migration Job
 sequencing, automatic maintenance/failure/retry and cold-start recovery,
 failed preflight preserving running APIs, live API and config-only gateway rollouts, session/quota continuity,
 two gateways sharing Valkey, counter timeout/recovery and reset, separate dev
-counter state, and private ingress NetworkPolicies. See the [k3s runbook](../deploy/k3s/README.md).
+counter state, and private ingress NetworkPolicies. Separate schema-owner,
+runtime, and maintenance database roles enforce deployment grants. Real SeaweedFS
+and Meilisearch serve the workflow fixtures. A separate Caddy storage ingress
+preserves the signed Host and limits total request-body time to 30 seconds.
+Presigned traffic goes directly to this ingress, outside APISIX. CORS, conditional
+PUT, empty originals, GET/HEAD/range, authorization, attachments, deletion, and
+retained reads are exercised. The k6 Job runs before edge-limit fault injection.
+See the [k3s runbook](../deploy/k3s/README.md).
 Run this in addition to production acceptance; each fixture verifies a different
 deployment boundary. CI uses the same release image for both commands.
 

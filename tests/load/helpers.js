@@ -9,7 +9,7 @@ export function requireCheck(condition, name) {
 
 export function request(baseUrl, method, path, name, token, body = null, expectedStatus = 200, extraHeaders = {}) {
   const response = http.request(method, `${baseUrl}${path}`, body, {
-    headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
+    headers: { ...(__ENV.K3S_E2E === 'true' ? { 'CF-Connecting-IP': `198.51.100.${70 + __VU}` } : {}), Authorization: `Bearer ${token}`, ...extraHeaders },
     tags: { name },
     timeout: '15s',
     redirects: 0,

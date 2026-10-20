@@ -45,9 +45,6 @@ jobs:
       - run: just test-files
       - run: just test-content
       - run: just test-deployment
-      - run: just load-test
-        env:
-          K6_PROFILE: ${{ inputs.load_profile || 'smoke' }}
       - run: just template-check
   container:
     runs-on: ubuntu-latest
@@ -89,3 +86,4 @@ jobs:
       - run: cargo xtask test-k3s
         env:
           K3S_TEST_IMAGE: hirune-kit:ci
+          K6_PROFILE: ${{ inputs.load_profile || 'smoke' }}

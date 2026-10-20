@@ -108,11 +108,13 @@ async fn seed_accounts(database: &TestDatabase, count: usize) -> Result<Vec<Load
 
 fn configure_file_integrations(environment: &mut ProcessEnvironment) -> Result<()> {
     let storage_endpoint = std::env::var("TEST_S3_ENDPOINT")
-        .context("load tests require TEST_S3_ENDPOINT; run just load-test")?;
+        .context("load tests require TEST_S3_ENDPOINT; run just load-test-local")?;
     let search_endpoint = std::env::var("TEST_MEILISEARCH_URL")
-        .context("load tests require TEST_MEILISEARCH_URL; run just load-test")?;
+        .context("load tests require TEST_MEILISEARCH_URL; run just load-test-local")?;
     let mut public_storage_endpoint: url::Url = storage_endpoint.parse()?;
-    public_storage_endpoint.set_host(Some("host.docker.internal"))?;
+    if !cfg!(target_os = "linux") {
+        public_storage_endpoint.set_host(Some("host.docker.internal"))?;
+    }
     for endpoint in [&storage_endpoint, &search_endpoint] {
         let url: url::Url = endpoint.parse()?;
         ensure!(
@@ -252,12 +254,18 @@ async fn mixed_workload() -> Result<()> {
     let mut worker = environment.start(env!("CARGO_BIN_EXE_worker"), None)?;
     let result = async {
         let scripts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/load");
-        let status = Command::new("docker")
+        let mut docker = Command::new("docker");
+        docker.args(["run", "--rm"]);
+        // Linux host networking reaches the providers' loopback-only published ports.
+        let host = if cfg!(target_os = "linux") {
+            docker.args(["--network", "host"]);
+            "127.0.0.1"
+        } else {
+            docker.args(["--add-host", "host.docker.internal:host-gateway"]);
+            "host.docker.internal"
+        };
+        let status = docker
             .args([
-                "run",
-                "--rm",
-                "--add-host",
-                "host.docker.internal:host-gateway",
                 "--mount",
                 &format!(
                     "type=bind,source={},target=/scripts,readonly",
@@ -275,14 +283,8 @@ async fn mixed_workload() -> Result<()> {
                 "run",
                 "/scripts/mixed.js",
             ])
-            .env(
-                "FIRST_API_URL",
-                format!("http://host.docker.internal:{first_port}"),
-            )
-            .env(
-                "SECOND_API_URL",
-                format!("http://host.docker.internal:{second_port}"),
-            )
+            .env("FIRST_API_URL", format!("http://{host}:{first_port}"))
+            .env("SECOND_API_URL", format!("http://{host}:{second_port}"))
             .env("LOAD_ACCOUNTS", serde_json::to_string(&accounts)?)
             .env("K6_PROFILE", profile)
             .kill_on_drop(true)
