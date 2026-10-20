@@ -68,6 +68,16 @@
   Kubernetes acceptance requires Docker API 1.48 or newer for that option.
 - A direct PostgreSQL export/archive inspection passed with all 11 referenced
   blobs present and only `linux/amd64`, the current daemon platform.
+- CI run `39362555931` passed all focused checks, release-container/TLS/restore
+  acceptance, and data-service acceptance. Its Kubernetes run passed restricted
+  roles, presigned PUT/GET/HEAD/range, zero-byte originals, replay, CORS, tenant
+  authority, attached posts, filename search, and retained reads after API rollout.
+  It then failed the HPA maintenance test because the completed integration-init
+  Job retained worker labels and blocked the drain's Pod-deletion wait. Delete
+  that Job with foreground propagation immediately after successful initialization.
+- Disable k6 raw log output in the optional native diagnostic as well. A prior
+  failed native run confirmed signed URLs in automatic request-warning messages.
+  Typed summaries and process error-code counters remain available.
 
 ## Remaining work
 

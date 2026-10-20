@@ -111,6 +111,13 @@ impl Fixture {
             "spec":{"backoffLimit":0,"activeDeadlineSeconds":120,"template":template}}),
             Duration::from_secs(150),
         )?;
-        Ok(())
+        // This Job uses worker ingress labels. Its terminal Pod must not block a later drain.
+        crate::run(&mut self.kubectl(&[
+            "delete",
+            "job",
+            "fixture-initialize-integrations",
+            "--cascade=foreground",
+            "--wait=true",
+        ]))
     }
 }

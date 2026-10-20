@@ -281,6 +281,7 @@ async fn mixed_workload() -> Result<()> {
                 "K6_PROFILE",
                 "grafana/k6:2.2.0",
                 "run",
+                "--log-output=none",
                 "/scripts/mixed.js",
             ])
             .env("FIRST_API_URL", format!("http://{host}:{first_port}"))
