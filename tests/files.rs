@@ -64,14 +64,11 @@ fn integration_settings() -> anyhow::Result<FileSettings> {
 }
 
 fn signed_request(transfer: &PresignedTransfer) -> reqwest::RequestBuilder {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()
-        .unwrap();
-    let mut request = client.request(
+    let mut request = test_support::storage::request(
         reqwest::Method::from_bytes(transfer.method.as_str().as_bytes()).unwrap(),
         &transfer.url,
-    );
+    )
+    .expect("presigned test URL must use local storage");
     for header in &transfer.headers {
         request = request.header(&header.name, &header.value);
     }

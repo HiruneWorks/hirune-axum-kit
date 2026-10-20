@@ -9,7 +9,8 @@ This index is updated when a milestone is complete.
 
 - [2026-10-20 — Presigned original-file transfers](2026-10-20-presigned-file-transfers.md):
   direct private S3 PUT/GET/HEAD, authorized URL issuance and completion, immutable
-  originals, quota-safe late-write cleanup, and the updated client contract.
+  originals, quota-safe late-write cleanup, the updated client contract, and
+  confined local transfer clients with CodeQL dataflow review.
 
 - [2026-10-19 — HPA maintenance recovery](2026-10-19-hpa-maintenance-recovery.md):
   native HPA deactivation, durable replica recovery, and automatic replica

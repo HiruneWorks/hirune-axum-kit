@@ -67,8 +67,7 @@ async fn presigned_originals_use_authorized_urls_and_preserve_bytes() -> anyhow:
             .iter()
             .all(|header| header.name != "content-length")
     );
-    let preflight = reqwest::Client::new()
-        .request(reqwest::Method::OPTIONS, &transfer.url)
+    let preflight = test_support::storage::request(reqwest::Method::OPTIONS, &transfer.url)?
         .header("Origin", "http://localhost:3000")
         .header("Access-Control-Request-Method", "PUT")
         .header(
@@ -172,10 +171,13 @@ async fn presigned_originals_use_authorized_urls_and_preserve_bytes() -> anyhow:
         bytes.len().to_string()
     );
     assert!(
-        send_signed(reqwest::Client::new().get(&head.url))
-            .await?
-            .status()
-            .is_client_error()
+        send_signed(test_support::storage::request(
+            reqwest::Method::GET,
+            &head.url
+        )?)
+        .await?
+        .status()
+        .is_client_error()
     );
     let mut short_settings = settings.files.clone();
     short_settings.download_url_seconds = 1;

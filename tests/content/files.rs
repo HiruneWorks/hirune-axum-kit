@@ -36,7 +36,8 @@ async fn uploaded(f: &Fixture, organization_id: Uuid) -> anyhow::Result<Uuid> {
             TraceContext::default(),
         )
         .await?;
-    let mut request = reqwest::Client::new().put(&transfer.url).body("content");
+    let mut request =
+        test_support::storage::request(reqwest::Method::PUT, &transfer.url)?.body("content");
     for header in &transfer.headers {
         request = request.header(&header.name, &header.value);
     }

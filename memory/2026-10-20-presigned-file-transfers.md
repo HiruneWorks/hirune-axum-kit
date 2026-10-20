@@ -50,6 +50,18 @@
   fixture advances writer deadlines after all PUTs finish, then runs canonical
   reconciliation. This debug-build result does not establish production capacity.
 - `cargo check --locked --tests` and `git diff --check` passed.
+- Follow-up on PR #21: inspected CodeQL alerts 29, 30, and 31 and SARIF analysis
+  `1985929439`. All three paths propagate the authenticated-account Result through
+  authorization into the returned URL. Account data is not serialized into the
+  URL: the authorization result is discarded before signing file metadata.
+- Confine direct test transfers to their configured loopback origin. Disable
+  ambient proxies, redirects, and Referer generation; pin localhost to loopback.
+  The origin/redaction and actual redirect-refusal regression tests both passed.
+  Astra reviewed the guard and the account-data false-positive rationale.
+- The follow-up `just check`, all nine `just test-files` cases, and all 14
+  `just test-content` cases passed with the confined client. The first Clippy run
+  rejected an unchecked read amount in the new redirect fixture. The fixture now
+  reads through the HTTP header terminator; the complete rerun passed.
 
 ## Remaining work
 
@@ -57,3 +69,6 @@
   not run. Configure client reachability, bucket privacy, CORS, nosniff, query-log
   redaction, and a finite ingress PUT deadline before deployment.
 - Remote CI, pushing, publication, and deployment are separate and were not run.
+  This initial limitation is superseded by draft PR #21 and the separate
+  [Kubernetes E2E milestone](2026-10-20-kubernetes-e2e.md). No production deployment
+  has occurred.

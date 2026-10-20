@@ -13,6 +13,8 @@ use sea_orm::{
 use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
+pub mod storage;
+
 pub const TEST_PASSWORD: &str = "test-only strong passphrase";
 
 pub struct TestDatabase {

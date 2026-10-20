@@ -62,6 +62,11 @@ hosts are rejected. Process/load tests additionally require `TEST_SMTP_PORT` and
 File tests additionally require loopback `TEST_S3_ENDPOINT` and
 `TEST_MEILISEARCH_URL` using the local Compose credentials. `just test-files`
 starts these services automatically in its disposable Compose project.
+Direct storage clients recheck each generated URL against the configured loopback
+origin. They disable ambient proxies, redirects, and Referer generation. Localhost
+is pinned to loopback. Only disposable credentials and fixture bytes use this
+local HTTP boundary. Public deployments must use HTTPS for presigned URLs;
+`S3_ALLOW_HTTP=true` is an explicit transport-policy override, not a production default.
 Test databases from a panic may remain in external infrastructure. Inspect their
 generated `kit_test_` names before explicit cleanup.
 
