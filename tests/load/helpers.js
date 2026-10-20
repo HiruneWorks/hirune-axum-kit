@@ -1,5 +1,9 @@
 import http from 'k6/http';
 import { check, fail } from 'k6';
+import { Counter } from 'k6/metrics';
+
+export const diagnosticStatuses = ['0', '400', '401', '403', '404', '408', '409', '412', '429', '500', '502', '503', '504', 'other'];
+const unexpectedResponses = new Counter('unexpected_http_responses');
 
 export function requireCheck(condition, name) {
   if (!check(condition, { [name]: value => value })) {
@@ -16,6 +20,8 @@ export function request(baseUrl, method, path, name, token, body = null, expecte
     responseCallback: http.expectedStatuses(expectedStatus),
   });
   if (response.status !== expectedStatus) {
+    const status = String(response.status);
+    unexpectedResponses.add(1, { status: diagnosticStatuses.includes(status) ? status : 'other' });
     let errorCode = 'unparsed_response';
     try {
       const candidate = response.json('error.code');

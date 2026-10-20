@@ -84,8 +84,19 @@
 - Astra's follow-up review found the same terminal-Pod drain issue for the k6
   Job's tunnel label. Delete that Job with foreground propagation after its
   summary and thresholds are checked, before deleting its client Secret.
+- The older local diagnostic runner received the initialization Job cleanup
+  manually after the runner consumed its result. It passed file/attachment/search
+  checks and API-replacement continuity, then failed gateway-replacement continuity
+  with 7,312 successful requests and one unclassified error. The cluster was
+  removed by normal teardown. Keep the zero-error threshold; add safe HTTP-status
+  and network-exception-type counts for future continuity failures.
 
 ## Remaining work
+
+- CI run `39366403135` passed the focused verification job. Its deployed workload
+  completed four workflows but failed 12 readiness checks. Push run `39366399637`
+  failed six readiness checks at the same commit. Keep the strict thresholds and
+  report bounded HTTP-status counters without raw request logs to diagnose them.
 
 - Complete deployed Kubernetes acceptance and record actual local/CI results.
 - Real Tunnel, browser Fetch, external providers, target-cluster drain, and

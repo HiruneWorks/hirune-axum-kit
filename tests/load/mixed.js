@@ -1,6 +1,6 @@
 import { sleep } from 'k6';
 import { Counter } from 'k6/metrics';
-import { request, requireCheck } from './helpers.js';
+import { diagnosticStatuses, request, requireCheck } from './helpers.js';
 import { verifyOrganizationPagination, renameOrganization } from './workflows/organizations.js';
 import { verifySessions } from './workflows/sessions.js';
 import { verifyExternalApi } from './workflows/external_api.js';
@@ -24,6 +24,9 @@ const thresholds = {
 };
 for (let virtualUser = 1; virtualUser <= virtualUsers; virtualUser += 1) {
   thresholds[`completed_workflows{virtual_user:${virtualUser}}`] = ['count>0'];
+}
+for (const status of diagnosticStatuses) {
+  thresholds[`unexpected_http_responses{status:${status}}`] = ['count==0'];
 }
 
 export const options = {
@@ -89,6 +92,9 @@ export function handleSummary(data) {
     p95_milliseconds: values('http_req_duration')['p(95)'] || 0,
     failed_assertions: data.root_group.checks.filter(check => check.fails > 0)
       .map(check => ({ name: check.name, failures: check.fails })),
+    unexpected_statuses: diagnosticStatuses.map(status => ({
+      status, count: values(`unexpected_http_responses{status:${status}}`).count || 0,
+    })).filter(result => result.count > 0),
   };
   return { stdout: `K3S_E2E_RESULT ${JSON.stringify(result)}\n` };
 }

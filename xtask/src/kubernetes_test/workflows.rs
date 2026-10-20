@@ -22,6 +22,14 @@ struct WorkflowSummary {
     session_revocations: u64,
     p95_milliseconds: f64,
     failed_assertions: Vec<FailedAssertion>,
+    unexpected_statuses: Vec<UnexpectedStatus>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UnexpectedStatus {
+    status: String,
+    count: u64,
 }
 
 #[derive(Deserialize)]
@@ -151,6 +159,12 @@ impl Fixture {
             println!(
                 "Failed workflow check: {} ({} failures).",
                 assertion.name, assertion.failures
+            );
+        }
+        for failure in &summary.unexpected_statuses {
+            println!(
+                "Unexpected workflow HTTP status: {} ({} responses).",
+                failure.status, failure.count
             );
         }
         result?;

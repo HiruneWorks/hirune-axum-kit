@@ -1,6 +1,7 @@
 """Exercise the real gateway and API inside the isolated k3s fixture."""
 
 import concurrent.futures
+from collections import Counter
 import json
 import os
 import pathlib
@@ -159,19 +160,30 @@ def traffic():
 
     def consume():
         completed, errors = 0, 0
+        reasons = Counter()
         while not STOP.exists():
             try:
                 request("GET", "/api/v1/account", headers=headers)
                 completed += 1
                 STARTED.touch()
-            except (urllib.error.URLError, TimeoutError, OSError, AssertionError):
+            except AssertionError as error:
                 errors += 1
+                # This fixed API call reports only its method, path, and status.
+                reasons[str(error)] += 1
+            except (urllib.error.URLError, TimeoutError, OSError) as error:
+                errors += 1
+                # Network messages can contain URLs. Record only the exception type.
+                reasons[type(getattr(error, "reason", error)).__name__] += 1
             time.sleep(0.02)
-        return completed, errors
+        return completed, errors, reasons
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(lambda _: consume(), range(4)))
-    DONE.write_text(json.dumps({"requests": sum(x[0] for x in results), "errors": sum(x[1] for x in results)}))
+    reasons = Counter()
+    for _, _, failures in results:
+        reasons.update(failures)
+    DONE.write_text(json.dumps({"requests": sum(x[0] for x in results), "errors": sum(x[1] for x in results),
+                                "error_reasons": dict(reasons)}))
 
 
 def start_traffic():
