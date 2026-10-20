@@ -91,8 +91,6 @@
   removed by normal teardown. Keep the zero-error threshold; add safe HTTP-status
   and network-exception-type counts for future continuity failures.
 
-## Remaining work
-
 - CI run `39366403135` passed the focused verification job. Its deployed workload
   completed four workflows but failed 12 readiness checks. Push run `39366399637`
   failed six readiness checks at the same commit. Keep the strict thresholds and
@@ -102,7 +100,29 @@
   body failures; it does not prove no response arrived. Add numeric client-error
   codes, iteration bounds, and an EOF count without logging raw errors or URLs.
   Synthetic zero-failure and one-transport-failure counter checks both passed.
+- A reduced local protocol diagnostic used the existing release API image and
+  pinned APISIX for 360 requests, including readiness at five-second iteration
+  intervals. All passed. Its initial fixture setup needed a TCP health check in
+  place of missing curl and literal LF maintenance-state bytes on Windows.
+  This diagnostic does not establish Kubernetes policy readiness.
+- Both CI runs at `f634ca8` completed four workflows and failed six readiness
+  calls with client code 1212 (connection refused), iteration bounds 0 through 5,
+  and no EOF errors. All focused checks and preceding deployment checks passed.
+  The failure pattern is consistent with startup connectivity convergence.
+- Add a credential-free init container in the same workload Pod. Require both
+  selected gateway Pods to be Ready, then poll exact HTTP 204 from both and TCP
+  access to the storage proxy before k6 starts. Kubernetes documents asynchronous
+  allow-rule application at Pod startup, including differences between nodes.
+  Keep every measured readiness check and the strict zero-error thresholds.
+- The initialization failure path selects containers explicitly, prints only a
+  typed diagnostic summary, and preserves the original Job error. Successful
+  startup also reports any retry counts. Astra reviewed the gate and failure
+  handling. Local retry, status, redirect-refusal, timeout, and redaction checks
+  passed; xtask Clippy, Python syntax, and whitespace checks passed.
 
-- Complete deployed Kubernetes acceptance and record actual local/CI results.
+## Remaining work
+
+- Final deployed acceptance is reported in [PR #21 checks](https://github.com/HiruneWorks/hirune-axum-kit/pull/21/checks).
+  The startup gate still requires the next canonical two-node execution.
 - Real Tunnel, browser Fetch, external providers, target-cluster drain, and
   production capacity require their own acceptance when those boundaries change.

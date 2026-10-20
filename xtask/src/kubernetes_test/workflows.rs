@@ -50,6 +50,12 @@ struct FailedAssertion {
     failures: u64,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NetworkWaitSummary {
+    failures: BTreeMap<String, u64>,
+}
+
 fn collect_scripts(
     directory: &Path,
     root: &Path,
@@ -107,6 +113,15 @@ impl Fixture {
             .context("gateway Pods missing")?
             .iter()
             .filter(|pod| pod["metadata"]["deletionTimestamp"].is_null())
+            .filter(|pod| {
+                pod["status"]["conditions"]
+                    .as_array()
+                    .is_some_and(|conditions| {
+                        conditions.iter().any(|condition| {
+                            condition["type"] == "Ready" && condition["status"] == "True"
+                        })
+                    })
+            })
             .filter_map(|pod| pod["status"]["podIP"].as_str())
             .collect();
         ensure!(
@@ -132,6 +147,11 @@ impl Fixture {
             "metadata":{"labels":{"app.kubernetes.io/part-of":"hirune-kit","app.kubernetes.io/component":"tunnel"}},
             "spec":{"automountServiceAccountToken":false,"restartPolicy":"Never",
                 "securityContext":{"runAsNonRoot":true,"runAsUser":12345,"runAsGroup":12345,"fsGroup":12345},
+                "initContainers":[{"name":"wait-network","image":"python:3.14-alpine",
+                    "command":["python","-c",include_str!("../../../deploy/k3s/verification/wait_network.py"),
+                        format!("http://{}:9080/health/ready",addresses[0]),format!("http://{}:9080/health/ready",addresses[1])],
+                    "securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}},
+                    "resources":{"requests":{"cpu":"25m","memory":"32Mi"},"limits":{"cpu":"250m","memory":"64Mi"}}}],
                 "containers":[{"name":"k6","image":"grafana/k6:2.2.0",
                     "args":["run","--quiet","--log-output=none","/scripts/mixed.js"],
                     "securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}},
@@ -150,15 +170,24 @@ impl Fixture {
             job,
             Duration::from_secs(deadline + 30),
         );
-        let logs = self.read(&["logs", "job/fixture-workflows"])?;
+        self.report_network_wait();
+        let logs = match self.read(&["logs", "job/fixture-workflows", "-c", "k6"]) {
+            Ok(logs) => logs,
+            Err(error) => {
+                result?;
+                return Err(error);
+            }
+        };
         // Only typed aggregate counters are emitted. Raw logs can contain bearer URLs.
-        let summary: WorkflowSummary = logs
+        let Some(summary) = logs
             .lines()
             .find_map(|line| line.strip_prefix("K3S_E2E_RESULT "))
-            .context("Kubernetes workload did not report its aggregate result")
-            .and_then(|line| {
-                serde_json::from_str(line).context("invalid Kubernetes workflow summary")
-            })?;
+        else {
+            result?;
+            anyhow::bail!("Kubernetes workload did not report its aggregate result");
+        };
+        let summary: WorkflowSummary =
+            serde_json::from_str(summary).context("invalid Kubernetes workflow summary")?;
         println!(
             "Kubernetes workflows: {} requests, {} completed workflows, {} failed checks, {:.2} ms p95.",
             summary.requests,
@@ -210,5 +239,18 @@ impl Fixture {
         // Credentials are scoped to this one Job and are not reused after token rotation.
         crate::run(&mut self.kubectl(&["delete", "secret", "fixture-workflow-accounts"]))?;
         Ok(())
+    }
+
+    fn report_network_wait(&self) {
+        if let Ok(logs) = self.read(&["logs", "job/fixture-workflows", "-c", "wait-network"])
+            && let Some(summary) = logs
+                .lines()
+                .find_map(|line| line.strip_prefix("K3S_NETWORK_WAIT_RESULT "))
+            && let Ok(summary) = serde_json::from_str::<NetworkWaitSummary>(summary)
+        {
+            for (reason, count) in summary.failures {
+                println!("Workload network initialization: {reason} ({count} retries).");
+            }
+        }
     }
 }

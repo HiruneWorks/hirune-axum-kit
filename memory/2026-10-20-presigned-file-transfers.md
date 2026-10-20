@@ -62,6 +62,9 @@
   `just test-content` cases passed with the confined client. The first Clippy run
   rejected an unchecked read amount in the new redirect fixture. The fixture now
   reads through the HTTP header terminator; the complete rerun passed.
+- CodeQL completed successfully at `f634ca8`. GitHub marked all three prior
+  alerts fixed after the client change. Added the evidence to each review thread
+  and resolved the threads. No alert dismissal or rule configuration change was needed.
 
 ## Remaining work
 

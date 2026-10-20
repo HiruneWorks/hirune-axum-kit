@@ -81,6 +81,11 @@ each have their own module. The Kubernetes fixture mounts these scripts read-onl
 into a k6 Job. It seeds accounts through signup, worker mail verification, and
 login, then allocates client quotas through the real operator command. A temporary
 Secret supplies client credentials. The Job receives no storage signing keys.
+A credential-free init container first checks both ready gateway Pod addresses
+and the storage proxy from the workload Pod. NetworkPolicy allow rules can reach
+different nodes after that Pod starts; see [Pod lifecycle](https://kubernetes.io/docs/concepts/services-networking/network-policies/#pod-lifecycle).
+Only then does k6 start its measured workflows. Initialization has a bounded retry
+window and reports safe status/type counters. A failed gate fails the Job.
 
 The default k6 profile uses two virtual users for ten seconds, each with its own
 account and organizations. It exercises scoped reads and pagination, optimistic
