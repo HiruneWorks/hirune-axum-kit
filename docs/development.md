@@ -36,7 +36,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just test-production` | Build and run the release container with local TLS/STARTTLS fixtures, restricted PostgreSQL roles, and backup/restore checks. |
 | `just test-data-services` | Actual PostgreSQL/pgBackRest and Meilisearch Compose services: restricted migration grants, encrypted full/differential backup, isolated latest/PITR recovery, live-volume rejection, and persistent state across replacement. Uses a disposable local repository. |
 | `just test-k3s` | Apply the k3s profile on two k3d nodes; verify two API Pods, live rolling updates, shared session/quota, two APISIX gateways sharing Valkey, counter failure/recovery, environment isolation, and ingress policies. Requires `K3S_TEST_IMAGE`. |
-| `cd deploy; just up dev` / `just up prod` | Deploy to an explicitly configured Kubernetes context and namespace. Defaults to rolling. Use `just up prod drain` for an offline migration. |
+| `cd deploy; just up dev` / `just up prod` | Deploy to an explicit Kubernetes target. Defaults to auto: pending migrations use maintenance and drain; other running releases roll. Use `drain` to force an interruption. |
 | `just load-test` | Docker k6 mixed workload against two API processes, a worker, SeaweedFS, and Meilisearch. |
 | `just openapi` | Regenerate the committed OpenAPI document. |
 | `just template-check` | Copy/rename the source into a temporary directory and run its workspace and identity/database tests. |
@@ -141,7 +141,8 @@ kubectl v1.37.1. Build the canonical release image first. The fixture creates an
 isolated two-node k3s cluster and removes it afterward. It applies the production
 profile with local database/mail substitutions and no real Tunnel connection.
 It checks two API Pods on separate nodes, real APISIX routing, migration Job
-sequencing, live API and config-only gateway rollouts, session/quota continuity,
+sequencing, automatic maintenance/failure/retry and cold-start recovery,
+failed preflight preserving running APIs, live API and config-only gateway rollouts, session/quota continuity,
 two gateways sharing Valkey, counter timeout/recovery and reset, separate dev
 counter state, and private ingress NetworkPolicies. See the [k3s runbook](../deploy/k3s/README.md).
 Run this in addition to production acceptance; each fixture verifies a different

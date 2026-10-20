@@ -1,4 +1,12 @@
 routes:
+  - id: hirune-gateway-health
+    uri: /health/gateway
+    methods: [GET, HEAD]
+    plugins:
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - return require("hirune_edge").gateway_health
   - id: hirune-health
     uris: [/health/live, /health/ready]
     methods: [GET, HEAD]

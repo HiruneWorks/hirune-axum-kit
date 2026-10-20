@@ -118,6 +118,26 @@ pub fn verify() -> Result<()> {
             gateway["envFrom"].is_null(),
             "gateway received the full application Secret"
         );
+        ensure!(
+            gateway["readinessProbe"]["httpGet"]["path"] == "/health/gateway",
+            "gateway readiness must survive application maintenance"
+        );
+        ensure!(
+            resource(deployment, "hirune-gateway-maintenance")["data"]["state"] == "on\n",
+            "new maintenance state must start closed"
+        );
+        let preflight = &resource(deployment, "hirune-migration-check")["spec"]["template"]["spec"]
+            ["containers"][0];
+        ensure!(
+            preflight["command"] == serde_json::json!(["migration", "--check-pending"]),
+            "preflight must check the selected release image without migrating"
+        );
+        ensure!(
+            preflight["image"]
+                == resource(deployment, "hirune-migration")["spec"]["template"]["spec"]["containers"]
+                    [0]["image"],
+            "preflight and migration must use the same image"
+        );
         let secret_keys: Vec<_> = gateway["env"]
             .as_array()
             .context("gateway environment missing")?
@@ -289,7 +309,7 @@ fn resource<'a>(deployment: &'a Deployment, name: &str) -> &'a Value {
         .resources
         .iter()
         .find(|r| {
-            matches!(r["kind"].as_str(), Some("Deployment" | "Job"))
+            matches!(r["kind"].as_str(), Some("Deployment" | "Job" | "ConfigMap"))
                 && r["metadata"]["name"] == name
         })
         .expect("required resource missing")
@@ -344,6 +364,7 @@ fn verify_roles(deployment: &Deployment) -> Result<()> {
         ("hirune-worker", runtime),
         ("hirune-maintenance", maintenance),
         ("hirune-migration", owner),
+        ("hirune-migration-check", owner),
     ] {
         let workload = resource(deployment, name);
         let container = &workload["spec"]["template"]["spec"]["containers"][0];
@@ -356,7 +377,7 @@ fn verify_roles(deployment: &Deployment) -> Result<()> {
             reference == &database["metadata"]["name"],
             "incorrect database Secret reference"
         );
-        if name != "hirune-migration" {
+        if !matches!(name, "hirune-migration" | "hirune-migration-check") {
             ensure!(
                 !container.to_string().contains("hirune-migration-database"),
                 "runtime received owner credentials"

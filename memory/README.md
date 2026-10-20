@@ -7,6 +7,14 @@ This index is updated when a milestone is complete.
   direct private S3 PUT/GET/HEAD, authorized URL issuance and completion, immutable
   originals, quota-safe late-write cleanup, and the updated client contract.
 
+- [2026-10-19 — HPA maintenance recovery](2026-10-19-hpa-maintenance-recovery.md):
+  native HPA deactivation, durable replica recovery, and automatic replica
+  ownership transfer; supersedes manual HPA removal for maintenance.
+
+- [2026-10-19 — Automatic maintenance deployments](2026-10-19-automatic-maintenance-deployments.md):
+  read-only migration preflight, automatic maintenance and drain, verified gateway
+  admission, and failure/retry recovery.
+
 - [2026-10-18 — Single-host data services and pgBackRest](2026-10-18-single-host-data-backups.md):
   Docker Compose PostgreSQL/Meilisearch beside k3s, off-host backup configuration,
   restricted grants, and isolated physical/PITR recovery.

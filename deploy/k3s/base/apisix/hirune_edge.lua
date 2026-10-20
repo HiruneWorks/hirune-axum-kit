@@ -90,7 +90,60 @@ end)
 
 local _M = {}
 
+local function maintenance_active()
+    local file = io.open("/run/hirune-maintenance/state", "r")
+    if not file then
+        return true
+    end
+    local state = file:read(16)
+    file:close()
+    -- Missing or invalid operator state must not reopen application admission.
+    return state ~= "off\n"
+end
+
+function _M.gateway_health()
+    core.response.set_header("Cache-Control", "no-store")
+    return core.response.exit(200, {status = "ok", maintenance = maintenance_active()})
+end
+
+local function maintenance_preflight(headers)
+    local origin = headers["origin"]
+    local methods = {GET = true, HEAD = true, POST = true, PUT = true, DELETE = true, OPTIONS = true}
+    local allowed_headers = {["content-type"] = true, authorization = true, range = true, ["if-range"] = true}
+    local requested_headers = headers["access-control-request-headers"] or ""
+    if ngx.req.get_method() ~= "OPTIONS" or type(origin) ~= "string" or not origins[origin]
+        or type(headers["access-control-request-method"]) ~= "string"
+        or not methods[headers["access-control-request-method"]]
+        or type(requested_headers) ~= "string" then
+        return false
+    end
+    for name in requested_headers:gmatch("[^,]+") do
+        if not allowed_headers[name:match("^%s*(.-)%s*$"):lower()] then
+            return false
+        end
+    end
+    core.response.set_header({
+        ["Access-Control-Allow-Origin"] = origin,
+        ["Access-Control-Allow-Credentials"] = "true",
+        ["Access-Control-Allow-Methods"] = "GET, HEAD, POST, PUT, DELETE, OPTIONS",
+        ["Access-Control-Allow-Headers"] = "content-type, authorization, range, if-range",
+        ["Cache-Control"] = "no-store",
+        ["Vary"] = "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+    })
+    return true
+end
+
 function _M.rewrite(_, ctx)
+    if maintenance_active() then
+        if maintenance_preflight(ngx.req.get_headers(0)) then
+            return core.response.exit(204)
+        end
+        local status, body, headers = error_response(503, "maintenance", "The service is temporarily unavailable for maintenance.", {
+            ["Retry-After"] = "30",
+        })
+        core.response.set_header(headers)
+        return core.response.exit(status, body)
+    end
     local headers = ngx.req.get_headers(0)
     local selected
     if trusted_proxy(headers["x-internal-secret"]) then

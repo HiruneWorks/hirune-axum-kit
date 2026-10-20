@@ -7,6 +7,8 @@ resources:
   - edge-valkey.yaml
   - tunnel.yaml
   - migration.yaml
+  - migration-check.yaml
+  - maintenance.yaml
   - network-policies.yaml
   - disruption-budgets.yaml
 configMapGenerator:

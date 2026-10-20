@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 BASE = "http://hirune-apisix:9080"
 STATE = pathlib.Path("/tmp/account.json")
@@ -117,6 +118,34 @@ def retained_authority():
     print("Coordinated drained deployment restored the session and retained the exhausted quota.")
 
 
+def maintenance():
+    body, headers = request("OPTIONS", "/api/v1/account", headers={
+        "Origin": "http://localhost", "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, authorization",
+    }, expected=204)
+    assert body is None
+    assert headers["Access-Control-Allow-Origin"] == "http://localhost"
+    assert headers["Access-Control-Allow-Credentials"] == "true"
+    assert "POST" in headers["Access-Control-Allow-Methods"]
+    assert "authorization" in headers["Access-Control-Allow-Headers"].lower()
+    request("OPTIONS", "/api/v1/account", headers={
+        "Origin": "http://localhost", "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "x-untrusted",
+    }, expected=503)
+    for method in ["GET", "POST", "OPTIONS"]:
+        body, headers = request(method, "/api/v1/account", headers={"Origin": "http://localhost"}, expected=503)
+        assert body["error"]["code"] == "maintenance"
+        assert str(uuid.UUID(body["request_id"])) == headers["X-Request-ID"]
+        assert headers["Retry-After"] == "30"
+        assert headers["Cache-Control"] == "no-store"
+        assert headers["Access-Control-Allow-Origin"] == "http://localhost"
+        assert headers["Access-Control-Allow-Credentials"] == "true"
+        assert "retry-after" in headers["Access-Control-Expose-Headers"].lower()
+    health, _ = request("GET", "/health/gateway")
+    assert health["maintenance"] is True
+    print("APISIX Service returned typed maintenance and allowed browser preflight with CORS and Retry-After while all API Pods were absent.")
+
+
 def traffic():
     headers = session_headers()
 
@@ -189,6 +218,7 @@ def denied_ingress():
     "prepare": prepare, "client-id": lambda: print(state()["client"]),
     "consume-two": consume_two, "after-rollout": after_rollout,
     "retained-authority": retained_authority,
+    "maintenance": maintenance,
     "traffic": traffic, "start-traffic": start_traffic, "stop-traffic": stop_traffic,
     "private-ingress": private_ingress, "denied-ingress": denied_ingress,
 }[sys.argv[1]]()
