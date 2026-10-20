@@ -97,6 +97,11 @@
   completed four workflows but failed 12 readiness checks. Push run `39366399637`
   failed six readiness checks at the same commit. Keep the strict thresholds and
   report bounded HTTP-status counters without raw request logs to diagnose them.
+- Diagnostic run `39386753870` passed focused checks and completed four Kubernetes
+  workflows, but six readiness calls had k6 status 0. This also covers response
+  body failures; it does not prove no response arrived. Add numeric client-error
+  codes, iteration bounds, and an EOF count without logging raw errors or URLs.
+  Synthetic zero-failure and one-transport-failure counter checks both passed.
 
 - Complete deployed Kubernetes acceptance and record actual local/CI results.
 - Real Tunnel, browser Fetch, external providers, target-cluster drain, and

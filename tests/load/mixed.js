@@ -95,6 +95,13 @@ export function handleSummary(data) {
     unexpected_statuses: diagnosticStatuses.map(status => ({
       status, count: values(`unexpected_http_responses{status:${status}}`).count || 0,
     })).filter(result => result.count > 0),
+    client_errors: {
+      minimum_code: values('unexpected_client_error_codes').min || 0,
+      maximum_code: values('unexpected_client_error_codes').max || 0,
+      first_iteration: values('unexpected_client_error_iterations').min || 0,
+      last_iteration: values('unexpected_client_error_iterations').max || 0,
+      eof_count: values('unexpected_client_eof').count || 0,
+    },
   };
   return { stdout: `K3S_E2E_RESULT ${JSON.stringify(result)}\n` };
 }

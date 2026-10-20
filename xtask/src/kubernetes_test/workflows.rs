@@ -23,6 +23,17 @@ struct WorkflowSummary {
     p95_milliseconds: f64,
     failed_assertions: Vec<FailedAssertion>,
     unexpected_statuses: Vec<UnexpectedStatus>,
+    client_errors: ClientErrors,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClientErrors {
+    minimum_code: f64,
+    maximum_code: f64,
+    first_iteration: f64,
+    last_iteration: f64,
+    eof_count: u64,
 }
 
 #[derive(Deserialize)]
@@ -165,6 +176,16 @@ impl Fixture {
             println!(
                 "Unexpected workflow HTTP status: {} ({} responses).",
                 failure.status, failure.count
+            );
+        }
+        if summary.client_errors.maximum_code > 0.0 {
+            println!(
+                "Workflow client errors: codes {}..{}, iterations {}..{}, {} EOF failures.",
+                summary.client_errors.minimum_code,
+                summary.client_errors.maximum_code,
+                summary.client_errors.first_iteration,
+                summary.client_errors.last_iteration,
+                summary.client_errors.eof_count
             );
         }
         result?;
