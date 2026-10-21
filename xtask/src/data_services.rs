@@ -370,7 +370,11 @@ pub fn from_arguments() -> Result<()> {
                 extra.len() <= 1 && ["full", "diff", "incr"].contains(&kind),
                 "select full, diff, or incr"
             );
-            deployment.pgbackrest(&[&format!("--type={kind}"), "backup"])
+            deployment.pgbackrest(&[
+                &format!("--type={kind}"),
+                "--log-level-console=detail",
+                "backup",
+            ])
         }
         "backup-check" => deployment.pgbackrest(&["check"]),
         "backup-info" => deployment.pgbackrest(&["info"]),
