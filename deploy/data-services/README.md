@@ -120,6 +120,15 @@ just backup-info prod
 just data-services-logs prod backup-scheduler
 ```
 
+Manual backup commands show native pgBackRest file, byte, and percentage progress
+through `--log-level-console=detail`. Scheduled backups keep the global `info`
+console level.
+
+The shared dev/prod configuration enables `repo1-bundle=y`. pgBackRest combines
+small files to reduce repository object counts and requests. Bundle sizes use the
+pgBackRest defaults. Rebuild and recreate PostgreSQL and the backup scheduler with
+`just data-services-up <environment>` to apply image configuration changes.
+
 The scheduler uses successful repository history. It takes a weekly full on
 Sunday and a differential on other days at `BACKUP_HOUR_UTC` (default 03:00 UTC,
 12:00 Asia/Seoul). After downtime it takes the currently required backup, without

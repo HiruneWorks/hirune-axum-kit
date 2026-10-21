@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-21 — Backup bundling and progress](2026-10-21-backup-bundling-progress.md):
+  bundled small files, explicit backup progress, LF container scripts, and actual
+  encrypted backup plus latest/PITR recovery acceptance.
+
 - [2026-10-20 — Deployed Kubernetes E2E](2026-10-20-kubernetes-e2e.md):
   canonical two-node acceptance with real providers, direct presigned transfers,
   attached content, retained state, restricted roles, and a Kubernetes k6 Job.

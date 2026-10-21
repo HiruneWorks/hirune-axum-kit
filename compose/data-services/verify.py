@@ -157,7 +157,13 @@ def verify(root):
                 assert result.returncode and "permission denied" in result.stderr, result.stderr
         sql("DELETE FROM audit_events WHERE false; DELETE FROM api_usage WHERE false", role="maintenance")
         sql("CREATE TABLE backup_probe(value text PRIMARY KEY); INSERT INTO backup_probe VALUES ('before')", role="schema_owner")
-        pgbackrest("--type=full", "backup")
+        full_backup = pgbackrest("--type=full", "--log-level-console=detail", "backup")
+        assert "DETAIL:" in full_backup.stdout and "%" in full_backup.stdout, "Backup progress was not reported"
+        history = json.loads(pgbackrest("--output=json", "info").stdout)
+        label = history[0]["backup"][-1]["label"]
+        bundles = json.loads(pgbackrest("--output=json", "repo-ls", f"backup/db/{label}/bundle").stdout)
+        assert any(entry["type"] == "file" and entry["size"] > 0 for entry in bundles.values()), "Backup has no file bundles"
+        print("Encrypted full backup stored file bundles and reported native percentage progress.")
         # Repository backup stop timestamps use whole seconds.
         time.sleep(1.1)
         target = sql("SELECT clock_timestamp()::text").stdout.strip()
