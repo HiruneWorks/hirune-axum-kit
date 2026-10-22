@@ -196,13 +196,14 @@ async fn presigned_originals_use_authorized_urls_and_preserve_bytes() -> anyhow:
             .status()
             .is_client_error()
     );
-    let renewed = short_lived
+    // A successful refresh uses the normal lifetime, independent of CI scheduling.
+    let renewed = app
+        .files
         .create_download_url(&actor, organization.id, file_id, DownloadMethod::Get)
         .await?;
-    assert_eq!(
-        send_signed(signed_request(&renewed)).await?.bytes().await?,
-        bytes
-    );
+    let received = send_signed(signed_request(&renewed)).await?;
+    assert_eq!(received.status(), StatusCode::OK);
+    assert_eq!(received.bytes().await?, bytes);
     drain_file_jobs(&app).await?;
     assert_eq!(
         app.files

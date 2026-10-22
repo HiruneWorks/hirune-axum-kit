@@ -15,8 +15,11 @@ from the repository-root build context. It excludes environment secrets and runs
 as an unprivileged user. See [deployment](../deploy/README.md) for runtime wiring.
 
 `data-services/compose.yaml` runs optional self-hosted PostgreSQL and Meilisearch outside
-k3s. `production/postgres/Dockerfile` adds pgBackRest and the non-root backup
-scheduler. Use the explicit dev/prod `data-*`, `backup-*`, and new-volume `restore`
+k3s. Deployments pull the version or digest in `POSTGRES_IMAGE` and do not build.
+`production/postgres/Dockerfile` adds pgBackRest and the non-root backup scheduler.
+The PostgreSQL release workflow verifies and publishes this image independently
+of application releases. `data-services/compose.build.yaml` enables explicit
+local/test builds. Use the explicit dev/prod `data-*`, `backup-*`, and new-volume `restore`
 commands in `deploy/justfile`. See the [data runbook](../deploy/data-services/README.md).
 
 `verification/` contains the disposable production-mode acceptance fixture:

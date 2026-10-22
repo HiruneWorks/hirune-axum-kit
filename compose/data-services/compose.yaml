@@ -1,11 +1,7 @@
 name: ${DATA_PROJECT_NAME:?Set DATA_PROJECT_NAME}
 
 x-database: &database
-  image: hirune-postgres-pgbackrest:18.6
-  build:
-    context: ../..
-    dockerfile: compose/production/postgres/Dockerfile
-    secrets: [proxy_ca]
+  image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE to a published version tag or digest}
   env_file:
     - ../../.envs/.${DEPLOY_ENV:?Select dev or prod}/data-services/postgres.env
     - ../../.envs/.${DEPLOY_ENV}/data-services/pgbackrest.env
@@ -37,7 +33,8 @@ services:
     mem_limit: 2g
     stop_grace_period: 60s
     healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U postgres -d postgres']
+      # The entrypoint's temporary initialization server accepts Unix sockets only.
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres -d postgres']
       interval: 2s
       timeout: 5s
       retries: 60
@@ -100,7 +97,3 @@ volumes:
   recovery_data:
     name: ${DATA_RESTORE_VOLUME:-hirune-unused-recovery-volume}
     external: true
-secrets:
-  proxy_ca:
-    # Compose Bake permits this empty default inside the build context.
-    file: ${DATA_BUILD_CA_FILE:-../production/postgres/empty-ca.pem}

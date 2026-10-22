@@ -19,8 +19,8 @@ rollouts; off-host backups provide recovery after machine or disk loss.
 Install Docker Engine with Compose v2, Rust, and just. Copy the dev/prod examples
 to ignored `.envs/.dev/` and `.envs/.prod/`. Each `data-services/` directory contains:
 
-- `data.env`: explicit Docker context, project, private bind address, distinct
-  ports, PostgreSQL volume name, and the UTC backup hour.
+- `data.env`: explicit Docker context, project, published `POSTGRES_IMAGE`, private
+  bind address, distinct ports, PostgreSQL volume name, and the UTC backup hour.
 - `postgres.env`: bootstrap and separate schema-owner, runtime, and maintenance
   passwords. Use independent random URL-safe passwords. Keep `POSTGRES_USER`
   and `POSTGRES_DB` set to `postgres`.
@@ -57,6 +57,36 @@ data volumes through its operator commands. Major PostgreSQL or Meilisearch
 upgrades need their documented migration procedures; changing an image tag is
 not a data upgrade plan.
 
+## Publish and select the PostgreSQL image
+
+Each project publishes its own PostgreSQL image. The workflow uses the current
+repository name, not a shared template image. After the workflow is on the default
+branch, create an independent PostgreSQL tag such as `postgres-v18.6-1`:
+
+```sh
+git tag postgres-v18.6-1
+git push origin postgres-v18.6-1
+```
+
+The `PostgreSQL image` workflow builds one candidate and the application migration
+image. It verifies encrypted full/differential backup, file bundles, progress,
+restricted roles, and latest/PITR recovery. It publishes that same PostgreSQL
+candidate without rebuilding as `ghcr.io/<owner>/<repository>-postgres:18.6-1`.
+Repository names are lowercased. A manual workflow run verifies without publishing.
+The workflow needs permission to write GitHub Packages. Keep image packages
+available to the selected data host; authenticate Docker for private packages.
+
+Copy the published `POSTGRES_IMAGE=...@sha256:...` reference from the workflow
+summary into the selected `data-services/data.env`. The example image is a
+placeholder. An explicit version tag is also accepted; untagged images and
+`latest` are rejected. Prefer a digest to select the exact tested bytes.
+Use a new PostgreSQL release tag for changes to PostgreSQL, pgBackRest, backup
+configuration, or container tools. Keep security updates in this release cycle.
+Application releases do not change `POSTGRES_IMAGE` or restart these data services.
+
+The base image includes the PostgreSQL and backup tools, shared configuration,
+and non-secret scripts. Runtime credentials stay in the ignored environment files.
+
 ## Start and connect Kubernetes
 
 Provision the backup bucket outside this machine. Use the endpoint hostname
@@ -73,8 +103,9 @@ just data-services-up prod
 just backup-info prod
 ```
 
-`data-services-up` builds the database image, starts PostgreSQL and Meilisearch, creates
-and checks the pgBackRest stanza, takes an initial full backup if none exists,
+`data-services-up` pulls the selected images before changing containers. It stops
+the backup scheduler and starts PostgreSQL and Meilisearch without building.
+It creates and checks the pgBackRest stanza, takes an initial full backup if none exists,
 then starts the scheduler. Repository failure stops this setup command. A running
 PostgreSQL can remain healthy during later archive failures; monitor backups
 separately. Do not delete a stanza to resolve an error without a recovery plan.
@@ -126,8 +157,8 @@ console level.
 
 The shared dev/prod configuration enables `repo1-bundle=y`. pgBackRest combines
 small files to reduce repository object counts and requests. Bundle sizes use the
-pgBackRest defaults. Rebuild and recreate PostgreSQL and the backup scheduler with
-`just data-services-up <environment>` to apply image configuration changes.
+pgBackRest defaults. Publish image configuration changes, set `POSTGRES_IMAGE` to
+the verified image, then run `just data-services-up <environment>` on the data host.
 
 The scheduler uses successful repository history. It takes a weekly full on
 Sunday and a differential on other days at `BACKUP_HOUR_UTC` (default 03:00 UTC,
@@ -183,6 +214,22 @@ check coverage before restoring search traffic. pgBackRest does not back up
 Meilisearch, original object-store files, or application environment secrets.
 
 ## Validation scope
+
+`compose/data-services/compose.build.yaml` adds build settings only for explicit
+local/test use. `just test-data-services` builds a disposable PostgreSQL image
+through this override by default. Set `DATA_TEST_POSTGRES_IMAGE` to verify an
+existing local candidate without rebuilding or pulling it. The fixture pins all
+database, scheduler, and recovery containers to that candidate's image ID.
+CI uses this mode for the image it will publish. `DATA_TEST_APP_IMAGE` selects the
+application migration image; without it, the fixture builds the native migration
+executable. For a manual local image build from the repository root, use:
+
+```sh
+POSTGRES_IMAGE=service-postgres:local DEPLOY_ENV=dev docker compose \
+  --env-file .envs/.dev/data-services/data.env \
+  -f compose/data-services/compose.yaml \
+  -f compose/data-services/compose.build.yaml build postgres
+```
 
 Run `just test-data-services` with Docker and Python 3. The disposable acceptance fixture
 uses the actual production Compose/image and an encrypted local repository. It

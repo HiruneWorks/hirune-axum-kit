@@ -71,12 +71,15 @@ def verify(root):
     passwords = {name: secrets.token_urlsafe(32) for name in ["POSTGRES_PASSWORD", "SCHEMA_OWNER_PASSWORD", "RUNTIME_PASSWORD", "MAINTENANCE_PASSWORD"]}
     database = "hirune_fixture"
     data_volume = PROJECT + "-postgres"
+    postgres_image = os.environ.get("DATA_TEST_POSTGRES_IMAGE")
+    build_postgres = not postgres_image
+    postgres_image = postgres_image or PROJECT + "-postgres:local"
     (profile / "data.env").write_text(f"DATA_PROJECT_NAME={PROJECT}\nDATA_BIND_ADDRESS=127.0.0.1\nPOSTGRES_PORT={pg_port}\nMEILISEARCH_PORT={meili_port}\nPOSTGRES_DATA_VOLUME={data_volume}\nBACKUP_HOUR_UTC=3\n")
     master_key = secrets.token_urlsafe(32)
     database_environment = {"POSTGRES_USER": "postgres", "POSTGRES_DB": "postgres", "APPLICATION_DATABASE": database, **passwords}
     repository_environment = {"PGBACKREST_REPO1_TYPE": "posix", "PGBACKREST_REPO1_PATH": "/backup", "PGBACKREST_REPO1_CIPHER_TYPE": "aes-256-cbc", "PGBACKREST_REPO1_CIPHER_PASS": secrets.token_urlsafe(32)}
     search_environment = {"MEILI_ENV": "production", "MEILI_NO_ANALYTICS": "true", "MEILI_MASTER_KEY": master_key}
-    environment = {**os.environ, "DEPLOY_ENV": "prod", **database_environment, **repository_environment, **search_environment}
+    environment = {**os.environ, "DEPLOY_ENV": "prod", "POSTGRES_IMAGE": postgres_image, **database_environment, **repository_environment, **search_environment}
     # Compose inherits fixture credentials from the process; files contain names only.
     service_variables = {
         "postgres": [*database_environment, *repository_environment],
@@ -88,7 +91,7 @@ def verify(root):
     override = root / "fixture.yaml"
     override.write_text("services:\n" + "".join(
         f"  {name}:\n    env_file: !reset []\n    environment:\n" + "".join(f"      {variable}:\n" for variable in variables)
-        + ("    volumes: [fixture_backup:/backup]\n" if name != "meilisearch" else "")
+        + ("    volumes: [fixture_backup:/backup]\n    pull_policy: never\n" if name != "meilisearch" else "")
         for name, variables in service_variables.items()
     ) + "volumes:\n  fixture_backup: {}\n")
     fixture_secrets = [*passwords.values(), master_key, repository_environment["PGBACKREST_REPO1_CIPHER_PASS"]]
@@ -98,7 +101,8 @@ def verify(root):
         public_ca = root / "build-proxy-ca.pem"
         shutil.copyfile(environment["CODEX_PROXY_CERT"], public_ca)
         environment["DATA_BUILD_CA_FILE"] = str(public_ca)
-    base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data-services/compose.yaml"), "-f", str(override)]
+    base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data-services/compose.yaml")]
+    base += ["-f", str(override)]
     recovery_volumes = []
 
     def compose(*arguments, success=True, extra_env=None):
@@ -125,7 +129,11 @@ def verify(root):
             return response.status, json.loads(body) if body else None
 
     try:
-        compose("build", "postgres")
+        if build_postgres:
+            compose("--file", str(root / "compose/data-services/compose.build.yaml"), "build", "postgres")
+        image_id = execute(["docker", "image", "inspect", "--format", "{{.Id}}", postgres_image]).stdout.strip()
+        environment["POSTGRES_IMAGE"] = image_id
+        print("Data-service acceptance uses PostgreSQL image " + postgres_image + " (" + image_id + ")", flush=True)
         compose("run", "--rm", "--no-deps", "--user", "root", "--entrypoint", "sh", "postgres", "-c", "mkdir -p /backup && chown postgres:postgres /backup")
         compose("up", "-d", "--wait", "postgres", "meilisearch")
         pgbackrest("stanza-create")
@@ -139,7 +147,8 @@ def verify(root):
             else:
                 execute(["cargo", "build", "--locked", "--package", "migration"])
                 migration_environment["MIGRATION_DATABASE_URL"] = f"postgres://schema_owner:{passwords['SCHEMA_OWNER_PASSWORD']}@127.0.0.1:{pg_port}/{database}"
-                return execute([str(SOURCE / "target/debug/migration")], env=migration_environment, success=success)
+                binary = "migration.exe" if os.name == "nt" else "migration"
+                return execute([str(SOURCE / "target/debug" / binary)], env=migration_environment, success=success)
         migrate()
         sql("GRANT CREATE ON SCHEMA public TO runtime")
         assert migrate(success=False).returncode, "Existing DDL authority was accepted"
@@ -221,6 +230,8 @@ def verify(root):
         compose("--profile", "recovery", "down", "--volumes", "--remove-orphans", success=False)
         for volume in recovery_volumes:
             execute(["docker", "volume", "rm", volume], success=False)
+        if build_postgres:
+            execute(["docker", "image", "rm", postgres_image], success=False)
 
 
 if __name__ == "__main__":
