@@ -43,6 +43,11 @@
   race. After the TCP readiness correction, the default build path passed the
   complete encrypted backup/recovery and persistence acceptance too.
 - Remote CI runs on PR #25. Check its latest head for the current result.
+- Merge-gate CI exposed a timing race in the existing file integration test:
+  its successful refresh check reused the one-second expiry-probe lifetime, and
+  storage rejected the refreshed URL as expired before CI sent the request.
+  Keep the one-second expiry rejection check and use the normal lifetime for
+  successful renewal. Production signing and TTL settings remain unchanged.
 - Local acceptance uses an encrypted disposable POSIX repository. It does not
   establish S3/R2 access, GHCR publication, or production deployment.
 
