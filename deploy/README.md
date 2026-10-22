@@ -23,6 +23,20 @@ separate lifecycle from application rollout.
 
 ## Environments and commands
 
+Publish the application with a `v<workspace-version>` Git tag, such as `v0.1.0`.
+The CI workflow checks that the tag matches `Cargo.toml`. It runs the normal
+checks and production, backup/recovery, and two-node Kubernetes acceptance before
+publishing the tested application image as `ghcr.io/<owner>/<repository>:0.1.0`.
+The publication job loads the tested image and checks its identity; it does not
+rebuild it. Branch, pull-request, and manual runs do not publish images.
+
+Copy the `APPLICATION_IMAGE=...@sha256:...` reference from the workflow summary
+into the selected overlay. Use `newName` for the registry path and `digest` for
+the `sha256:...` value; remove `newTag` when selecting a digest. The image package
+must be readable by the cluster. New GHCR packages start private; configure their
+access or visibility separately. Publishing an image does not deploy it.
+PostgreSQL uses its independent [`postgres-v*` release](data-services/README.md#publish-and-select-the-postgresql-image).
+
 Copy `.envs/.example/dev/` to ignored `.envs/.dev/` and
 `.envs/.example/prod/` to ignored `.envs/.prod/`. Each `k3s/` directory contains:
 

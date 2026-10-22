@@ -1,6 +1,8 @@
 name: CI
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -15,10 +17,31 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      image: ${{ steps.metadata.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate the release tag and resolve image metadata
+        id: metadata
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag_arguments=()
+          if [[ "$REF_TYPE" == tag ]]; then
+            tag_arguments=(--tag "$REF_NAME")
+          fi
+          python3 scripts/release_metadata.py --repository "$REPOSITORY" "${tag_arguments[@]}" >> "$GITHUB_OUTPUT"
   verify:
+    needs: metadata
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -47,11 +70,22 @@ jobs:
       - run: just test-deployment
       - run: just template-check
   container:
+    needs: metadata
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      image_id: ${{ steps.identity.outputs.image_id }}
     steps:
       - uses: actions/checkout@v7
-      - run: docker build --file compose/production/app/Dockerfile --tag hirune-kit:ci .
+      - name: Build the application candidate once
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          docker build --file compose/production/app/Dockerfile \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --tag hirune-kit:ci .
       - run: docker build --file compose/production/postgres/Dockerfile --tag hirune-postgres-pgbackrest:ci .
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -89,3 +123,55 @@ jobs:
         env:
           K3S_TEST_IMAGE: hirune-kit:ci
           K6_PROFILE: ${{ inputs.load_profile || 'smoke' }}
+      - name: Record the tested application image identity
+        id: identity
+        run: |
+          image_id="$(docker image inspect hirune-kit:ci --format '{{.Id}}')"
+          test -n "$image_id"
+          echo "image_id=$image_id" >> "$GITHUB_OUTPUT"
+      - name: Export the tested application image
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: docker save --output "$RUNNER_TEMP/application-candidate.tar" hirune-kit:ci
+      - name: Transfer the tested image to publication
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v7
+        with:
+          name: application-candidate-image
+          path: ${{ runner.temp }}/application-candidate.tar
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [metadata, verify, container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.metadata.outputs.image }}
+      VERSION: ${{ needs.metadata.outputs.version }}
+      EXPECTED_IMAGE_ID: ${{ needs.container.outputs.image_id }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: application-candidate-image
+          path: ${{ runner.temp }}
+      - name: Load and check the tested image identity
+        run: |
+          docker load --input "$RUNNER_TEMP/application-candidate.tar"
+          actual_id="$(docker image inspect hirune-kit:ci --format '{{.Id}}')"
+          test "$actual_id" = "$EXPECTED_IMAGE_ID"
+      - name: Publish the tested versioned application image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          target="$IMAGE:$VERSION"
+          docker tag hirune-kit:ci "$target"
+          docker push "$target"
+          reference="$(docker image inspect "$target" --format '{{index .RepoDigests 0}}')"
+          test -n "$reference"
+          printf 'APPLICATION_IMAGE=%s\n' "$reference" >> "$GITHUB_STEP_SUMMARY"
