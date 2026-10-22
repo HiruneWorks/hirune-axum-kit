@@ -10,6 +10,9 @@ shared Valkey edge counters, Tunnel replicas, migration sequencing, and live
 rolling-update verification.
 For a single Linux host, the optional [data profile](deploy/data-services/README.md) runs
 Docker Compose PostgreSQL/Meilisearch and pgBackRest backups beside k3s.
+Application `v*` tags publish the tested release image to the repository's GHCR
+package. PostgreSQL uses independent `postgres-v*` tags. See the
+[publication and image selection instructions](deploy/README.md#environments-and-commands).
 
 ## Start locally
 
