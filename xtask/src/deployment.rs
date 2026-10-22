@@ -38,14 +38,41 @@ pub fn verify() -> Result<()> {
         ensure!(rendered.status.success(), "data Compose render failed");
         let rendered: Value = serde_json::from_slice(&rendered.stdout)?;
         let services = &rendered["services"];
+        for name in ["postgres", "backup-scheduler", "restore", "recovery-check"] {
+            ensure!(
+                services[name].get("build").is_none()
+                    && services[name]["image"] == data.values["POSTGRES_IMAGE"],
+                "data services must use the selected published image without building"
+            );
+        }
+        ensure!(
+            rendered.get("secrets").is_none(),
+            "production data profile includes build secrets"
+        );
+        let local_build = data
+            .compose(&[
+                "--file",
+                "compose/data-services/compose.build.yaml",
+                "config",
+                "--format",
+                "json",
+            ])
+            .env_remove("DATA_BUILD_CA_FILE")
+            .current_dir(root)
+            .output()?;
+        ensure!(
+            local_build.status.success(),
+            "local data build Compose render failed"
+        );
+        let local_build: Value = serde_json::from_slice(&local_build.stdout)?;
         let build_context = Path::new(
-            services["postgres"]["build"]["context"]
+            local_build["services"]["postgres"]["build"]["context"]
                 .as_str()
                 .context("database build context missing")?,
         )
         .canonicalize()?;
         let default_ca = Path::new(
-            rendered["secrets"]["proxy_ca"]["file"]
+            local_build["secrets"]["proxy_ca"]["file"]
                 .as_str()
                 .context("database build CA missing")?,
         )

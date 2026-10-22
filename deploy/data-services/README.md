@@ -19,7 +19,7 @@ rollouts; off-host backups provide recovery after machine or disk loss.
 Install Docker Engine with Compose v2, Rust, and just. Copy the dev/prod examples
 to ignored `.envs/.dev/` and `.envs/.prod/`. Each `data-services/` directory contains:
 
-- `data.env`: explicit Docker context, project, private bind address, distinct
+- `data.env`: explicit Docker context, project, published `POSTGRES_IMAGE`, private bind address, distinct
   ports, PostgreSQL volume name, and the UTC backup hour.
 - `postgres.env`: bootstrap and separate schema-owner, runtime, and maintenance
   passwords. Use independent random URL-safe passwords. Keep `POSTGRES_USER`
@@ -73,7 +73,8 @@ just data-services-up prod
 just backup-info prod
 ```
 
-`data-services-up` builds the database image, starts PostgreSQL and Meilisearch, creates
+`data-services-up` pulls the selected images, stops the backup scheduler, and starts
+PostgreSQL and Meilisearch without building. It creates
 and checks the pgBackRest stanza, takes an initial full backup if none exists,
 then starts the scheduler. Repository failure stops this setup command. A running
 PostgreSQL can remain healthy during later archive failures; monitor backups
@@ -126,8 +127,8 @@ console level.
 
 The shared dev/prod configuration enables `repo1-bundle=y`. pgBackRest combines
 small files to reduce repository object counts and requests. Bundle sizes use the
-pgBackRest defaults. Rebuild and recreate PostgreSQL and the backup scheduler with
-`just data-services-up <environment>` to apply image configuration changes.
+pgBackRest defaults. Publish image configuration changes, set `POSTGRES_IMAGE` to
+the verified image, then run `just data-services-up <environment>` on the data host.
 
 The scheduler uses successful repository history. It takes a weekly full on
 Sunday and a differential on other days at `BACKUP_HOUR_UTC` (default 03:00 UTC,

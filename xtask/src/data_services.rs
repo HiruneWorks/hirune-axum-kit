@@ -42,6 +42,12 @@ impl DataServicesDeployment {
         ensure!(valid_name(&project), "invalid data project name");
         ensure!(
             values
+                .get("POSTGRES_IMAGE")
+                .is_some_and(|image| valid_postgres_image(image)),
+            "set POSTGRES_IMAGE to an explicit version tag or sha256 digest; latest is not allowed"
+        );
+        ensure!(
+            values
                 .get("POSTGRES_DATA_VOLUME")
                 .is_some_and(|value| valid_name(value)),
             "invalid PostgreSQL volume name"
@@ -318,6 +324,32 @@ fn valid_name(value: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-' || c == b'_')
 }
 
+fn valid_postgres_image(image: &str) -> bool {
+    if image.is_empty() || image.starts_with('-') || image.chars().any(char::is_whitespace) {
+        return false;
+    }
+    if let Some((name, digest)) = image.split_once('@') {
+        return !name.is_empty()
+            && digest.strip_prefix("sha256:").is_some_and(|hash| {
+                hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            });
+    }
+    image.rsplit('/').next().is_some_and(|name| {
+        name.rsplit_once(':').is_some_and(|(name, tag)| {
+            !name.is_empty()
+                && !tag.eq_ignore_ascii_case("latest")
+                && (1..=128).contains(&tag.len())
+                && tag
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                && tag
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+        })
+    })
+}
+
 pub fn from_arguments() -> Result<()> {
     let arguments: Vec<_> = std::env::args().skip(2).collect();
     let action = arguments.first().context("select a data action")?;
@@ -340,10 +372,14 @@ pub fn from_arguments() -> Result<()> {
         "check" => deployment.run(&["config", "--quiet"]),
         "up" => {
             deployment.require_secrets()?;
+            deployment.run(&["pull", "postgres", "meilisearch"])?;
+            deployment.run(&["stop", "backup-scheduler"])?;
             deployment.run(&[
                 "up",
                 "--detach",
-                "--build",
+                "--no-build",
+                "--pull",
+                "never",
                 "--wait",
                 "postgres",
                 "meilisearch",
@@ -351,7 +387,14 @@ pub fn from_arguments() -> Result<()> {
             deployment.pgbackrest(&["stanza-create"])?;
             deployment.pgbackrest(&["check"])?;
             deployment.initial_backup()?;
-            deployment.run(&["up", "--detach", "backup-scheduler"])
+            deployment.run(&[
+                "up",
+                "--detach",
+                "--no-build",
+                "--pull",
+                "never",
+                "backup-scheduler",
+            ])
         }
         "down" => deployment.run(&["stop", "backup-scheduler", "meilisearch", "postgres"]),
         "status" => deployment.run(&["ps", "--all"]),
