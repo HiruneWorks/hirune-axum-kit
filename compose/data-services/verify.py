@@ -102,8 +102,6 @@ def verify(root):
         shutil.copyfile(environment["CODEX_PROXY_CERT"], public_ca)
         environment["DATA_BUILD_CA_FILE"] = str(public_ca)
     base = ["docker", "compose", "--project-name", PROJECT, "--env-file", str(profile / "data.env"), "-f", str(root / "compose/data-services/compose.yaml")]
-    if build_postgres:
-        base += ["-f", str(root / "compose/data-services/compose.build.yaml")]
     base += ["-f", str(override)]
     recovery_volumes = []
 
@@ -132,7 +130,7 @@ def verify(root):
 
     try:
         if build_postgres:
-            compose("build", "postgres")
+            compose("--file", str(root / "compose/data-services/compose.build.yaml"), "build", "postgres")
         image_id = execute(["docker", "image", "inspect", "--format", "{{.Id}}", postgres_image]).stdout.strip()
         environment["POSTGRES_IMAGE"] = image_id
         print("Data-service acceptance uses PostgreSQL image " + postgres_image + " (" + image_id + ")", flush=True)
@@ -232,6 +230,8 @@ def verify(root):
         compose("--profile", "recovery", "down", "--volumes", "--remove-orphans", success=False)
         for volume in recovery_volumes:
             execute(["docker", "volume", "rm", volume], success=False)
+        if build_postgres:
+            execute(["docker", "image", "rm", postgres_image], success=False)
 
 
 if __name__ == "__main__":

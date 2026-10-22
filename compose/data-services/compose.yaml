@@ -33,7 +33,8 @@ services:
     mem_limit: 2g
     stop_grace_period: 60s
     healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U postgres -d postgres']
+      # The entrypoint's temporary initialization server accepts Unix sockets only.
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres -d postgres']
       interval: 2s
       timeout: 5s
       retries: 60
