@@ -31,7 +31,7 @@ pub fn verify() -> Result<()> {
         )?;
         let data = crate::data_services::DataServicesDeployment::load(root, environment)?;
         let rendered = data
-            .compose(&["config", "--format", "json"])
+            .compose(&["--profile", "recovery", "config", "--format", "json"])
             .env_remove("DATA_BUILD_CA_FILE")
             .current_dir(root)
             .output()?;
@@ -42,7 +42,7 @@ pub fn verify() -> Result<()> {
             ensure!(
                 services[name].get("build").is_none()
                     && services[name]["image"] == data.values["POSTGRES_IMAGE"],
-                "data services must use the selected published image without building"
+                "data service {name} must use the selected published image without building"
             );
         }
         ensure!(
@@ -51,6 +51,8 @@ pub fn verify() -> Result<()> {
         );
         let local_build = data
             .compose(&[
+                "--profile",
+                "recovery",
                 "--file",
                 "compose/data-services/compose.build.yaml",
                 "config",
@@ -108,6 +110,40 @@ pub fn verify() -> Result<()> {
     let dev = Deployment::load(root, Environment::Dev)?;
     let dev_data_path = root.join(".envs/.dev/data-services/data.env");
     let original_data = fs::read_to_string(&dev_data_path)?;
+    let dev_data = crate::data_services::DataServicesDeployment::load(root, Environment::Dev)?;
+    let original_image = dev_data.values["POSTGRES_IMAGE"].clone();
+    for image in [
+        "",
+        "postgres",
+        "registry.example:5000/postgres",
+        "postgres:latest",
+        "postgres:",
+        "postgres:-invalid",
+        "postgres@sha256:1234",
+    ] {
+        fs::write(
+            &dev_data_path,
+            original_data.replace(&original_image, image),
+        )?;
+        ensure!(
+            crate::data_services::DataServicesDeployment::load(root, Environment::Dev).is_err(),
+            "unversioned or invalid PostgreSQL image was accepted"
+        );
+    }
+    for image in [
+        "registry.example:5000/service-postgres:18.6-1".to_owned(),
+        format!("ghcr.io/example/service-postgres@sha256:{}", "a".repeat(64)),
+    ] {
+        fs::write(
+            &dev_data_path,
+            original_data.replace(&original_image, &image),
+        )?;
+        ensure!(
+            crate::data_services::DataServicesDeployment::load(root, Environment::Dev).is_ok(),
+            "explicit PostgreSQL version or digest was rejected"
+        );
+    }
+    fs::write(&dev_data_path, &original_data)?;
     fs::write(
         &dev_data_path,
         format!("{original_data}\nDEPLOY_ENV=prod\n"),

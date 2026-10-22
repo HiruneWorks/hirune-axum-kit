@@ -133,9 +133,9 @@ def verify(root):
     try:
         if build_postgres:
             compose("build", "postgres")
-        else:
-            execute(["docker", "image", "inspect", "--format", "{{.Id}}", postgres_image])
-        print("Data-service acceptance uses PostgreSQL image " + postgres_image, flush=True)
+        image_id = execute(["docker", "image", "inspect", "--format", "{{.Id}}", postgres_image]).stdout.strip()
+        environment["POSTGRES_IMAGE"] = image_id
+        print("Data-service acceptance uses PostgreSQL image " + postgres_image + " (" + image_id + ")", flush=True)
         compose("run", "--rm", "--no-deps", "--user", "root", "--entrypoint", "sh", "postgres", "-c", "mkdir -p /backup && chown postgres:postgres /backup")
         compose("up", "-d", "--wait", "postgres", "meilisearch")
         pgbackrest("stanza-create")
@@ -149,7 +149,8 @@ def verify(root):
             else:
                 execute(["cargo", "build", "--locked", "--package", "migration"])
                 migration_environment["MIGRATION_DATABASE_URL"] = f"postgres://schema_owner:{passwords['SCHEMA_OWNER_PASSWORD']}@127.0.0.1:{pg_port}/{database}"
-                return execute([str(SOURCE / "target/debug/migration")], env=migration_environment, success=success)
+                binary = "migration.exe" if os.name == "nt" else "migration"
+                return execute([str(SOURCE / "target/debug" / binary)], env=migration_environment, success=success)
         migrate()
         sql("GRANT CREATE ON SCHEMA public TO runtime")
         assert migrate(success=False).returncode, "Existing DDL authority was accepted"
