@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-22 — Application image releases](2026-10-22-application-image-releases.md):
+  verified tag-only GHCR application publication, image identity preservation,
+  independent database releases, and explicit publication scope.
+
 - [2026-10-22 — Published PostgreSQL images](2026-10-22-published-postgres-images.md):
   independent verified GHCR releases, explicit data image selection, deployment
   pulls without builds, retained local builds, and final-server readiness.
