@@ -3,6 +3,10 @@
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
 
+- [2026-10-30 — PostgreSQL job load coverage](2026-10-30-postgres-job-load.md):
+  transactional visibility, saturated workers, multi-batch retention, and queue
+  throughput/wait measurements alongside foreground database transactions.
+
 - [2026-10-22 — Application image releases](2026-10-22-application-image-releases.md):
   verified tag-only GHCR application publication, image identity preservation,
   independent database releases, and explicit publication scope.

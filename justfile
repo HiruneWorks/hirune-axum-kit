@@ -42,6 +42,10 @@ check:
 test-db:
     cargo xtask test-db
 
+# PostgreSQL queue diagnostics; JOB_LOAD_PROFILE=extended increases the workload.
+test-job-load:
+    cargo xtask test-job-load
+
 test-api:
     cargo xtask test-api
 

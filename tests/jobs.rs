@@ -24,6 +24,9 @@ mod scheduling;
 #[path = "jobs/provider_retry.rs"]
 mod provider_retry;
 
+#[path = "jobs/pressure.rs"]
+mod pressure;
+
 async fn queued_job(database: &TestDatabase) -> anyhow::Result<Uuid> {
     let transaction = database.connection.begin().await?;
     let job_id = Uuid::now_v7();
