@@ -55,6 +55,19 @@ remains authoritative. A database error while claiming exits the worker with an
 error. The deployment supervisor restarts it. This worker policy is separate from the
 HTTP adapter's common status/code/request-ID error response.
 
+## Queue verification
+
+The PostgreSQL queue remains the background-work transport. Business changes and
+job registration continue to share one transaction. The baseline does not require
+a separate broker or publication relay.
+
+`tests/jobs/pressure.rs` verifies shared commit visibility, rollback, row-lock
+release while handlers are saturated, bounded claims, and multi-batch retention.
+`just test-job-load` records queue throughput, bulk and notification wait times,
+and foreground database latency with retained job history. See
+[job load](../development.md#postgresql-job-load) for its profiles and evidence
+limits.
+
 ## Authentication mail
 
 Purpose-specific MJML and plain-text templates live under `crates/mail/templates/`:

@@ -28,6 +28,7 @@ See the [GitHub configuration reference](https://docs.github.com/en/code-securit
 | `just fmt` | Format the workspace. |
 | `just check` | Formatting, architecture boundaries, local documentation links, Clippy with warnings denied, unit/doc tests, Turnstile verifier tests against a local fake server, OpenAPI drift. |
 | `just test-db` | Real PostgreSQL identity, queue, and schema-consistency tests, including transaction/concurrency failures, immediate slot refill across 1/2/4 worker pools, empty-queue polling bounds, and entity/enum drift detection. |
+| `just test-job-load` | PostgreSQL queue load with 1/2/4 worker pools, transactional database effects, mixed bulk/notification work, retained history, and foreground database latency. Writes `target/job-load-report.json`. |
 | `just test-api` | Production-router API and local signed OIDC tests; external API scope, shared quota concurrency, window rollover, authority races, transaction rollback, and retention; Turnstile-protected identity routes against a local fake siteverify server. |
 | `just test-process` | Separate API/worker/maintenance processes, four mail purposes through Mailpit, worker replacement, shared revocation, periodic cleanup deduplication, and API-key allocation/restart behavior. |
 | `just test-files` | Real SeaweedFS/Meilisearch, original-byte preservation, direct range downloads, tenant access, quota races, conditional PUT races, and late-upload deletion. |
@@ -121,6 +122,46 @@ the workflow dispatch input selects its
 profile in CI. Thresholds are regression gates, not a production capacity promise.
 Benchmark production builds, realistic data, distinct user populations, deployed
 network paths, and intended concurrency before a capacity decision.
+
+## PostgreSQL job load
+
+Run `just test-job-load` to measure the existing PostgreSQL queue and worker
+runtime. The command creates disposable local infrastructure unless
+`TEST_DATABASE_URL` selects an existing local disposable server. Each scenario
+uses a new migrated database, four producers, four execution slots per worker,
+and one foreground database client. Scenarios use one, two, and four independent
+worker pools. They do not start a new broker or change the application runtime.
+
+| Profile | Jobs per scenario | Retained job rows per scenario |
+| --- | --- | --- |
+| `JOB_LOAD_PROFILE=smoke` (default) | 2,000 | 10,000 |
+| `JOB_LOAD_PROFILE=extended` | 20,000 | 100,000 |
+
+Every producer commits a source record and its job together. Each handler updates
+that source record. One in sixteen registrations models a notification; the other
+jobs model a bulk projection with a two-millisecond asynchronous delay. Both use
+the same application queue. The test verifies every job, attempt, and database
+effect. Missing effects, repeated effects, unexpected retries, worker failures,
+and failure to drain within 180 seconds fail the scenario.
+
+The JSON report records scenario completion throughput, registration latency,
+separate bulk and notification registration-to-handler latency, and foreground
+transaction latency before and during load. Latencies include p50, p95, p99, and
+maximum values.
+Registration-to-handler uses a shared monotonic clock and includes registration,
+commit, claim, and dispatch. The foreground probe updates and reads its own row
+in a transaction. It measures shared database pressure without intentional row
+contention.
+
+CI runs the selected profile and saves `job-load-report` as an artifact. Set
+`JOB_LOAD_RELEASE=true` for an optimized test build. Compare measurements only
+when the build mode and host resources match. The synthetic effects exclude HTTP,
+SMTP, FCM, storage, and search-provider latency. These measurements do not replace
+the deployed k6 workflow or establish maximum throughput or production capacity.
+Retained history models row count, not aged-table dead tuples, vacuum work, or
+historical attempt volume. Each foreground transaction has a five-second bound.
+The test does not promise notification priority over bulk work. Use its separate
+latency results to assess interference before changing queue policy.
 
 ## Production fixture scope
 

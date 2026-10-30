@@ -125,6 +125,14 @@ It also verifies failure detection with deliberate database changes.
   rejection and cleanup, and bearer-only HTTP responses without an Origin or
   cookie (`tests/oidc/native.rs`).
 - Worker crash recovery preserves attempt history, honors retry delay, and fences stale completion; a hung heartbeat/handler cannot hold a lease forever.
+- Workers cannot observe an uncommitted business change or its job. Rollback
+  removes both. Saturated handlers release claim locks and leave excess jobs
+  pending without prefetch. Finished-history cleanup drains successive batches
+  while preserving ready, running, and recent jobs (`tests/jobs/pressure.rs`).
+- PostgreSQL job load verifies source/job/attempt/effect counts across 1/2/4 worker
+  pools and retained history. Separate bulk/notification wait and foreground
+  database latency measurements are diagnostic evidence, not production capacity
+  gates (`tests/job_load.rs`).
 - Database outages return unavailable; HTTP configuration is isolated across application instances.
 - Real Mailpit delivery checks HTML/text content, worker replacement, cross-process revocation, and absence of secrets in captured process logs.
 - k6 uses distinct accounts and organizations across two API processes for scoped

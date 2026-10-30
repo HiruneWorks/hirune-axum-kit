@@ -27,6 +27,7 @@ fn main() -> Result<()> {
         Some("check") => checks::check(),
         Some("openapi") => checks::openapi(false),
         Some("test-db") => infrastructure::run_tests(&["identity", "jobs", "schema_consistency"]),
+        Some("test-job-load") => infrastructure::run_tests(&["job_load"]),
         Some("test-api") => {
             infrastructure::run_tests(&["api", "oidc", "api_access", "human_verification"])
         }
@@ -45,7 +46,7 @@ fn main() -> Result<()> {
         Some("load-test-local") => infrastructure::run_load_test(),
         Some("template-check") => template::verify(root),
         _ => anyhow::bail!(
-            "usage: cargo xtask <init|check|openapi|test-db|test-api|test-process|test-files|test-content|test-deployment|test-production|test-data-services|data-services <action> <dev|prod>|deploy-k3s <action> <dev|prod>|test-k3s|load-test|load-test-local|template-check>"
+            "usage: cargo xtask <init|check|openapi|test-db|test-job-load|test-api|test-process|test-files|test-content|test-deployment|test-production|test-data-services|data-services <action> <dev|prod>|deploy-k3s <action> <dev|prod>|test-k3s|load-test|load-test-local|template-check>"
         ),
     }
 }

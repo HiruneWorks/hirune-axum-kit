@@ -63,6 +63,17 @@ jobs:
           rm kubectl kubectl.sha256
       - run: just check
       - run: just test-db
+      - run: just test-job-load
+        env:
+          JOB_LOAD_PROFILE: ${{ inputs.load_profile || 'smoke' }}
+      - name: Retain PostgreSQL job load measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: job-load-report
+          path: target/job-load-report.json
+          if-no-files-found: ignore
+          retention-days: 7
       - run: just test-api
       - run: just test-process
       - run: just test-files

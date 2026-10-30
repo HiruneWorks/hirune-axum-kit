@@ -32,7 +32,21 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
     for target in targets {
         command.args(["--test", target]);
     }
-    let parallel_test_cases = if targets.contains(&"jobs") { 1 } else { 2 };
+    let job_load = targets.contains(&"job_load");
+    let parallel_test_cases = if targets.contains(&"jobs") || job_load {
+        1
+    } else {
+        2
+    };
+    if job_load {
+        match std::env::var("JOB_LOAD_RELEASE").as_deref() {
+            Ok("true") => {
+                command.arg("--release");
+            }
+            Err(std::env::VarError::NotPresent) | Ok("false") => {}
+            _ => anyhow::bail!("JOB_LOAD_RELEASE must be true or false"),
+        }
+    }
     command
         .arg("--")
         .arg("--ignored")
@@ -43,6 +57,9 @@ pub fn run_tests_at(directory: &Path, targets: &[&str], load: bool) -> Result<()
             .env("RUN_K6", "true");
     } else {
         command.args(["--skip", "load::mixed_workload"]);
+    }
+    if job_load {
+        command.arg("--nocapture");
     }
     if let Some(infrastructure) = &infrastructure {
         command
