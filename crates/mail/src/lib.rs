@@ -242,7 +242,16 @@ mod tests {
             purpose: MailPurpose::VerifyEmail,
             action_url: "https://example.test/verify#token=public-test-token".into(),
         };
-        let html = mailer.templates.get_template("verify-email.html").unwrap().render(minijinja::context! {application_name=>message.application_name,heading=>"Verify",action_url=>message.action_url}).unwrap();
+        let html = mailer
+            .templates
+            .get_template("verify-email.html")
+            .unwrap()
+            .render(minijinja::context! {
+                application_name => &message.application_name,
+                heading => "Verify",
+                action_url => &message.action_url,
+            })
+            .unwrap();
         assert!(!html.contains("<script>"));
         assert!(html.contains("&lt;script&gt;"));
         for purpose in [
