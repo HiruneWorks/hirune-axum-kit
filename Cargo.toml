@@ -57,7 +57,7 @@ openidconnect = "4.0.1"
 cedar-policy = "4.13.0"
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "pool", "hostname", "tokio1-rustls-tls"] }
 mrml = "6.0.1"
-minijinja = { version = "2.23.0", features = ["loader"] }
+minijinja = "3.0.5"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 sentry = { version = "0.49.3", default-features = false, features = ["reqwest", "rustls", "tracing", "tower-http", "tower-axum-matched-path"] }
