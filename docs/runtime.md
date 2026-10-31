@@ -204,11 +204,12 @@ arguments in instrumentation. Job spans add job/attempt IDs and the originating
 request ID. SMTP acceptance includes delivery ID. The request ID connects traces
 across the database queue. W3C traceparent propagation is not implemented.
 
-The optional Sentry layer records owned application errors and performance spans,
-with request-local hubs. Provider/library events are filtered, request/user payloads
-are removed, and raw URLs, headers, bodies, or SQL parameters are not captured by
-HTTP instrumentation. Future fields need explicit redaction review. Do not enable
-verbose third-party logging for production credentials.
+The optional Sentry `ErrorLayer` records `ERROR` events from owned application
+targets. Its `SpanLayer` records performance spans from the same targets with
+request-local hubs. Both layers exclude provider and library targets. The client
+removes request and user payloads. HTTP instrumentation does not capture raw URLs,
+headers, bodies, or SQL parameters. Review future fields for sensitive data. Do not
+enable verbose third-party logging for production credentials.
 
 SIGTERM/Ctrl-C changes readiness and begins bounded shutdown. Liveness reports
 process availability. Readiness also requires the database and an accepting API.
