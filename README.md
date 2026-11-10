@@ -105,3 +105,8 @@ separate products. Template updates do not automatically update your copy.
 - [Agent instructions](AGENTS.md) and [milestone evidence](memory/README.md)
 
 Copyright 2026 Levi Laine. Licensed under [Apache-2.0](LICENSE).
+
+## Container platforms
+
+Build and verify Linux AMD64 and ARM64 images with the
+[container platform guide](deploy/container-platforms.md).

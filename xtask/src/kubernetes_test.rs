@@ -218,8 +218,9 @@ impl Fixture {
             .output()?;
         ensure!(config.status.success(), "cannot get isolated kubeconfig");
         fs::write(self.directory.path().join("kubeconfig"), &config.stdout)?;
+        let node_platform = docker_image_platform(NODE_IMAGE)?;
         for image in std::iter::once(image).chain(IMAGES.iter().copied()) {
-            self.import_image(image)?;
+            self.import_image(image, &node_platform)?;
         }
         // Import the distribution's exact system images for nodes that cannot pull.
         for name in ["coredns", "metrics-server"] {
@@ -235,8 +236,8 @@ impl Fixture {
             let system_image = system["spec"]["template"]["spec"]["containers"][0]["image"]
                 .as_str()
                 .context("system image missing")?;
-            crate::run(Command::new("docker").args(["pull", system_image]))?;
-            self.import_image(system_image)?;
+            materialize_system_image(system_image, &node_platform)?;
+            self.import_image(system_image, &node_platform)?;
         }
         crate::run(&mut self.kubectl(&[
             "wait",
@@ -676,13 +677,14 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
             .clone())
     }
 
-    fn import_image(&self, image: &str) -> Result<()> {
-        // Export the daemon's Linux platform only; cached indexes can reference absent variants.
+    fn import_image(&self, image: &str, platform: &str) -> Result<()> {
+        // Export only the node platform; other index entries can lack local layers.
         // k3d's importer assumes overlayfs. Match the native snapshotter explicitly.
+        let platform_argument = format!("--platform={platform}");
         for role in ["server", "agent"] {
             let node = format!("k3d-{}-{role}-0", self.cluster);
             let mut save = Command::new("docker")
-                .args(["image", "save", "--platform=linux", image])
+                .args(["image", "save", &platform_argument, image])
                 .stdout(Stdio::piped())
                 .spawn()?;
             let result = Command::new("docker")
@@ -696,6 +698,7 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
                     "images",
                     "import",
                     "--local",
+                    &platform_argument,
                     "--snapshotter=native",
                     "-",
                 ])
@@ -987,6 +990,49 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         self.create_database_roles(&schema_password, &runtime_password, &maintenance_password)?;
         Ok(())
     }
+}
+
+fn materialize_system_image(image: &str, platform: &str) -> Result<()> {
+    // Unpacked Docker cache entries can lack blobs required by image export.
+    // A FROM-only BuildKit export restores the complete, unchanged platform image.
+    let context = tempfile::tempdir()?;
+    fs::write(context.path().join("Dockerfile"), format!("FROM {image}\n"))?;
+    crate::run(
+        Command::new("docker")
+            .args([
+                "build",
+                "--pull",
+                "--platform",
+                platform,
+                "--provenance=false",
+                "--tag",
+                image,
+            ])
+            .arg(context.path()),
+    )
+}
+
+fn docker_image_platform(image: &str) -> Result<String> {
+    let output = Command::new("docker")
+        .args([
+            "image",
+            "inspect",
+            "--format",
+            "{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}",
+            image,
+        ])
+        .output()?;
+    ensure!(
+        output.status.success(),
+        "cannot inspect Docker image platform for {image}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let platform = String::from_utf8(output.stdout)?.trim().to_owned();
+    ensure!(
+        platform.contains('/') && !platform.starts_with('/') && !platform.ends_with('/'),
+        "Docker returned an invalid platform for {image}: {platform:?}"
+    );
+    Ok(platform)
 }
 
 impl Drop for Fixture {

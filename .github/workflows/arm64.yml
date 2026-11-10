@@ -1,0 +1,124 @@
+name: ARM64 images
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        default: ""
+    outputs:
+      image:
+        value: ${{ jobs.cross-build.outputs.image }}
+      source_sha:
+        value: ${{ jobs.cross-build.outputs.source_sha }}
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Source commit or tag to verify
+        type: string
+        default: ""
+concurrency:
+  group: arm64-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  cross-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      image: ${{ steps.package.outputs.image }}
+      source_sha: ${{ steps.package.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+      - name: Test image archive verification
+        run: python3 -m unittest discover -s scripts -p verify_container_archive_test.py
+      - name: Test multi-platform publication guards
+        run: python3 -m unittest discover -s scripts -p publish_multiarch_image_test.py
+      - name: Require the x86 cross-compiler host
+        run: test "$(uname -m)" = x86_64
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
+      - name: Read package version
+        id: package
+        run: |
+          python3 -c 'import tomllib; print("version=" + tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])' >> "$GITHUB_OUTPUT"
+          source_sha=$(git rev-parse HEAD)
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "image=local/arm64-candidate:$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Cross-compile the ARM64 image on x86
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: compose/production/app/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ steps.package.outputs.image }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.package.outputs.source_sha }}
+            org.opencontainers.image.version=${{ steps.package.outputs.version }}
+          cache-from: type=gha,scope=arm64-cross
+          cache-to: type=gha,scope=arm64-cross,mode=max
+      - name: Build the ARM64 PostgreSQL candidate
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: compose/production/postgres/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          provenance: false
+          tags: local/arm64-postgres:${{ steps.package.outputs.source_sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.package.outputs.source_sha }}
+          cache-from: type=gha,scope=arm64-postgres
+          cache-to: type=gha,scope=arm64-postgres,mode=max
+      - name: Export the exact image for native verification
+        env:
+          IMAGE: ${{ steps.package.outputs.image }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/arm64"
+          docker save --output "$RUNNER_TEMP/arm64/image.tar" "$IMAGE" "local/arm64-postgres:${{ steps.package.outputs.source_sha }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arm64-candidate
+          path: ${{ runner.temp }}/arm64/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+  native-verification:
+    needs: cross-build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      IMAGE: ${{ needs.cross-build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.cross-build.outputs.source_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: arm64-candidate
+          path: ${{ runner.temp }}/arm64
+      - name: Load and verify the exact ARM64 image
+        run: |
+          docker load --input "$RUNNER_TEMP/arm64/image.tar"
+          python3 scripts/verify_container_archive.py "$RUNNER_TEMP/arm64/image.tar" "$IMAGE"
+          test "$(docker image inspect "$IMAGE" --format '{{.Architecture}}')" = arm64
+      - name: Verify native ARM64 executable dependencies
+        run: |
+          docker run --rm --entrypoint /bin/sh "$IMAGE" -ec 'for executable in api worker maintenance manage migration; do result=$(ldd "/usr/local/bin/$executable"); printf "%s\n" "$result"; if printf "%s" "$result" | grep -q "not found"; then exit 1; fi; done'
+      - name: Verify native ARM64 migration and application processes
+        run: python3 scripts/verify_backend_image.py "$IMAGE"
+      - name: Verify native ARM64 PostgreSQL backup and recovery
+        env:
+          DATA_TEST_APP_IMAGE: ${{ env.IMAGE }}
+          DATA_TEST_POSTGRES_IMAGE: local/arm64-postgres:${{ needs.cross-build.outputs.source_sha }}
+        run: |
+          python3 scripts/verify_container_archive.py "$RUNNER_TEMP/arm64/image.tar" "$DATA_TEST_POSTGRES_IMAGE"
+          python3 -u compose/data-services/verify.py

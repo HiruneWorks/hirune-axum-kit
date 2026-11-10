@@ -1,11 +1,22 @@
-FROM rust:1.99.1-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.99.1-bookworm AS build
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
+    AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar \
+    CARGO_BUILD_JOBS=1
 WORKDIR /source
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/source/target \
-    cargo build --locked --release --workspace --bins \
+    case "$TARGETARCH" in amd64) target=x86_64-unknown-linux-gnu ;; arm64) target=aarch64-unknown-linux-gnu ;; *) exit 1 ;; esac \
+    && rustup target add "$target" \
+    && cargo build --locked --release --target "$target" --package hirune-axum-kit --bin api --bin worker --bin maintenance --bin manage \
+    && cargo build --locked --release --target "$target" --package migration --bin migration \
     && install -d /artifacts \
-    && install target/release/api target/release/worker target/release/maintenance target/release/manage target/release/migration /artifacts/
+    && install "target/$target/release/api" "target/$target/release/worker" "target/$target/release/maintenance" "target/$target/release/manage" "target/$target/release/migration" /artifacts/
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
