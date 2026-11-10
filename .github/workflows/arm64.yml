@@ -1,0 +1,76 @@
+name: ARM64 images
+on:
+  push:
+    branches: ["**"]
+    paths: ["Dockerfile", "compose/production/app/**", ".github/workflows/arm64.yml", "deploy/package.py", "deploy/package_test.py"]
+  pull_request:
+    paths: ["Dockerfile", "compose/production/app/**", ".github/workflows/arm64.yml", "deploy/package.py", "deploy/package_test.py"]
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cross-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
+      - name: Read package version
+        id: package
+        run: python3 -c 'import tomllib; print("version=" + tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])' >> "$GITHUB_OUTPUT"
+      - name: Cross-compile the ARM64 image on x86
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: compose/production/app/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          provenance: false
+          tags: local/arm64-candidate:${{ github.sha }}
+          build-args: |
+            SEVENMARK_BUILD_VERSION=${{ steps.package.outputs.version }}
+            HIRUNE_BUILD_ID=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.package.outputs.version }}
+          cache-from: type=gha,scope=arm64-cross
+          cache-to: type=gha,scope=arm64-cross,mode=max
+      - name: Export the exact image for native verification
+        env:
+          IMAGE: local/arm64-candidate:${{ github.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/arm64"
+          docker image inspect "$IMAGE" --format '{{.Id}}' > "$RUNNER_TEMP/arm64/image-id.txt"
+          docker save --output "$RUNNER_TEMP/arm64/image.tar" "$IMAGE"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arm64-candidate
+          path: ${{ runner.temp }}/arm64/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+  native-verification:
+    needs: cross-build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      IMAGE: local/arm64-candidate:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: arm64-candidate
+          path: ${{ runner.temp }}/arm64
+      - name: Load and verify the exact ARM64 image
+        run: |
+          docker load --input "$RUNNER_TEMP/arm64/image.tar"
+          test "$(docker image inspect "$IMAGE" --format '{{.Id}}')" = "$(cat "$RUNNER_TEMP/arm64/image-id.txt")"
+          test "$(docker image inspect "$IMAGE" --format '{{.Architecture}}')" = arm64
+      - name: Verify native ARM64 executable dependencies
+        run: |
+          docker run --rm --entrypoint /bin/sh "$IMAGE" -ec 'for executable in api worker maintenance manage migration; do result=$(ldd "/usr/local/bin/$executable"); printf "%s\n" "$result"; if printf "%s" "$result" | grep -q "not found"; then exit 1; fi; done'
