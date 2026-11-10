@@ -77,11 +77,16 @@ def verify(image):
                     time.sleep(1)
             else:
                 raise RuntimeError("Native application did not become ready")
-            with urllib.request.urlopen(base + "/api/v1/auth/oidc", timeout=5) as response:
-                assert response.status == 200
+            try:
+                urllib.request.urlopen(base + "/api/v1/account", timeout=5)
+            except urllib.error.HTTPError as response:
+                assert response.code == 401
+                assert json.load(response)["error"]["code"] == "unauthenticated"
+            else:
+                raise AssertionError("Unauthenticated account read unexpectedly succeeded")
             for container in containers:
                 assert command("docker", "inspect", "--format", "{{.State.Running}}", container, capture=True).strip() == "true", container
-            print(json.dumps({"native_database_migration": True, "api_ready": 204, "oidc_route": 200,
+            print(json.dumps({"native_database_migration": True, "api_ready": 204, "account_route_unauthenticated": 401,
                               "worker_running": True, "maintenance_running": True}))
     finally:
         for container in reversed(containers):
