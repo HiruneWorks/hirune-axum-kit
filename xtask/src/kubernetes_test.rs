@@ -236,7 +236,7 @@ impl Fixture {
             let system_image = system["spec"]["template"]["spec"]["containers"][0]["image"]
                 .as_str()
                 .context("system image missing")?;
-            crate::run(Command::new("docker").args(["pull", system_image]))?;
+            materialize_system_image(system_image, &node_platform)?;
             self.import_image(system_image, &node_platform)?;
         }
         crate::run(&mut self.kubectl(&[
@@ -990,6 +990,26 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
         self.create_database_roles(&schema_password, &runtime_password, &maintenance_password)?;
         Ok(())
     }
+}
+
+fn materialize_system_image(image: &str, platform: &str) -> Result<()> {
+    // Unpacked Docker cache entries can lack blobs required by image export.
+    // A FROM-only BuildKit export restores the complete, unchanged platform image.
+    let context = tempfile::tempdir()?;
+    fs::write(context.path().join("Dockerfile"), format!("FROM {image}\n"))?;
+    crate::run(
+        Command::new("docker")
+            .args([
+                "build",
+                "--pull",
+                "--platform",
+                platform,
+                "--provenance=false",
+                "--tag",
+                image,
+            ])
+            .arg(context.path()),
+    )
 }
 
 fn docker_image_platform(image: &str) -> Result<String> {
