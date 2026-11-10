@@ -678,12 +678,13 @@ print('Dev tunnel-labelled Pod cannot reach prod gateway, API, or Valkey.')"#,
     }
 
     fn import_image(&self, image: &str, platform: &str) -> Result<()> {
+        // Export only the node platform; other index entries can lack local layers.
         // k3d's importer assumes overlayfs. Match the native snapshotter explicitly.
         let platform_argument = format!("--platform={platform}");
         for role in ["server", "agent"] {
             let node = format!("k3d-{}-{role}-0", self.cluster);
             let mut save = Command::new("docker")
-                .args(["image", "save", image])
+                .args(["image", "save", &platform_argument, image])
                 .stdout(Stdio::piped())
                 .spawn()?;
             let result = Command::new("docker")

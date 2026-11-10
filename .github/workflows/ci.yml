@@ -86,7 +86,7 @@ jobs:
   container:
     needs: metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
     outputs:
       image_id: ${{ steps.identity.outputs.image_id }}
     steps:
