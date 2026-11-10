@@ -87,7 +87,7 @@ services:
     volumes:
       - certificate_authorities:/certificates:ro
   proxy:
-    image: caddy:2.11.7-alpine
+    image: caddy:2.11.9-alpine
     network_mode: service:api
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
