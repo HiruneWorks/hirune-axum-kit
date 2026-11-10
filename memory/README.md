@@ -1,6 +1,6 @@
 # Milestones
 
-- [2026-11-11 ARM64 images](2026-11-11-arm64-images.md): native-builder cross-compilation, physical ARM64 application/backup gates, correct platform imports and tag-only multi-platform publication; final hosted acceptance remains separate.
+- [2026-11-11 ARM64 images](2026-11-11-arm64-images.md): x86 cross-compilation, physical ARM64 service/backup recovery, AMD64 production/data/two-node Kubernetes acceptance and tag-only multi-platform publication; final CI passed and PR #37 merged. No new release or live deployment.
 
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
 This index is updated when a milestone is complete.
