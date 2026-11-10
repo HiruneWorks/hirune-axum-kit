@@ -22,7 +22,7 @@ services:
       - "127.0.0.1:${SMTP_PORT:-10259}:1025"
       - "127.0.0.1:${MAILPIT_PORT:-8029}:8025"
   seaweedfs:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.52
     profiles: [files]
     command: [server, -s3, -dir=/data, -ip=seaweedfs, -volume.max=20, -master.volumeSizeLimitMB=100, -s3.config=/etc/seaweedfs/s3.json]
     ports:
