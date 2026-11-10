@@ -47,7 +47,7 @@ def verify(image):
                     environment={**os.environ, "POSTGRES_PASSWORD": password})
             containers.append(database)
             for _ in range(60):
-                ready = subprocess.run(["docker", "exec", database, "pg_isready", "-U", "postgres", "-d", "arm64"],
+                ready = subprocess.run(["docker", "exec", database, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "arm64"],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if ready.returncode == 0:
                     break
