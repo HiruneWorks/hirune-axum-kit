@@ -20,6 +20,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
+  arm64:
+    uses: ./.github/workflows/arm64.yml
   metadata:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -155,7 +157,7 @@ jobs:
 
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [metadata, verify, container]
+    needs: [metadata, verify, container, arm64]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -170,19 +172,27 @@ jobs:
         with:
           name: application-candidate-image
           path: ${{ runner.temp }}
+      - uses: actions/checkout@v7
       - name: Load and check the tested image identity
         run: |
           docker load --input "$RUNNER_TEMP/application-candidate.tar"
-          actual_id="$(docker image inspect hirune-kit:ci --format '{{.Id}}')"
-          test "$actual_id" = "$EXPECTED_IMAGE_ID"
+          python3 scripts/verify_container_archive.py "$RUNNER_TEMP/application-candidate.tar" hirune-kit:ci
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/download-artifact@v8
+        with:
+          name: arm64-candidate
+          path: ${{ runner.temp }}/arm64
+      - name: Load the exact tested ARM64 image
+        env:
+          ARM64_IMAGE: ${{ needs.arm64.outputs.image }}
+        run: |
+          docker load --input "$RUNNER_TEMP/arm64/image.tar"
+          python3 scripts/verify_container_archive.py "$RUNNER_TEMP/arm64/image.tar" "$ARM64_IMAGE"
       - name: Publish the tested versioned application image
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          target="$IMAGE:$VERSION"
-          docker tag hirune-kit:ci "$target"
-          docker push "$target"
-          reference="$(docker image inspect "$target" --format '{{index .RepoDigests 0}}')"
-          test -n "$reference"
+          reference=$(python3 scripts/publish_multiarch_image.py "$IMAGE" "$VERSION" hirune-kit:ci "${{ needs.arm64.outputs.image }}")
           printf 'APPLICATION_IMAGE=%s\n' "$reference" >> "$GITHUB_STEP_SUMMARY"

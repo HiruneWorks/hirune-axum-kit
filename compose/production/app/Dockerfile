@@ -13,7 +13,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/source/target \
     case "$TARGETARCH" in amd64) target=x86_64-unknown-linux-gnu ;; arm64) target=aarch64-unknown-linux-gnu ;; *) exit 1 ;; esac \
     && rustup target add "$target" \
-    && cargo build --locked --release --target "$target" --workspace --bins \
+    && cargo build --locked --release --target "$target" --package hirune-axum-kit --bin api --bin worker --bin maintenance --bin manage \
+    && cargo build --locked --release --target "$target" --package migration --bin migration \
     && install -d /artifacts \
     && install "target/$target/release/api" "target/$target/release/worker" "target/$target/release/maintenance" "target/$target/release/manage" "target/$target/release/migration" /artifacts/
 
