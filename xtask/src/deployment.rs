@@ -215,6 +215,18 @@ pub fn verify() -> Result<()> {
             resource(deployment, "hirune-api")["spec"]["replicas"] == 2,
             "two API replicas required"
         );
+        let api_pod = &resource(deployment, "hirune-api")["spec"]["template"]["spec"];
+        ensure!(
+            api_pod["containers"][0]["lifecycle"]["preStop"]["exec"]["command"]
+                == serde_json::json!(["sh", "-c", "sleep 5"]),
+            "API preStop must leave the documented five-second endpoint removal window"
+        );
+        ensure!(
+            api_pod["terminationGracePeriodSeconds"]
+                .as_u64()
+                .is_some_and(|seconds| seconds >= 60 + 5 + 5 + 5),
+            "API termination grace must cover the maximum request, response flush, preStop, and process cleanup"
+        );
         for service in deployment
             .resources
             .iter()

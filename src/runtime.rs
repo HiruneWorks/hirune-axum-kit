@@ -3,10 +3,16 @@ use std::{future::IntoFuture, time::Duration};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
+/// Keep the default drain and leave time to flush a timed-out request's response.
+pub fn http_drain_timeout(request_timeout: Duration) -> Duration {
+    Duration::from_secs(30).max(request_timeout.saturating_add(Duration::from_secs(5)))
+}
+
 pub async fn serve(
     listener: TcpListener,
     router: Router,
     shutdown: CancellationToken,
+    drain_timeout: Duration,
 ) -> anyhow::Result<()> {
     let server = axum::serve(
         listener,
@@ -18,7 +24,7 @@ pub async fn serve(
     tokio::select! {
         result = &mut server => result?,
         _ = shutdown.cancelled() => {
-            match tokio::time::timeout(Duration::from_secs(30), &mut server).await {
+            match tokio::time::timeout(drain_timeout, &mut server).await {
                 Ok(result) => result?,
                 Err(_) => tracing::warn!("HTTP drain deadline reached"),
             }

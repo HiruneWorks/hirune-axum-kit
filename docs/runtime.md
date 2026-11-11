@@ -4,7 +4,8 @@
 from one source workspace. The API owns the HTTP lifecycle. The worker runs jobs
 with bounded concurrency. Run migration and management commands explicitly.
 `bootstrap(settings)` assembles shared dependencies. `build_router` constructs
-the production router. `serve` accepts an existing listener and shutdown token.
+the production router. `serve` accepts an existing listener, shutdown token, and
+explicit drain timeout.
 Tests can create multiple independent applications without modifying global
 environment or initializing global tracing.
 
@@ -213,8 +214,15 @@ enable verbose third-party logging for production credentials.
 
 SIGTERM/Ctrl-C changes readiness and begins bounded shutdown. Liveness reports
 process availability. Readiness also requires the database and an accepting API.
-The API drains for at most thirty seconds. Workers stop claiming and drain for
-WORKER_DRAIN_SECONDS, then cancel unfinished tasks. Leases recover them later.
+The API uses `max(30 seconds, HTTP_TIMEOUT_SECONDS + 5 seconds)` as its drain
+timeout. The extra five seconds let a request finish and flush its response.
+The default request timeout is 15 seconds, so the default drain remains 30 seconds.
+The maximum supported request timeout is 60 seconds, which needs a 65-second drain.
+The drain timeout also bounds unfinished streaming responses. The k3s API Pod
+has a 75-second termination grace period: five seconds for `preStop`, up to
+65 seconds for draining, and five seconds for final process cleanup.
+Workers stop claiming and drain for WORKER_DRAIN_SECONDS, then cancel unfinished
+tasks. Leases recover them later.
 Run the explicit `maintenance` process for periodic cleanup and search repair,
 using the restricted maintenance role. Deployment starts it alongside API and
 worker. No host cron or systemd timer is required. `manage cleanup` remains an

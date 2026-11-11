@@ -75,8 +75,9 @@ API, worker, and management are binaries of the same assembled application.
 Separate process deployment does not require separate service crates.
 
 `bootstrap(settings)` prepares dependencies. `build_router(app, http_settings)`
-only constructs the production router. `serve(listener, router, shutdown)` owns
-listening and shutdown. Tests use these same functions. Router construction must
+only constructs the production router.
+`serve(listener, router, shutdown, drain_timeout)` owns listening and shutdown.
+Tests use these same functions. Router construction must
 not start a listener, consumer, scheduler, or detached task.
 
 ## Extending the template

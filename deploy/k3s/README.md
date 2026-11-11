@@ -163,9 +163,11 @@ HTTP, and job payloads must work with old and new processes at the same time.
 The API uses `maxUnavailable: 0` and `maxSurge: 1`. HTTP readiness gates Service
 traffic. TCP liveness avoids restarting healthy processes during database failure
 or HTTP admission pressure. A five-second pre-stop delay gives Service endpoints
-time to converge. The API then drains for at most 30 seconds. The 45-second
-termination grace also covers the default 35-second worker drain. Increase grace
-when increasing the worker drain; pre-stop consumes that budget.
+time to converge. The API drains for `max(30 seconds, HTTP_TIMEOUT_SECONDS + 5 seconds)`.
+Its 75-second termination grace covers pre-stop, the maximum 65-second drain,
+and five seconds for process cleanup. Worker and maintenance Pods keep their
+45-second grace, which covers the default 35-second worker drain. Increase their
+grace when increasing the worker drain; pre-stop consumes that budget.
 
 For an incompatible job or configuration change without a migration, force an
 interruption:

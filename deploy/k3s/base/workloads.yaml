@@ -23,7 +23,7 @@ spec:
         app.kubernetes.io/component: api
     spec:
       automountServiceAccountToken: false
-      terminationGracePeriodSeconds: 45
+      terminationGracePeriodSeconds: 75
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

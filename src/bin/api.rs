@@ -1,4 +1,5 @@
 use kit::{bootstrap::bootstrap, config::Settings, http::build_router, observability, runtime};
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
@@ -19,7 +20,15 @@ async fn main() -> anyhow::Result<()> {
             shutdown.cancel();
         }
     });
-    let result = runtime::serve(listener, build_router(app.clone(), settings.http), shutdown).await;
+    let drain_timeout =
+        runtime::http_drain_timeout(Duration::from_secs(settings.http.timeout_seconds));
+    let result = runtime::serve(
+        listener,
+        build_router(app.clone(), settings.http),
+        shutdown,
+        drain_timeout,
+    )
+    .await;
     watcher.abort();
     app.close().await?;
     result
