@@ -203,6 +203,13 @@ just maintenance prod off
 
 `off` requires backend readiness through every live gateway. Use normal `up`
 for release recovery so worker and scheduler rollout also complete before off.
+The helper uses a 180-second readiness retry budget while Service endpoints and
+gateway upstreams converge. In-flight Kubernetes calls can extend the total command
+time. Every current gateway must return HTTP 204 in one stable Pod
+set before maintenance is disabled. Readiness uses the HTTP status, so a temporary
+HTML gateway error remains unready without a JSON parsing failure. A deadline
+failure keeps maintenance enabled and reports the gateway and HTTP status without
+logging the response body.
 
 Serialize release commands. This helper is not a distributed deployment lock.
 Do not deploy with a plain `kubectl apply -k`: it does not wait for migration and
