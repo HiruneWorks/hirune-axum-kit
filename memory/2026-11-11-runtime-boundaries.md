@@ -48,12 +48,17 @@
 - `cargo fmt --all -- --check` and `git diff --check`: passed.
 - A read-only check of Cargo metadata and HTTP sources passed the same dependency
   and HTTP persistence predicates used by `xtask/src/checks.rs`.
-- A read-only local Markdown link check passed for 58 existing documents before
-  this entry was added. The completed entry and index are checked before commit.
+- A read-only local Markdown link check passed for 59 documents, including this
+  entry and the index.
 - Independent Astra source review found no blocking finding.
 - Initial compiler attempts stopped while a test module was still being written
   and while the new development-dependency lock entry was absent. After the files
   and lock entry were complete, locked compilation and strict Clippy passed.
+- A follow-up source check found that SeaORM's disconnected sentinel panics while
+  selecting a backend. The storage-error regression now uses a closed lazy
+  PostgreSQL pool. This retains the real backend and produces a storage error
+  without network I/O. Strict all-target Clippy for the jobs package passed after
+  this fixture correction. The regression itself was not executed locally.
 - Local unit, database, process, browser, and E2E suites were not executed, following
   the user's recorded preference. Do not report compiled cases as passing tests.
 - Remote CI is separate and remains pending at this milestone. No image publication,
