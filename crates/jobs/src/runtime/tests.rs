@@ -1,5 +1,5 @@
 use super::*;
-use sea_orm::{DatabaseConnection, DbErr};
+use sea_orm::{DbErr, SqlxPostgresConnector, sqlx::postgres::PgPoolOptions};
 use std::{
     io::{self, Write},
     sync::{Arc, Mutex},
@@ -81,7 +81,13 @@ async fn heartbeat_storage_failure_retains_claim_context() {
     let claim = claim();
     let identity = JobTaskIdentity::from(&claim);
     let logs = CapturedLogs::default();
-    let queue = PostgresQueue::new(DatabaseConnection::default());
+    // A closed pool retains the PostgreSQL backend and returns a storage error without network I/O.
+    let pool = PgPoolOptions::new()
+        .min_connections(0)
+        .connect_lazy("postgres://127.0.0.1/runtime_diagnostics")
+        .unwrap();
+    pool.close().await;
+    let queue = PostgresQueue::new(SqlxPostgresConnector::from_sqlx_postgres_pool(pool));
 
     let result = run_one(
         &queue,
