@@ -1,5 +1,7 @@
 # Milestones
 
+- [2026-11-11 Runtime boundaries](2026-11-11-runtime-boundaries.md): issue #44 and draft PR #45 add checked session expiry, safe job failure correlation, and request-aware HTTP drain with aligned API Pod grace; locked all-target compilation, strict Clippy, and formatting pass. Local test suites were not executed; remote CI remains separate.
+
 - [2026-11-11 ARM64 images](2026-11-11-arm64-images.md): x86 cross-compilation, physical ARM64 service/backup recovery, AMD64 production/data/two-node Kubernetes acceptance and tag-only multi-platform publication; final CI passed and PR #37 merged. No new release or live deployment.
 
 Record durable implementation decisions and validation evidence using [TEMPLATE.md](TEMPLATE.md).
