@@ -1,4 +1,4 @@
-use crate::{ApplicationError, ApplicationResult};
+use crate::{ApplicationError, ApplicationResult, identity::session_expiry::session_expires_at};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, sync::Arc};
@@ -117,6 +117,9 @@ impl IdentitySettings {
         {
             return Err(ApplicationError::InvalidInput("invalid identity settings"));
         }
+        let now = chrono::Utc::now();
+        session_expires_at(now, self.session_idle_seconds)?;
+        session_expires_at(now, self.session_absolute_seconds)?;
         Ok(())
     }
 }
@@ -126,6 +129,69 @@ pub(crate) const MAX_AUTHENTICATION_ATTEMPTS_PER_MINUTE: i32 = 100_000;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn identity_settings() -> IdentitySettings {
+        IdentitySettings {
+            application_name: "Session settings test".into(),
+            public_url: Url::parse("https://example.test/").unwrap(),
+            secret_keys: SecretKeys::new(
+                "test".into(),
+                [("test".into(), STANDARD.encode([1_u8; 32]))].into(),
+            )
+            .unwrap(),
+            rate_limit_key: SecretString::new("x".repeat(32)),
+            password_concurrency: 4,
+            authentication_identity_limit_per_minute: 10,
+            authentication_client_limit_per_minute: 60,
+            session_idle_seconds: 1_209_600,
+            session_absolute_seconds: 7_776_000,
+        }
+    }
+
+    #[test]
+    fn session_lifetimes_accept_defaults_and_larger_representable_values() {
+        let mut settings = identity_settings();
+        assert!(settings.validate().is_ok());
+        settings.session_idle_seconds = 100 * 365 * 24 * 60 * 60;
+        settings.session_absolute_seconds = settings.session_idle_seconds;
+        assert!(settings.validate().is_ok());
+    }
+
+    #[test]
+    fn session_lifetimes_reject_duration_and_date_overflow() {
+        for (idle_seconds, absolute_seconds) in [
+            (60, i64::MAX),
+            (i64::MAX, i64::MAX),
+            (60, chrono::Duration::MAX.num_seconds()),
+            (
+                chrono::Duration::MAX.num_seconds(),
+                chrono::Duration::MAX.num_seconds(),
+            ),
+        ] {
+            let mut settings = identity_settings();
+            settings.session_idle_seconds = idle_seconds;
+            settings.session_absolute_seconds = absolute_seconds;
+            assert!(matches!(
+                settings.validate(),
+                Err(ApplicationError::InvalidInput(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn session_lifetimes_preserve_the_minimum_and_absolute_order() {
+        for (idle_seconds, absolute_seconds) in [(59, 7_776_000), (120, 60)] {
+            let mut settings = identity_settings();
+            settings.session_idle_seconds = idle_seconds;
+            settings.session_absolute_seconds = absolute_seconds;
+            assert!(settings.validate().is_err());
+        }
+        let mut settings = identity_settings();
+        settings.session_idle_seconds = 60;
+        settings.session_absolute_seconds = 60;
+        assert!(settings.validate().is_ok());
+    }
+
     #[test]
     fn rotation_keeps_old_ciphertext_readable_and_context_bound() {
         let old = STANDARD.encode([1_u8; 32]);

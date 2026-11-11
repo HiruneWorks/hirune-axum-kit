@@ -3,6 +3,7 @@ use super::{
     entities::account,
     password_operations::PasswordOperations,
     repository::{accounts, challenges, security, sessions},
+    session_expiry::session_expires_at,
     validation::{normalize_email, validate_new_password},
 };
 use crate::{
@@ -170,14 +171,15 @@ impl IdentityService {
         require_authenticatable_account(account)?;
         let now = database_time(transaction).await?;
         let token = generate_secure_token();
-        let expires_at = now + Duration::seconds(self.settings.session_absolute_seconds);
+        let expires_at = session_expires_at(now, self.settings.session_absolute_seconds)?;
+        let idle_expires_at = session_expires_at(now, self.settings.session_idle_seconds)?;
         let session = sessions::insert_session(
             transaction,
             account.id,
             hash_token(&token),
             account.security_version,
             expires_at,
-            now + Duration::seconds(self.settings.session_idle_seconds),
+            idle_expires_at,
         )
         .await?;
         security::append_audit(

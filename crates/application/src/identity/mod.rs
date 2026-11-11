@@ -17,6 +17,7 @@ mod password_operations;
 mod recovery;
 pub(crate) mod repository;
 pub(crate) mod service;
+pub(crate) mod session_expiry;
 mod sessions;
 pub mod types;
 pub mod validation;

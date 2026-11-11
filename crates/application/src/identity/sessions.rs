@@ -2,6 +2,7 @@ use super::{
     AccountSummary, AuthenticatedSession, IdentityService, SessionCredentials, SessionSummary,
     repository::{accounts, security, sessions},
     service::{principal, require_authenticatable_account},
+    session_expiry::session_expires_at,
 };
 use crate::{
     ApplicationError, ApplicationResult,
@@ -47,7 +48,7 @@ impl IdentityService {
                 &transaction,
                 session.id,
                 now,
-                (now + Duration::seconds(self.settings.session_idle_seconds))
+                session_expires_at(now, self.settings.session_idle_seconds)?
                     .min(session.expires_at),
             )
             .await?;
