@@ -6,6 +6,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(all(test, unix))]
+mod gateway_recovery_tests;
+
 pub const CONFIG_MAP: &str = "hirune-gateway-maintenance";
 const GATEWAY_SELECTOR: &str =
     "app.kubernetes.io/part-of=hirune-kit,app.kubernetes.io/component=gateway";
@@ -80,7 +83,7 @@ fn gateways(target: &Target) -> Result<Vec<String>> {
         .collect()
 }
 
-fn response(target: &Target, pod: &str, path: &str) -> Result<(u16, Value)> {
+fn response(target: &Target, pod: &str, path: &str) -> Result<(u16, String)> {
     // APISIX ships Bash and coreutils. HTTP/1.0 keeps the response unchunked.
     let output = target.kubectl(&["exec", pod, "-c", "apisix", "--", "timeout", "5", "bash", "-c",
         "exec 3<>/dev/tcp/127.0.0.1/9080; printf 'GET %s HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' \"$1\" >&3; cat <&3",
@@ -95,23 +98,34 @@ fn response(target: &Target, pod: &str, path: &str) -> Result<(u16, Value)> {
         .nth(1)
         .context("gateway status missing")?
         .parse()?;
-    Ok((
-        status,
-        if body.trim().is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_str(body)?
-        },
-    ))
+    Ok((status, body.to_owned()))
 }
 
 pub fn verify_backend(target: &Target) -> Result<()> {
+    // Pod readiness can precede Service and gateway upstream convergence.
+    let deadline = Instant::now() + Duration::from_secs(180);
+    loop {
+        match verify_backend_once(target) {
+            Ok(()) => return Ok(()),
+            Err(error) if Instant::now() >= deadline => {
+                return Err(
+                    error.context("backend readiness deadline exceeded; keep maintenance enabled")
+                );
+            }
+            Err(_) => thread::sleep(Duration::from_secs(2)),
+        }
+    }
+}
+
+fn verify_backend_once(target: &Target) -> Result<()> {
     let pods = gateways(target)?;
     ensure!(!pods.is_empty(), "no gateway Pods to verify");
     for pod in &pods {
+        let (status, _) = response(target, pod, "/health/ready")
+            .with_context(|| format!("backend readiness probe failed for gateway {pod}"))?;
         ensure!(
-            response(target, pod, "/health/ready")?.0 == 204,
-            "backend readiness failed through gateway; keep maintenance enabled"
+            status == 204,
+            "backend readiness HTTP {status} through gateway {pod}"
         );
     }
     ensure!(
@@ -130,11 +144,17 @@ fn observed(target: &Target, enabled: bool) -> Result<bool> {
         let Ok((200, health)) = response(target, pod, "/health/gateway") else {
             return Ok(false);
         };
+        let Ok(health) = serde_json::from_str::<Value>(&health) else {
+            return Ok(false);
+        };
         if health["maintenance"] != enabled {
             return Ok(false);
         }
         if enabled {
             let Ok((503, body)) = response(target, pod, "/api/__maintenance_probe__") else {
+                return Ok(false);
+            };
+            let Ok(body) = serde_json::from_str::<Value>(&body) else {
                 return Ok(false);
             };
             if body["error"]["code"] != "maintenance" {
