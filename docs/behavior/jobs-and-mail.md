@@ -50,8 +50,14 @@ external-service capacity across all replicas.
 Handlers return a stable error code and whether failure is retryable. The shared
 runtime records the attempt and chooses delayed retry or retained failure. A
 normal handler failure does not stop unrelated work. A lost lease cannot finalize
-the old attempt. The runtime logs finalization/storage errors. Lease recovery
-remains authoritative. A database error while claiming exits the worker with an
+the old attempt. The runtime logs heartbeat and finalization errors inside the
+job span. Each event retains the job UUID, attempt UUID, originating request UUID,
+operation and a fixed storage, lost-lease or invalid-input category. Logs exclude
+database error details and job payloads. The worker also retains claim UUIDs by
+task ID until each task completes. A panicked task logs those UUIDs and a fixed
+panic category without its panic payload. Shutdown uses the same completion
+handling; cancelled tasks use an informational event. Lease recovery remains
+authoritative. A database error while claiming exits the worker with an
 error. The deployment supervisor restarts it. This worker policy is separate from the
 HTTP adapter's common status/code/request-ID error response.
 
