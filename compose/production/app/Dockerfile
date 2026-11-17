@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.99.1-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.100.0-bookworm AS build
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
     && rm -rf /var/lib/apt/lists/*
